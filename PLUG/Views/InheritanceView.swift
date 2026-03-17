@@ -11,13 +11,7 @@ struct InheritanceView: View {
     @State private var showDeleteAlert = false
 
     var body: some View {
-        NavigationStack {
             List {
-                PlugHeader(pageName: "Inheritance")
-                    .listRowInsets(EdgeInsets())
-                    .listRowBackground(Color.clear)
-                    .listRowSeparator(.hidden)
-
                 if vm.contracts.isEmpty {
                     VStack(spacing: 12) {
                         Image(systemName: "person.2.circle")
@@ -43,8 +37,8 @@ struct InheritanceView: View {
                     }
                 }
             }
-            .navigationTitle("")
-            .navigationBarHidden(true)
+            .navigationTitle("Inheritance")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Button { showCreate = true } label: {
@@ -78,7 +72,6 @@ struct InheritanceView: View {
             }
             .refreshable { await vm.refresh() }
             .task { await vm.refresh() }
-        }
     }
 
     private static func relativeTime(from date: Date) -> String {
@@ -286,7 +279,7 @@ struct InheritanceView: View {
               let csv = Int(vm.csvBlocks), csv > 0,
               let xpubStr = KeychainStore.shared.loadXpub(isTestnet: vm.isTestnet),
               let xpub = ExtendedPublicKey.fromBase58(xpubStr),
-              let ownerKey = xpub.derivePath([0, 0]) else { return nil }
+              let ownerKey = xpub.derivePath([0, vm.keyIndex]) else { return nil }
 
         let heirInput = vm.heirXpub.trimmingCharacters(in: .whitespacesAndNewlines)
         let heirPubkey: Data
@@ -382,6 +375,8 @@ struct InheritanceView: View {
                     TextField("Amount", text: $vm.amount)
                         .keyboardType(.numberPad)
                 }
+
+                KeyIndexPicker(index: $vm.keyIndex, maxIndex: 19)
 
                 if let address = inheritancePreviewAddress {
                     Section(vm.useTaproot ? "P2TR Address (preview)" : "P2WSH Address (preview)") {

@@ -7,6 +7,7 @@ final class ChannelVM: ObservableObject {
     @Published var receiverPubkey: String = ""
     @Published var timeoutBlocks: String = ""
     @Published var amount: String = ""
+    @Published var keyIndex: UInt32 = 0
     @Published var contracts: [Contract] = []
     @Published var currentBlockHeight: Int = 0
     @Published var isLoading = false
@@ -97,11 +98,12 @@ final class ChannelVM: ObservableObject {
         let receiverInput = receiverPubkey.trimmingCharacters(in: .whitespacesAndNewlines)
         let isTest = isTestnet
         let tb = Int64(timeout)
+        let kIdx = keyIndex
 
         // Derive keys and build script off main thread
         guard let result = await Task.detached(priority: .userInitiated) { () -> (Data, Data, String, Data, Data)? in
             // Derive sender pubkey
-            guard let derivedKey = xpub.derivePath([0, 0]) else { return nil }
+            guard let derivedKey = xpub.derivePath([0, kIdx]) else { return nil }
             let senderPubkey = derivedKey.key
 
             // Parse receiver pubkey (hex or xpub)
@@ -224,23 +226,9 @@ final class ChannelVM: ObservableObject {
             )
 
             // For cooperative close, we need both signatures.
-            // In demo mode, simulate the receiver signature too.
-            // In production, the PSBT would be shared for the second signer.
-            let receiverSignatures: [Data]
-            if DemoMode.shared.isActive {
-                let (demoReceiverSigs, _) = try await ContractSigner.signContractSpend(
-                    psbtData: psbtData,
-                    contract: contract,
-                    spendPath: .channelCooperativeClose,
-                    witnessScript: witnessScriptData,
-                    isTestnet: isTestnet
-                )
-                receiverSignatures = demoReceiverSigs
-            } else {
-                // In production, the receiver would sign and return their sigs.
-                // For now, use the sender sigs as placeholder (PSBT sharing needed).
-                receiverSignatures = senderSignatures
-            }
+            // In production, the receiver would sign and return their sigs via PSBT sharing.
+            // For now, use the sender sigs as placeholder (PSBT sharing needed).
+            let receiverSignatures = senderSignatures
 
             var witnessStacks: [[Data]] = []
             for i in 0..<senderSignatures.count {

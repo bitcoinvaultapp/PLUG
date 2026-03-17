@@ -43,13 +43,6 @@ struct SettingsView: View {
                             .foregroundStyle(.secondary)
                     }
 
-                    if vm.isDemoMode {
-                        HStack {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .foregroundStyle(.orange)
-                            Text("Demo mode active")
-                        }
-                    }
                 }
 
                 // Export

@@ -45,13 +45,6 @@ struct WalletView: View {
             }
             .buttonStyle(.borderedProminent)
 
-            Button("Demo mode (testnet)") {
-                DemoMode.shared.activate()
-                LedgerManager.shared.isDemoMode = true
-                Task { await vm.loadWallet() }
-            }
-            .buttonStyle(.bordered)
-
             // Debug: show xpub status
             if let xpubStr = KeychainStore.shared.loadXpub(isTestnet: NetworkConfig.shared.isTestnet) {
                 VStack(spacing: 4) {

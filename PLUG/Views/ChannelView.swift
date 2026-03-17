@@ -11,13 +11,7 @@ struct ChannelView: View {
     @State private var showDeleteAlert = false
 
     var body: some View {
-        NavigationStack {
             List {
-                PlugHeader(pageName: "Channel")
-                    .listRowInsets(EdgeInsets())
-                    .listRowBackground(Color.clear)
-                    .listRowSeparator(.hidden)
-
                 if vm.contracts.isEmpty {
                     VStack(spacing: 12) {
                         Image(systemName: "arrow.left.arrow.right.circle")
@@ -43,8 +37,8 @@ struct ChannelView: View {
                     }
                 }
             }
-            .navigationTitle("")
-            .navigationBarHidden(true)
+            .navigationTitle("Payment Channels")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Button { showCreate = true } label: {
@@ -78,7 +72,6 @@ struct ChannelView: View {
             }
             .refreshable { await vm.refresh() }
             .task { await vm.refresh() }
-        }
     }
 
     private func channelRow(_ contract: Contract) -> some View {
@@ -284,7 +277,7 @@ struct ChannelView: View {
               let timeout = Int(vm.timeoutBlocks),
               let xpubStr = KeychainStore.shared.loadXpub(isTestnet: vm.isTestnet),
               let xpub = ExtendedPublicKey.fromBase58(xpubStr),
-              let senderKey = xpub.derivePath([0, 0]) else { return nil }
+              let senderKey = xpub.derivePath([0, vm.keyIndex]) else { return nil }
 
         let receiverInput = vm.receiverPubkey.trimmingCharacters(in: .whitespacesAndNewlines)
         let receiverKey: Data
@@ -345,6 +338,8 @@ struct ChannelView: View {
                     TextField("Amount", text: $vm.amount)
                         .keyboardType(.numberPad)
                 }
+
+                KeyIndexPicker(index: $vm.keyIndex, maxIndex: 19)
 
                 if let address = channelPreviewAddress {
                     Section("P2WSH address (preview)") {

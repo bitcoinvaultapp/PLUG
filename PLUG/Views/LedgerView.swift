@@ -43,14 +43,6 @@ struct LedgerView: View {
 
             Spacer()
 
-            if vm.isDemoMode {
-                Text("DEMO")
-                    .font(.caption2.weight(.bold))
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(.orange, in: Capsule())
-                    .foregroundStyle(.white)
-            }
         }
         .padding()
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 12))
@@ -89,10 +81,6 @@ struct LedgerView: View {
             .buttonStyle(.borderedProminent)
             .controlSize(.large)
 
-            Button("Demo mode") {
-                vm.activateDemoMode()
-            }
-            .buttonStyle(.bordered)
         }
     }
 
@@ -197,11 +185,7 @@ struct LedgerView: View {
             }
 
             Button("Disconnect") {
-                if vm.isDemoMode {
-                    vm.deactivateDemoMode()
-                } else {
-                    vm.disconnect()
-                }
+                vm.disconnect()
             }
             .buttonStyle(.bordered)
             .foregroundStyle(.red)

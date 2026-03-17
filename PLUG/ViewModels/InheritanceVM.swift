@@ -8,6 +8,7 @@ final class InheritanceVM: ObservableObject {
     @Published var heirXpub: String = "" // heir's xpub or pubkey hex
     @Published var amount: String = ""
     @Published var useTaproot: Bool = false
+    @Published var keyIndex: UInt32 = 0
     @Published var contracts: [Contract] = []
     @Published var currentBlockHeight: Int = 0
     @Published var isLoading = false
@@ -85,6 +86,7 @@ final class InheritanceVM: ObservableObject {
         let isTest = isTestnet
         let csvVal = csv
         let taproot = useTaproot
+        let kIdx = keyIndex
 
         // Derive keys off main thread
         struct InheritanceResult {
@@ -94,7 +96,7 @@ final class InheritanceVM: ObservableObject {
             let internalKey: Data?; let tweakedKey: Data?; let merkleRoot: Data?; let scripts: [Data]?
         }
         guard let result: InheritanceResult = await Task.detached(priority: .userInitiated) { () -> InheritanceResult? in
-            guard let ownerKey = xpub.derivePath([0, 0]) else { return nil }
+            guard let ownerKey = xpub.derivePath([0, kIdx]) else { return nil }
 
             let heirPubkey: Data
             if let heirXpubParsed = ExtendedPublicKey.fromBase58(heirInput),

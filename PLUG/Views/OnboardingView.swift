@@ -133,12 +133,6 @@ struct OnboardingView: View {
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
 
-                Button("Demo mode (testnet)") {
-                    ledgerVM.activateDemoMode()
-                    isComplete = true
-                }
-                .buttonStyle(.bordered)
-
                 Button("Skip") {
                     isComplete = true
                 }

@@ -7,6 +7,7 @@ final class VaultVM: ObservableObject {
     @Published var lockBlockHeight: String = ""
     @Published var amount: String = ""
     @Published var useTaproot: Bool = false
+    @Published var keyIndex: UInt32 = 0
     @Published var contracts: [Contract] = []
     @Published var currentBlockHeight: Int = 0
     @Published var isLoading = false
@@ -101,13 +102,14 @@ final class VaultVM: ObservableObject {
         let isTest = isTestnet
         let lh = lockHeight
         let taproot = useTaproot
+        let kIdx = keyIndex
 
         let contract: Contract
 
         if taproot {
             // Taproot (P2TR) vault — key-path + script-path with CLTV
             guard let trResult = await Task.detached(priority: .userInitiated) { () -> (Data, Data, Data, String)? in
-                guard let derivedKey = xpub.derivePath([0, 0]) else { return nil }
+                guard let derivedKey = xpub.derivePath([0, kIdx]) else { return nil }
                 let internalKey = Secp256k1.xOnly(derivedKey.key)
                 let script = ScriptBuilder.vaultScript(locktime: Int64(lh), pubkey: derivedKey.key)
                 let merkleRoot = TaprootBuilder.computeMerkleRoot(scripts: [script.script])
@@ -138,7 +140,7 @@ final class VaultVM: ObservableObject {
         } else {
             // P2WSH vault (legacy SegWit)
             guard let result = await Task.detached(priority: .userInitiated) { () -> (Data, Data, String)? in
-                guard let derivedKey = xpub.derivePath([0, 0]) else { return nil }
+                guard let derivedKey = xpub.derivePath([0, kIdx]) else { return nil }
                 let script = ScriptBuilder.vaultScript(locktime: Int64(lh), pubkey: derivedKey.key)
                 guard let address = script.p2wshAddress(isTestnet: isTest) else { return nil }
                 return (script.script, script.witnessScriptHash, address)

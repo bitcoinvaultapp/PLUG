@@ -13,13 +13,7 @@ struct HTLCView: View {
     @State private var showDeleteAlert = false
 
     var body: some View {
-        NavigationStack {
             List {
-                PlugHeader(pageName: "HTLC")
-                    .listRowInsets(EdgeInsets())
-                    .listRowBackground(Color.clear)
-                    .listRowSeparator(.hidden)
-
                 if vm.contracts.isEmpty {
                     VStack(spacing: 12) {
                         Image(systemName: "lock.rotation")
@@ -45,8 +39,8 @@ struct HTLCView: View {
                     }
                 }
             }
-            .navigationTitle("")
-            .navigationBarHidden(true)
+            .navigationTitle("Hash Time-Lock")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Button { showCreate = true } label: {
@@ -90,7 +84,6 @@ struct HTLCView: View {
             }
             .refreshable { await vm.refresh() }
             .task { await vm.refresh() }
-        }
     }
 
     private func htlcRow(_ contract: Contract) -> some View {
@@ -327,7 +320,7 @@ struct HTLCView: View {
               let timeout = Int(vm.timeoutBlocks),
               let xpubStr = KeychainStore.shared.loadXpub(isTestnet: vm.isTestnet),
               let xpub = ExtendedPublicKey.fromBase58(xpubStr),
-              let senderKey = xpub.derivePath([0, 0]) else { return nil }
+              let senderKey = xpub.derivePath([0, vm.keyIndex]) else { return nil }
 
         let receiverInput = vm.receiverPubkey.trimmingCharacters(in: .whitespacesAndNewlines)
         let receiverKey: Data
@@ -400,6 +393,8 @@ struct HTLCView: View {
                     TextField("Amount", text: $vm.amount)
                         .keyboardType(.numberPad)
                 }
+
+                KeyIndexPicker(index: $vm.keyIndex, maxIndex: 19)
 
                 if htlcTimeoutValid && !vm.receiverPubkey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     Section("Hash Lock (SHA256 of preimage)") {

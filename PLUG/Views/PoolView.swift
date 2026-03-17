@@ -11,40 +11,36 @@ struct PoolView: View {
     @State private var showDeleteAlert = false
 
     var body: some View {
-        NavigationStack {
             List {
-                PlugHeader(pageName: "Pool")
-                    .listRowInsets(EdgeInsets())
-                    .listRowBackground(Color.clear)
-                    .listRowSeparator(.hidden)
-
-                if vm.contracts.isEmpty {
-                    VStack(spacing: 12) {
-                        Image(systemName: "person.3.fill")
-                            .font(.system(size: 40))
-                            .foregroundStyle(.secondary)
-                        Text("No Pool")
-                            .font(.headline)
-                        Text("Create an M-of-N multisig")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 32)
-                } else {
-                    ForEach(vm.contracts) { contract in
-                        poolRow(contract)
-                    }
-                    .onDelete { indexSet in
-                        if let i = indexSet.first {
-                            contractToDelete = vm.contracts[i]
-                            showDeleteAlert = true
+                Section {
+                    if vm.contracts.isEmpty {
+                        VStack(spacing: 12) {
+                            Image(systemName: "person.3.fill")
+                                .font(.system(size: 40))
+                                .foregroundStyle(.secondary)
+                            Text("No Pool")
+                                .font(.headline)
+                            Text("Create an M-of-N multisig")
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 32)
+                    } else {
+                        ForEach(vm.contracts) { contract in
+                            poolRow(contract)
+                        }
+                        .onDelete { indexSet in
+                            if let i = indexSet.first {
+                                contractToDelete = vm.contracts[i]
+                                showDeleteAlert = true
+                            }
                         }
                     }
                 }
             }
-            .navigationTitle("")
-            .navigationBarHidden(true)
+            .navigationTitle("Multisig Pool")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Menu {
@@ -79,7 +75,6 @@ struct PoolView: View {
                 }
             }
             .task { await vm.refresh() }
-        }
     }
 
     private func poolRow(_ contract: Contract) -> some View {

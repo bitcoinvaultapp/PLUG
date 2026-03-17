@@ -4,13 +4,7 @@ struct OpReturnView: View {
     @StateObject private var vm = OpReturnVM()
 
     var body: some View {
-        NavigationStack {
             Form {
-                PlugHeader(pageName: "OP_RETURN")
-                    .listRowInsets(EdgeInsets())
-                    .listRowBackground(Color.clear)
-                    .listRowSeparator(.hidden)
-
                 Section("Mode") {
                     Picker("Type", selection: $vm.mode) {
                         ForEach(OpReturnVM.OpReturnMode.allCases, id: \.self) { mode in
@@ -93,8 +87,7 @@ struct OpReturnView: View {
                     .disabled(vm.textInput.isEmpty || vm.isOverLimit)
                 }
             }
-            .navigationTitle("")
-            .navigationBarHidden(true)
-        }
+            .navigationTitle("OP_RETURN")
+            .navigationBarTitleDisplayMode(.inline)
     }
 }

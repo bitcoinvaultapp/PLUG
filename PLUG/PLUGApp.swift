@@ -73,13 +73,11 @@ struct MainTabView: View {
                         Text("Contracts")
                     }
 
-                NavigationStack {
-                    PoolView()
-                }
+                LearnView()
                     .tag(3)
                     .tabItem {
-                        Image(systemName: "person.2.fill")
-                        Text("Pool")
+                        Image(systemName: "book.fill")
+                        Text("Learn")
                     }
 
                 ScriptEditorView()
@@ -99,7 +97,7 @@ struct ContractsHubView: View {
     var body: some View {
         List {
             PlugHeader(pageName: "Contracts")
-                .listRowInsets(EdgeInsets())
+                .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 12, trailing: 0))
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
 
@@ -145,6 +143,15 @@ struct ContractsHubView: View {
                         badgeColor: .green
                     )
                 }
+
+                NavigationLink(destination: PoolView()) {
+                    contractHubRow(
+                        title: "Multisig Pool",
+                        desc: "M-of-N shared custody",
+                        badge: "MULTI",
+                        badgeColor: .blue
+                    )
+                }
             }
 
             Section {
@@ -159,7 +166,7 @@ struct ContractsHubView: View {
             }
         }
         .navigationTitle("")
-        .navigationBarHidden(true)
+        .toolbar(.hidden, for: .navigationBar)
     }
 
     private func contractHubRow(title: String, desc: String, badge: String, badgeColor: Color) -> some View {

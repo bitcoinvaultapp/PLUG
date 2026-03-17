@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Shared "PLUG." branded header.
-/// Home (pageName == "") shows badge + connect + settings.
+/// Home shows "PLUG. Home" + badge + connect + settings.
 /// Other tabs show only "PLUG. PageName".
 struct PlugHeader: View {
     let pageName: String
@@ -9,7 +9,7 @@ struct PlugHeader: View {
     @State private var showLedger = false
     @State private var showSettings = false
 
-    private var isHome: Bool { pageName.isEmpty }
+    private var isHome: Bool { pageName == "Home" }
 
     var body: some View {
         HStack {
@@ -20,11 +20,9 @@ struct PlugHeader: View {
                 Text(".")
                     .font(.system(size: 20, weight: .black))
                     .foregroundStyle(Color.btcOrange)
-                if !isHome {
-                    Text(" \(pageName)")
-                        .font(.system(size: 20, weight: .black))
-                        .foregroundStyle(.secondary)
-                }
+                Text(" \(pageName)")
+                    .font(.system(size: 20, weight: .black))
+                    .foregroundStyle(.secondary)
 
                 if isHome {
                     Text(NetworkConfig.shared.isTestnet ? "TESTNET" : "MAINNET")
@@ -42,33 +40,30 @@ struct PlugHeader: View {
             Spacer()
 
             if isHome {
-                HStack(spacing: 8) {
+                HStack(spacing: 12) {
                     Button {
                         showLedger = true
                     } label: {
-                        HStack(spacing: 4) {
+                        HStack(spacing: 6) {
                             Circle()
-                                .fill(LedgerManager.shared.state == .connected ? Color.green : Color.gray)
-                                .frame(width: 6, height: 6)
-                            Text("Connect")
-                                .font(.system(size: 11, weight: .medium))
+                                .fill(LedgerManager.shared.state == .connected ? Color.green : Color.orange)
+                                .frame(width: 8, height: 8)
+                            Text(LedgerManager.shared.state == .connected ? "Connected" : "Connect")
+                                .font(.system(size: 13, weight: .medium))
                         }
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 6)
-                        .background(.ultraThinMaterial, in: Capsule())
+                        .foregroundStyle(.primary)
                     }
 
                     Button {
                         showSettings = true
                     } label: {
-                        Image(systemName: "gearshape.fill")
-                            .font(.system(size: 14))
+                        Image(systemName: "gearshape")
+                            .font(.system(size: 18))
                             .foregroundStyle(.secondary)
-                            .padding(8)
-                            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 8))
                     }
                 }
                 .fixedSize()
+                .padding(.trailing, 4)
                 .navigationDestination(isPresented: $showLedger) {
                     LedgerView()
                 }
@@ -78,6 +73,5 @@ struct PlugHeader: View {
             }
         }
         .padding(.vertical, 8)
-        .padding(.horizontal, isHome ? 0 : 12)
     }
 }

@@ -23,7 +23,6 @@ struct HomeView: View {
                 VStack(spacing: 20) {
                     // Custom header
                     headerBar
-                        .padding(.horizontal, 4)
 
                     // Existing cards — untouched
                     balanceCard
@@ -61,7 +60,7 @@ struct HomeView: View {
     // =====================================================================
 
     private var headerBar: some View {
-        PlugHeader(pageName: "")
+        PlugHeader(pageName: "Home")
     }
 
     // =====================================================================

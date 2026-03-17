@@ -6,7 +6,6 @@ final class SettingsVM: ObservableObject {
     @Published var isTestnet: Bool
     @Published var hasXpub: Bool = false
     @Published var xpubDisplay: String = ""
-    @Published var isDemoMode: Bool = false
     @Published var showClearConfirmation = false
 
     init() {
@@ -16,7 +15,6 @@ final class SettingsVM: ObservableObject {
 
     func refresh() {
         isTestnet = NetworkConfig.shared.isTestnet
-        isDemoMode = DemoMode.shared.isActive
 
         if let xpub = KeychainStore.shared.loadXpub(isTestnet: isTestnet) {
             hasXpub = true
@@ -49,8 +47,6 @@ final class SettingsVM: ObservableObject {
         ContractStore.shared.clearAll()
         TxLabelStore.shared.clearAll()
         FrozenUTXOStore.shared.clearAll()
-        DemoMode.shared.deactivate()
-        LedgerManager.shared.isDemoMode = false
         refresh()
     }
 }

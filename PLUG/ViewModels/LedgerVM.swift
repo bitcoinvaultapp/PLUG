@@ -13,7 +13,6 @@ final class LedgerVM: ObservableObject {
     @Published var isLoading = false
     @Published var error: String?
     @Published var xpubResult: String?
-    @Published var isDemoMode = false
 
     private var cancellables = Set<AnyCancellable>()
 
@@ -32,12 +31,6 @@ final class LedgerVM: ObservableObject {
             }
             .store(in: &cancellables)
 
-        LedgerManager.shared.$isDemoMode
-            .receive(on: DispatchQueue.main)
-            .sink { [weak self] demo in
-                self?.isDemoMode = demo
-            }
-            .store(in: &cancellables)
     }
 
     func startScan() {
@@ -87,17 +80,4 @@ final class LedgerVM: ObservableObject {
         isLoading = false
     }
 
-    /// Activate demo mode
-    func activateDemoMode() {
-        DemoMode.shared.activate()
-        LedgerManager.shared.isDemoMode = true
-        state = .connected
-    }
-
-    /// Deactivate demo mode
-    func deactivateDemoMode() {
-        DemoMode.shared.deactivate()
-        LedgerManager.shared.isDemoMode = false
-        state = .disconnected
-    }
 }

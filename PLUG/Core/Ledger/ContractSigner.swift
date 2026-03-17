@@ -185,12 +185,6 @@ struct ContractSigner {
         isTestnet: Bool
     ) async throws -> (signatures: [Data], updatedContract: Contract) {
 
-        // In demo mode, return simulated signatures
-        if DemoMode.shared.isActive || LedgerManager.shared.isDemoMode {
-            let dummySig = Data(repeating: 0x30, count: 71) + Data([0x01])
-            return ([dummySig], contract)
-        }
-
         guard LedgerManager.shared.state == .connected else {
             throw SigningError.ledgerNotConnected
         }
@@ -312,6 +306,42 @@ struct ContractSigner {
                 internalXpub: xpub,
                 internalKeyIndex: 0,
                 allXpubs: contract.multisigXpubs ?? contract.multisigPubkeys ?? []
+            )
+
+        case .taprootKeyPath:
+            return WalletPolicyBuilder.taprootKeyPathPolicy(
+                masterFP: masterFP, keyOrigin: keyOrigin, xpub: xpub
+            )
+
+        case .taprootVaultSpend:
+            return WalletPolicyBuilder.taprootVaultPolicy(
+                lockBlockHeight: contract.lockBlockHeight ?? 0,
+                masterFP: masterFP, keyOrigin: keyOrigin, xpub: xpub
+            )
+
+        case .taprootInheritanceOwner:
+            return WalletPolicyBuilder.taprootInheritancePolicy(
+                csvBlocks: contract.csvBlocks ?? 0,
+                masterFP: masterFP, keyOrigin: keyOrigin,
+                ownerXpub: xpub,
+                heirXpub: contract.heirXpub ?? contract.heirPubkey ?? ""
+            )
+
+        case .taprootInheritanceHeir:
+            return WalletPolicyBuilder.taprootInheritancePolicy(
+                csvBlocks: contract.csvBlocks ?? 0,
+                masterFP: masterFP, keyOrigin: keyOrigin,
+                ownerXpub: contract.senderXpub ?? contract.ownerPubkey ?? "",
+                heirXpub: xpub
+            )
+
+        case .taprootHTLCClaim, .taprootHTLCRefund:
+            return WalletPolicyBuilder.taprootHTLCPolicy(
+                hashLock: contract.hashLock ?? "",
+                timeoutBlocks: contract.timeoutBlocks ?? 0,
+                masterFP: masterFP, keyOrigin: keyOrigin,
+                receiverXpub: contract.receiverXpub ?? contract.receiverPubkey ?? xpub,
+                senderXpub: contract.senderXpub ?? contract.senderPubkey ?? xpub
             )
         }
     }

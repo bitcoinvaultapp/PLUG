@@ -305,7 +305,7 @@ final class WalletVM: ObservableObject {
         let dedupedTxs = allTxs.filter { seen.insert($0.txid).inserted }
 
         // CRITICAL: Only keep UTXOs on OUR derived addresses.
-        // Prevents phantom UTXOs from demo mode or previous Ledger sessions.
+        // Prevents phantom UTXOs from previous Ledger sessions.
         let knownAddresses = Set(addresses.map { $0.address })
         let cleanUTXOs = allUTXOs.filter { knownAddresses.contains($0.address) }
 
@@ -582,22 +582,11 @@ final class WalletVM: ObservableObject {
         isSigning = true
         sendError = nil
 
-        // Check if real Ledger is physically connected via BLE
-        let hasPhysicalLedger = LedgerManager.shared.state == .connected
-            && LedgerManager.shared.connectedDevice != nil
-
-        // If a real Ledger is connected, always use it (override demo mode)
-        if hasPhysicalLedger {
-            print("[WalletVM] Real Ledger detected — using hardware signing")
-        } else {
-            print("[WalletVM] No physical Ledger — using simulated signing")
-        }
-
         do {
             let signatures: [Data]
             var inputAddressInfosForWitness: [LedgerSigningV2.InputAddressInfo] = []
 
-            if hasPhysicalLedger {
+            do {
                 // Real Ledger v2 signing
                 print("[WalletVM] Signing with real Ledger v2...")
 
@@ -676,28 +665,12 @@ final class WalletVM: ObservableObject {
 
                 signatures = result.map { $0.signature }
                 print("[WalletVM] Got \(signatures.count) signatures from Ledger")
-            } else {
-                // Demo mode: simulate signatures
-                print("[WalletVM] Simulating signatures (no Ledger connected)")
-                let inputCount = countPSBTInputs(psbtData)
-                var sigs: [Data] = []
-                for _ in 0..<max(inputCount, 1) {
-                    var fakeSig = Data([0x30, 0x44, 0x02, 0x20])
-                    fakeSig.append(Data(repeating: 0xAB, count: 32))
-                    fakeSig.append(Data([0x02, 0x20]))
-                    fakeSig.append(Data(repeating: 0xCD, count: 32))
-                    fakeSig.append(Data([0x01]))
-                    sigs.append(fakeSig)
-                }
-                signatures = sigs
             }
 
             // Build witness stacks with per-input pubkeys
-            // For real Ledger signing, use the per-input address info pubkeys
-            // For demo mode, derive the first pubkey as fallback
             var perInputPubkeys: [Data] = []
 
-            if hasPhysicalLedger && !inputAddressInfosForWitness.isEmpty {
+            if !inputAddressInfosForWitness.isEmpty {
                 perInputPubkeys = inputAddressInfosForWitness.map { $0.publicKey }
             }
 

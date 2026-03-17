@@ -989,12 +989,8 @@ struct SpendManager {
 
     // MARK: - Broadcast
 
-    /// Broadcast a raw transaction, checking demo mode, mainnet guard, and validation first
+    /// Broadcast a raw transaction, checking mainnet guard and validation first
     static func broadcast(txHex: String) async throws -> String {
-        if DemoMode.shared.isActive {
-            throw SpendError.demoModeBlocked
-        }
-
         // Safety guard: block mainnet broadcasts during testing phase
         if NetworkConfig.shared.isTestnet == false {
             throw SpendError.mainnetDisabled
@@ -1048,7 +1044,6 @@ struct SpendManager {
     // MARK: - Errors
 
     enum SpendError: LocalizedError {
-        case demoModeBlocked
         case insufficientFunds
         case invalidContract
         case invalidAddress
@@ -1061,7 +1056,6 @@ struct SpendManager {
 
         var errorDescription: String? {
             switch self {
-            case .demoModeBlocked: return "Broadcast blocked in demo mode"
             case .insufficientFunds: return "Insufficient funds"
             case .invalidContract: return "Invalid contract"
             case .invalidAddress: return "Invalid destination address"

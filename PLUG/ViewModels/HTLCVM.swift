@@ -7,6 +7,7 @@ final class HTLCVM: ObservableObject {
     @Published var receiverPubkey: String = ""  // hex or xpub
     @Published var timeoutBlocks: String = ""
     @Published var amount: String = ""
+    @Published var keyIndex: UInt32 = 0
     @Published var contracts: [Contract] = []
     @Published var generatedPreimage: String = ""  // hex - shown once to sender
     @Published var hashLock: String = ""  // hex - shared with receiver
@@ -97,11 +98,12 @@ final class HTLCVM: ObservableObject {
         let receiverInput = receiverPubkey.trimmingCharacters(in: .whitespacesAndNewlines)
         let isTest = isTestnet
         let tb = Int64(timeout)
+        let kIdx = keyIndex
 
         // Derive keys and build script off main thread
         guard let result = await Task.detached(priority: .userInitiated) { () -> (Data, Data, String, Data, Data, Data, Data)? in
             // Derive sender pubkey
-            guard let derivedKey = xpub.derivePath([0, 0]) else { return nil }
+            guard let derivedKey = xpub.derivePath([0, kIdx]) else { return nil }
             let senderPubkey = derivedKey.key
 
             // Parse receiver pubkey (hex or xpub)

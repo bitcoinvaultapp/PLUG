@@ -11,13 +11,7 @@ struct VaultView: View {
     @State private var showDeleteAlert = false
 
     var body: some View {
-        NavigationStack {
             List {
-                PlugHeader(pageName: "Vault")
-                    .listRowInsets(EdgeInsets())
-                    .listRowBackground(Color.clear)
-                    .listRowSeparator(.hidden)
-
                 // Existing vaults
                 if vm.contracts.isEmpty {
                     VStack(spacing: 12) {
@@ -44,8 +38,8 @@ struct VaultView: View {
                     }
                 }
             }
-            .navigationTitle("")
-            .navigationBarHidden(true)
+            .navigationTitle("Vaults")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Button { showCreate = true } label: {
@@ -93,7 +87,6 @@ struct VaultView: View {
             }
             .refreshable { await vm.refresh() }
             .task { await vm.refresh() }
-        }
     }
 
     private func vaultRow(_ contract: Contract) -> some View {
@@ -237,7 +230,7 @@ struct VaultView: View {
               let lockHeight = Int(vm.lockBlockHeight),
               let xpubStr = KeychainStore.shared.loadXpub(isTestnet: vm.isTestnet),
               let xpub = ExtendedPublicKey.fromBase58(xpubStr),
-              let derivedKey = xpub.derivePath([0, 0]) else { return nil }
+              let derivedKey = xpub.derivePath([0, vm.keyIndex]) else { return nil }
         let script = ScriptBuilder.vaultScript(locktime: Int64(lockHeight), pubkey: derivedKey.key)
         if vm.useTaproot {
             let internalKey = Secp256k1.xOnly(derivedKey.key)
@@ -273,6 +266,8 @@ struct VaultView: View {
                     TextField("Amount", text: $vm.amount)
                         .keyboardType(.numberPad)
                 }
+
+                KeyIndexPicker(index: $vm.keyIndex, maxIndex: 19)
 
                 if vaultLockHeightValid, let lockHeight = Int(vm.lockBlockHeight) {
                     Section("Information") {

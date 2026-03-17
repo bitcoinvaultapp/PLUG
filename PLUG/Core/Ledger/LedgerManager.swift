@@ -25,7 +25,6 @@ final class LedgerManager: NSObject, ObservableObject {
     @Published var state: LedgerState = .disconnected
     @Published var discoveredDevices: [CBPeripheral] = []
     @Published var connectedDevice: CBPeripheral?
-    @Published var isDemoMode: Bool = UserDefaults.standard.bool(forKey: "demo_mode_active")
 
     /// Cached app version from last getAppAndVersion call
     var cachedAppVersion: (name: String, version: String)?
@@ -104,10 +103,6 @@ final class LedgerManager: NSObject, ObservableObject {
     /// Send APDU and wait for response. Timeout is configurable for signing commands
     /// that require user confirmation on the Ledger screen.
     func sendAPDU(_ apdu: LedgerProtocol.APDU, timeout: TimeInterval = 30) async throws -> Data {
-        if isDemoMode {
-            return try await DemoMode.shared.handleAPDU(apdu)
-        }
-
         guard state == .connected,
               let writeChar = writeCharacteristic,
               let peripheral = connectedDevice else {

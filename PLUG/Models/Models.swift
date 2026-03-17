@@ -127,6 +127,13 @@ struct Contract: Identifiable, Codable {
     var senderXpub: String?           // HTLC/Channel: sender xpub (when signing as receiver)
     var multisigXpubs: [String]?      // Pool: all co-signer xpubs
 
+    // Taproot (P2TR) fields
+    var isTaproot: Bool = false           // true if this is a P2TR contract
+    var taprootInternalKey: String?       // 32-byte x-only internal key hex
+    var taprootMerkleRoot: String?        // 32-byte MAST root hex (nil for key-path only)
+    var taprootScripts: [String]?         // hex scripts in the MAST tree
+    var scriptPubKey: String?             // hex scriptPubKey (OP_1 <tweaked_key> for P2TR)
+
     static func newVault(
         name: String,
         script: Data,
@@ -255,6 +262,71 @@ struct Contract: Identifiable, Codable {
             senderPubkey: senderPubkey.hex,
             receiverPubkey: receiverPubkey.hex,
             timeoutBlocks: timeoutBlocks
+        )
+    }
+
+    static func newTaprootVault(
+        name: String,
+        internalKey: Data,
+        tweakedKey: Data,
+        address: String,
+        lockBlockHeight: Int,
+        amount: UInt64,
+        isTestnet: Bool,
+        script: Data? = nil,
+        merkleRoot: Data? = nil,
+        scripts: [Data]? = nil
+    ) -> Contract {
+        Contract(
+            id: UUID().uuidString,
+            type: .vault,
+            name: name,
+            createdAt: Date(),
+            script: script?.hex ?? "",
+            witnessScript: "",
+            address: address,
+            amount: amount,
+            isTestnet: isTestnet,
+            lockBlockHeight: lockBlockHeight,
+            isTaproot: true,
+            taprootInternalKey: internalKey.hex,
+            taprootMerkleRoot: merkleRoot?.hex,
+            taprootScripts: scripts?.map { $0.hex },
+            scriptPubKey: TaprootBuilder.p2trScriptPubKey(tweakedKey: tweakedKey).hex
+        )
+    }
+
+    static func newTaprootInheritance(
+        name: String,
+        internalKey: Data,
+        tweakedKey: Data,
+        address: String,
+        csvBlocks: Int,
+        ownerPubkey: Data,
+        heirPubkey: Data,
+        amount: UInt64,
+        isTestnet: Bool,
+        scripts: [Data]? = nil,
+        merkleRoot: Data? = nil
+    ) -> Contract {
+        Contract(
+            id: UUID().uuidString,
+            type: .inheritance,
+            name: name,
+            createdAt: Date(),
+            script: "",
+            witnessScript: "",
+            address: address,
+            amount: amount,
+            isTestnet: isTestnet,
+            csvBlocks: csvBlocks,
+            ownerPubkey: ownerPubkey.hex,
+            heirPubkey: heirPubkey.hex,
+            isTaproot: true,
+            taprootInternalKey: internalKey.hex,
+            taprootMerkleRoot: merkleRoot?.hex,
+            taprootScripts: scripts?.map { $0.hex },
+            scriptPubKey: TaprootBuilder.p2trScriptPubKey(tweakedKey: tweakedKey).hex
         )
     }
 }

@@ -628,6 +628,172 @@ struct SpendManager {
         PaymentChannelBuilder.refundWitness(senderSig: signature, witnessScript: witnessScript)
     }
 
+    // MARK: - Taproot Key-Path Spend
+
+    /// Build PSBT for a Taproot key-path spend (Schnorr signature, no scripts).
+    /// Witness: [64-byte Schnorr signature]
+    /// This is the most efficient spend — looks like a normal single-sig on chain.
+    static func buildTaprootKeyPathSpendPSBT(
+        contract: Contract,
+        utxos: [UTXO],
+        destinationAddress: String,
+        feeRate: Double,
+        isTestnet: Bool
+    ) throws -> Data {
+        guard PSBTBuilder.scriptPubKeyFromAddress(destinationAddress, isTestnet: isTestnet) != nil else {
+            throw SpendError.invalidAddress
+        }
+        guard !utxos.isEmpty else {
+            throw SpendError.insufficientFunds
+        }
+
+        let totalInput = utxos.reduce(UInt64(0)) { $0 + $1.value }
+        // P2TR key-path: 57.5 vbytes per input (1 Schnorr sig in witness)
+        let inputVsize = 57
+        let outputVsize = 43 // P2TR output
+        let overheadVsize = 11
+        let vsize = overheadVsize + (inputVsize * utxos.count) + outputVsize
+        let fee = UInt64(ceil(Double(vsize) * feeRate))
+
+        guard totalInput > fee else {
+            throw SpendError.insufficientFunds
+        }
+
+        let outputAmount = totalInput - fee
+        guard outputAmount >= dustThreshold else {
+            throw SpendError.belowDust
+        }
+
+        let destScript = PSBTBuilder.scriptPubKeyFromAddress(destinationAddress, isTestnet: isTestnet)!
+
+        // Extract x-only internal key from contract
+        let xOnlyKey: Data?
+        if let ik = contract.taprootInternalKey, let ikData = Data(hex: ik), ikData.count == 32 {
+            xOnlyKey = ikData
+        } else {
+            xOnlyKey = nil
+        }
+
+        let spk = Data(hex: contract.scriptPubKey ?? "") ?? PSBTBuilder.scriptPubKeyFromAddress(contract.address, isTestnet: isTestnet) ?? Data()
+
+        let inputs: [PSBTBuilder.TxInput] = utxos.map { utxo in
+            let txidInternal = txidToInternalOrder(utxo.txid)
+            var input = PSBTBuilder.TxInput(
+                txid: txidInternal,
+                vout: UInt32(utxo.vout),
+                sequence: 0xFFFFFFFD, // RBF enabled
+                witnessUtxo: PSBTBuilder.TxOutput(value: utxo.value, scriptPubKey: spk)
+            )
+            input.tapInternalKey = xOnlyKey
+            return input
+        }
+
+        let outputs = [
+            PSBTBuilder.TxOutput(value: outputAmount, scriptPubKey: destScript)
+        ]
+
+        return PSBTBuilder.buildPSBT(inputs: inputs, outputs: outputs, locktime: 0)
+    }
+
+    /// Witness for Taproot key-path spend: just the Schnorr signature
+    static func taprootKeyPathWitness(signature: Data) -> [Data] {
+        TaprootBuilder.keyPathWitness(signature: signature)
+    }
+
+    // MARK: - Taproot Script-Path Spend
+
+    /// Build PSBT for a Taproot script-path spend.
+    /// Witness: [...stack, script, controlBlock]
+    static func buildTaprootScriptPathSpendPSBT(
+        contract: Contract,
+        utxos: [UTXO],
+        destinationAddress: String,
+        feeRate: Double,
+        isTestnet: Bool,
+        locktime: UInt32 = 0,
+        sequence: UInt32 = 0xFFFFFFFE
+    ) throws -> Data {
+        guard PSBTBuilder.scriptPubKeyFromAddress(destinationAddress, isTestnet: isTestnet) != nil else {
+            throw SpendError.invalidAddress
+        }
+        guard !utxos.isEmpty else {
+            throw SpendError.insufficientFunds
+        }
+        guard let witnessScriptData = Data(hex: contract.script) else {
+            throw SpendError.invalidContract
+        }
+
+        let totalInput = utxos.reduce(UInt64(0)) { $0 + $1.value }
+        // Script-path: ~100-150 vbytes per input depending on script + control block
+        let controlBlockSize = 33 + (contract.taprootScripts?.count ?? 1 > 1 ? 32 : 0)
+        let witnessSize = witnessScriptData.count + 64 + controlBlockSize + 10
+        let inputVsize = 41 + (witnessSize + 3) / 4
+        let outputVsize = 43
+        let overheadVsize = 11
+        let vsize = overheadVsize + (inputVsize * utxos.count) + outputVsize
+        let fee = UInt64(ceil(Double(vsize) * feeRate))
+
+        guard totalInput > fee else {
+            throw SpendError.insufficientFunds
+        }
+
+        let outputAmount = totalInput - fee
+        guard outputAmount >= dustThreshold else {
+            throw SpendError.belowDust
+        }
+
+        let destScript = PSBTBuilder.scriptPubKeyFromAddress(destinationAddress, isTestnet: isTestnet)!
+
+        let xOnlyKey: Data?
+        if let ik = contract.taprootInternalKey, let ikData = Data(hex: ik), ikData.count == 32 {
+            xOnlyKey = ikData
+        } else {
+            xOnlyKey = nil
+        }
+
+        let merkleRoot: Data?
+        if let mr = contract.taprootMerkleRoot, let mrData = Data(hex: mr), mrData.count == 32 {
+            merkleRoot = mrData
+        } else {
+            merkleRoot = nil
+        }
+
+        let spk = Data(hex: contract.scriptPubKey ?? "") ?? PSBTBuilder.scriptPubKeyFromAddress(contract.address, isTestnet: isTestnet) ?? Data()
+
+        let inputs: [PSBTBuilder.TxInput] = utxos.map { utxo in
+            let txidInternal = txidToInternalOrder(utxo.txid)
+            var input = PSBTBuilder.TxInput(
+                txid: txidInternal,
+                vout: UInt32(utxo.vout),
+                sequence: sequence,
+                witnessUtxo: PSBTBuilder.TxOutput(value: utxo.value, scriptPubKey: spk),
+                witnessScript: witnessScriptData
+            )
+            input.tapInternalKey = xOnlyKey
+            input.tapMerkleRoot = merkleRoot
+            return input
+        }
+
+        let outputs = [
+            PSBTBuilder.TxOutput(value: outputAmount, scriptPubKey: destScript)
+        ]
+
+        return PSBTBuilder.buildPSBT(inputs: inputs, outputs: outputs, locktime: locktime)
+    }
+
+    /// Witness for Taproot script-path spend
+    static func taprootScriptPathWitness(signature: Data, script: Data, controlBlock: Data) -> [Data] {
+        TaprootBuilder.scriptPathWitness(stack: [signature], script: script, controlBlock: controlBlock)
+    }
+
+    // MARK: - Taproot Fee Estimation
+
+    /// Estimate fee for a P2TR key-path spend (most efficient)
+    static func estimateTaprootKeyPathFee(inputCount: Int, outputCount: Int, feeRate: Double) -> UInt64 {
+        let vsize = 11 + (57 * inputCount) + (43 * outputCount)
+        return UInt64(ceil(Double(vsize) * feeRate))
+    }
+
     // MARK: - PSBT Finalization
 
     /// Add witness data to a signed PSBT, producing a finalized PSBT.

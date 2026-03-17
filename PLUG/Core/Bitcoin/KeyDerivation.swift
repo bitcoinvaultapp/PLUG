@@ -88,6 +88,13 @@ struct ExtendedPublicKey {
         return Bech32.segwitEncode(hrp: hrp, version: 0, program: hash)
     }
 
+    /// Generate a P2TR (SegWit v1, Taproot) address from this key.
+    /// Uses x-only key tweaked with no script tree (key-path only, BIP86).
+    func taprootAddress(isTestnet: Bool) -> String? {
+        let xOnly = Secp256k1.xOnly(key)
+        return TaprootBuilder.taprootAddress(internalKey: xOnly, isTestnet: isTestnet)
+    }
+
     /// Serialize back to xpub/tpub Base58Check
     func toBase58(isTestnet: Bool) -> String {
         var data = Data()
@@ -280,5 +287,27 @@ struct AddressDerivation {
         }
 
         return usedAddresses
+    }
+
+    /// Derive P2TR (Taproot) addresses using BIP86 path convention.
+    /// From xpub at m/86'/coin_type'/0', we derive: change/index
+    static func deriveTaprootAddresses(
+        xpub: ExtendedPublicKey,
+        change: UInt32 = 0,
+        startIndex: UInt32 = 0,
+        count: UInt32 = 20,
+        isTestnet: Bool
+    ) -> [(index: UInt32, address: String, publicKey: Data)] {
+        var addresses: [(UInt32, String, Data)] = []
+
+        guard let changeLevelKey = xpub.deriveChild(index: change) else { return [] }
+
+        for i in startIndex..<(startIndex + count) {
+            guard let childKey = changeLevelKey.deriveChild(index: i),
+                  let address = childKey.taprootAddress(isTestnet: isTestnet) else { continue }
+            addresses.append((i, address, childKey.key))
+        }
+
+        return addresses
     }
 }

@@ -6,6 +6,7 @@ final class VaultVM: ObservableObject {
     @Published var name: String = ""
     @Published var lockBlockHeight: String = ""
     @Published var amount: String = ""
+    @Published var useTaproot: Bool = false
     @Published var contracts: [Contract] = []
     @Published var currentBlockHeight: Int = 0
     @Published var isLoading = false
@@ -99,28 +100,65 @@ final class VaultVM: ObservableObject {
         // Derive key off main thread (EC arithmetic)
         let isTest = isTestnet
         let lh = lockHeight
-        guard let result = await Task.detached(priority: .userInitiated) { () -> (Data, Data, String)? in
-            guard let derivedKey = xpub.derivePath([0, 0]) else { return nil }
-            let script = ScriptBuilder.vaultScript(locktime: Int64(lh), pubkey: derivedKey.key)
-            guard let address = script.p2wshAddress(isTestnet: isTest) else { return nil }
-            return (script.script, script.witnessScriptHash, address)
-        }.value else {
-            error = "Unable to generate address"
-            isLoading = false
-            return
+        let taproot = useTaproot
+
+        let contract: Contract
+
+        if taproot {
+            // Taproot (P2TR) vault — key-path + script-path with CLTV
+            guard let trResult = await Task.detached(priority: .userInitiated) { () -> (Data, Data, Data, String)? in
+                guard let derivedKey = xpub.derivePath([0, 0]) else { return nil }
+                let internalKey = Secp256k1.xOnly(derivedKey.key)
+                let script = ScriptBuilder.vaultScript(locktime: Int64(lh), pubkey: derivedKey.key)
+                let merkleRoot = TaprootBuilder.computeMerkleRoot(scripts: [script.script])
+                guard let tweakedKey = TaprootBuilder.tweakPublicKey(internalKey: internalKey, merkleRoot: merkleRoot),
+                      let address = TaprootBuilder.taprootAddress(internalKey: internalKey, scripts: [script.script], isTestnet: isTest)
+                else { return nil }
+                return (internalKey, tweakedKey, script.script, address)
+            }.value else {
+                error = "Unable to generate Taproot address"
+                isLoading = false
+                return
+            }
+
+            let (internalKey, tweakedKey, scriptData, address) = trResult
+            let merkleRoot = TaprootBuilder.computeMerkleRoot(scripts: [scriptData])
+            contract = Contract.newTaprootVault(
+                name: name,
+                internalKey: internalKey,
+                tweakedKey: tweakedKey,
+                address: address,
+                lockBlockHeight: lockHeight,
+                amount: amountSats,
+                isTestnet: isTestnet,
+                script: scriptData,
+                merkleRoot: merkleRoot,
+                scripts: [scriptData]
+            )
+        } else {
+            // P2WSH vault (legacy SegWit)
+            guard let result = await Task.detached(priority: .userInitiated) { () -> (Data, Data, String)? in
+                guard let derivedKey = xpub.derivePath([0, 0]) else { return nil }
+                let script = ScriptBuilder.vaultScript(locktime: Int64(lh), pubkey: derivedKey.key)
+                guard let address = script.p2wshAddress(isTestnet: isTest) else { return nil }
+                return (script.script, script.witnessScriptHash, address)
+            }.value else {
+                error = "Unable to generate address"
+                isLoading = false
+                return
+            }
+
+            let (scriptData, witnessHash, address) = result
+            contract = Contract.newVault(
+                name: name,
+                script: scriptData,
+                witnessScript: witnessHash,
+                address: address,
+                lockBlockHeight: lockHeight,
+                amount: amountSats,
+                isTestnet: isTestnet
+            )
         }
-
-        let (scriptData, witnessHash, address) = result
-
-        let contract = Contract.newVault(
-            name: name,
-            script: scriptData,
-            witnessScript: witnessHash,
-            address: address,
-            lockBlockHeight: lockHeight,
-            amount: amountSats,
-            isTestnet: isTestnet
-        )
 
         ContractStore.shared.add(contract)
         createdContract = contract

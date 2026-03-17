@@ -7,6 +7,7 @@ final class InheritanceVM: ObservableObject {
     @Published var csvBlocks: String = "" // relative timelock in blocks
     @Published var heirXpub: String = "" // heir's xpub or pubkey hex
     @Published var amount: String = ""
+    @Published var useTaproot: Bool = false
     @Published var contracts: [Contract] = []
     @Published var currentBlockHeight: Int = 0
     @Published var isLoading = false
@@ -83,11 +84,14 @@ final class InheritanceVM: ObservableObject {
         let heirInput = heirXpub
         let isTest = isTestnet
         let csvVal = csv
+        let taproot = useTaproot
 
         // Derive keys off main thread
         struct InheritanceResult {
             let scriptData: Data; let witnessHash: Data; let address: String
             let ownerPk: Data; let heirPk: Data
+            // Taproot fields (only set when taproot == true)
+            let internalKey: Data?; let tweakedKey: Data?; let merkleRoot: Data?; let scripts: [Data]?
         }
         guard let result: InheritanceResult = await Task.detached(priority: .userInitiated) { () -> InheritanceResult? in
             guard let ownerKey = xpub.derivePath([0, 0]) else { return nil }
@@ -102,31 +106,68 @@ final class InheritanceVM: ObservableObject {
                 return nil
             }
 
-            let script = ScriptBuilder.inheritanceScript(
-                ownerPubkey: ownerKey.key, heirPubkey: heirPubkey, csvBlocks: Int64(csvVal)
-            )
-            guard let address = script.p2wshAddress(isTestnet: isTest) else { return nil }
-            return InheritanceResult(
-                scriptData: script.script, witnessHash: script.witnessScriptHash,
-                address: address, ownerPk: ownerKey.key, heirPk: heirPubkey
-            )
+            if taproot {
+                // Taproot: owner key-path + script tree {owner, heir+CSV}
+                let internalKey = Secp256k1.xOnly(ownerKey.key)
+                let ownerScript = ScriptBuilder().pushData(ownerKey.key).addOp(.op_checksig).script
+                let heirScript = ScriptBuilder.inheritanceScript(
+                    ownerPubkey: ownerKey.key, heirPubkey: heirPubkey, csvBlocks: Int64(csvVal)
+                ).script
+                let scripts = [ownerScript, heirScript]
+                let merkleRoot = TaprootBuilder.computeMerkleRoot(scripts: scripts)
+                guard let tweakedKey = TaprootBuilder.tweakPublicKey(internalKey: internalKey, merkleRoot: merkleRoot),
+                      let address = TaprootBuilder.taprootAddress(internalKey: internalKey, scripts: scripts, isTestnet: isTest)
+                else { return nil }
+                return InheritanceResult(
+                    scriptData: heirScript, witnessHash: Data(), address: address,
+                    ownerPk: ownerKey.key, heirPk: heirPubkey,
+                    internalKey: internalKey, tweakedKey: tweakedKey, merkleRoot: merkleRoot, scripts: scripts
+                )
+            } else {
+                let script = ScriptBuilder.inheritanceScript(
+                    ownerPubkey: ownerKey.key, heirPubkey: heirPubkey, csvBlocks: Int64(csvVal)
+                )
+                guard let address = script.p2wshAddress(isTestnet: isTest) else { return nil }
+                return InheritanceResult(
+                    scriptData: script.script, witnessHash: script.witnessScriptHash,
+                    address: address, ownerPk: ownerKey.key, heirPk: heirPubkey,
+                    internalKey: nil, tweakedKey: nil, merkleRoot: nil, scripts: nil
+                )
+            }
         }.value else {
             error = "Unable to derive keys or generate address"
             isLoading = false
             return
         }
 
-        var contract = Contract.newInheritance(
-            name: name,
-            script: result.scriptData,
-            witnessScript: result.witnessHash,
-            address: result.address,
-            csvBlocks: csv,
-            ownerPubkey: result.ownerPk,
-            heirPubkey: result.heirPk,
-            amount: amountSats,
-            isTestnet: isTestnet
-        )
+        var contract: Contract
+        if taproot, let ik = result.internalKey, let tk = result.tweakedKey {
+            contract = Contract.newTaprootInheritance(
+                name: name,
+                internalKey: ik,
+                tweakedKey: tk,
+                address: result.address,
+                csvBlocks: csv,
+                ownerPubkey: result.ownerPk,
+                heirPubkey: result.heirPk,
+                amount: amountSats,
+                isTestnet: isTestnet,
+                scripts: result.scripts,
+                merkleRoot: result.merkleRoot
+            )
+        } else {
+            contract = Contract.newInheritance(
+                name: name,
+                script: result.scriptData,
+                witnessScript: result.witnessHash,
+                address: result.address,
+                csvBlocks: csv,
+                ownerPubkey: result.ownerPk,
+                heirPubkey: result.heirPk,
+                amount: amountSats,
+                isTestnet: isTestnet
+            )
+        }
         // Store heir xpub for V2 Ledger signing (if provided as xpub)
         if ExtendedPublicKey.fromBase58(heirInput) != nil {
             contract.heirXpub = heirInput

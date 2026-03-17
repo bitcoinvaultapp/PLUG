@@ -302,6 +302,15 @@ struct InheritanceView: View {
         let script = ScriptBuilder.inheritanceScript(
             ownerPubkey: ownerKey.key, heirPubkey: heirPubkey, csvBlocks: Int64(csv)
         )
+        if vm.useTaproot {
+            let internalKey = Secp256k1.xOnly(ownerKey.key)
+            let ownerScript = ScriptBuilder().pushData(ownerKey.key).addOp(.op_checksig).script
+            return TaprootBuilder.taprootAddress(
+                internalKey: internalKey,
+                scripts: [ownerScript, script.script],
+                isTestnet: vm.isTestnet
+            )
+        }
         return script.p2wshAddress(isTestnet: vm.isTestnet)
     }
 
@@ -324,6 +333,15 @@ struct InheritanceView: View {
             Form {
                 Section("Name") {
                     TextField("My Inheritance", text: $vm.name)
+                }
+
+                Section {
+                    Toggle("Use Taproot (P2TR)", isOn: $vm.useTaproot)
+                    if vm.useTaproot {
+                        Text("Owner spends via key-path (private, cheap). Heir uses script-path after CSV delay.")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
 
                 Section {
@@ -366,7 +384,7 @@ struct InheritanceView: View {
                 }
 
                 if let address = inheritancePreviewAddress {
-                    Section("P2WSH Address (preview)") {
+                    Section(vm.useTaproot ? "P2TR Address (preview)" : "P2WSH Address (preview)") {
                         Text(address)
                             .font(.system(.caption2, design: .monospaced))
                             .textSelection(.enabled)

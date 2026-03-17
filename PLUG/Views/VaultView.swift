@@ -239,6 +239,10 @@ struct VaultView: View {
               let xpub = ExtendedPublicKey.fromBase58(xpubStr),
               let derivedKey = xpub.derivePath([0, 0]) else { return nil }
         let script = ScriptBuilder.vaultScript(locktime: Int64(lockHeight), pubkey: derivedKey.key)
+        if vm.useTaproot {
+            let internalKey = Secp256k1.xOnly(derivedKey.key)
+            return TaprootBuilder.taprootAddress(internalKey: internalKey, scripts: [script.script], isTestnet: vm.isTestnet)
+        }
         return script.p2wshAddress(isTestnet: vm.isTestnet)
     }
 
@@ -247,6 +251,15 @@ struct VaultView: View {
             Form {
                 Section("Name") {
                     TextField("My Vault", text: $vm.name)
+                }
+
+                Section {
+                    Toggle("Use Taproot (P2TR)", isOn: $vm.useTaproot)
+                    if vm.useTaproot {
+                        Text("Smaller witness, lower fees, better privacy. Address starts with tb1p (testnet) or bc1p (mainnet).")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
 
                 BlockDurationPicker(
@@ -270,7 +283,7 @@ struct VaultView: View {
                 }
 
                 if let address = vaultPreviewAddress {
-                    Section("P2WSH Address (preview)") {
+                    Section(vm.useTaproot ? "P2TR Address (preview)" : "P2WSH Address (preview)") {
                         Text(address)
                             .font(.system(.caption2, design: .monospaced))
                             .textSelection(.enabled)

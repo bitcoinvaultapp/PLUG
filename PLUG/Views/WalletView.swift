@@ -490,11 +490,73 @@ struct WalletView: View {
                     }
                 }
 
-                Section("Strategy") {
-                    Picker("Coin Selection", selection: $vm.selectedStrategy) {
-                        Text("Largest first").tag(CoinSelectionStrategy.largestFirst)
-                        Text("Smallest first").tag(CoinSelectionStrategy.smallestFirst)
-                        Text("Exact").tag(CoinSelectionStrategy.exact)
+                Section {
+                    Toggle("Coin Control", isOn: $vm.coinControlEnabled)
+
+                    if !vm.coinControlEnabled {
+                        Picker("Strategy", selection: $vm.selectedStrategy) {
+                            Text("Largest first").tag(CoinSelectionStrategy.largestFirst)
+                            Text("Smallest first").tag(CoinSelectionStrategy.smallestFirst)
+                            Text("Exact").tag(CoinSelectionStrategy.exact)
+                        }
+                    }
+                }
+
+                // Manual UTXO picker
+                if vm.coinControlEnabled {
+                    Section {
+                        ForEach(vm.utxos) { utxo in
+                            Button {
+                                vm.toggleUTXOSelection(outpoint: utxo.outpoint)
+                            } label: {
+                                HStack(spacing: 10) {
+                                    Image(systemName: vm.isUTXOSelected(outpoint: utxo.outpoint) ? "checkmark.circle.fill" : "circle")
+                                        .foregroundStyle(vm.isUTXOSelected(outpoint: utxo.outpoint) ? Color.btcOrange : .secondary)
+                                        .font(.title3)
+
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(String(utxo.address.prefix(18)) + "...")
+                                            .font(.system(size: 11, design: .monospaced))
+                                            .foregroundStyle(.primary)
+                                        HStack(spacing: 6) {
+                                            Text(String(utxo.txid.prefix(8)) + ":\(utxo.vout)")
+                                                .font(.system(size: 10, design: .monospaced))
+                                                .foregroundStyle(.secondary)
+                                            if vm.isFrozen(outpoint: utxo.outpoint) {
+                                                Image(systemName: "snowflake")
+                                                    .font(.system(size: 9))
+                                                    .foregroundStyle(.cyan)
+                                            }
+                                            let status = vm.addressStatus(for: utxo.address)
+                                            if status == .used {
+                                                Text("EXPOSED")
+                                                    .font(.system(size: 8, weight: .bold, design: .monospaced))
+                                                    .foregroundStyle(.red)
+                                            }
+                                        }
+                                    }
+
+                                    Spacer()
+
+                                    Text("\(utxo.value) sats")
+                                        .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                                        .foregroundStyle(.primary)
+                                }
+                            }
+                            .buttonStyle(.plain)
+                            .opacity(vm.isFrozen(outpoint: utxo.outpoint) ? 0.4 : 1)
+                            .disabled(vm.isFrozen(outpoint: utxo.outpoint))
+                        }
+                    } header: {
+                        HStack {
+                            Text("Select UTXOs")
+                            Spacer()
+                            if !vm.manuallySelectedOutpoints.isEmpty {
+                                Text("\(vm.coinControlTotal) sats")
+                                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                    .foregroundStyle(Color.btcOrange)
+                            }
+                        }
                     }
                 }
 

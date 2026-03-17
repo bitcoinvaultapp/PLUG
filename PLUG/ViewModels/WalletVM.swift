@@ -21,6 +21,32 @@ final class WalletVM: ObservableObject {
     @Published var sendError: String?
     @Published var builtPSBTBase64: String?
 
+    // Coin control
+    @Published var coinControlEnabled: Bool = false
+    @Published var manuallySelectedOutpoints: Set<String> = []  // "txid:vout"
+
+    /// UTXOs selected by coin control (excluding frozen)
+    var coinControlUTXOs: [UTXO] {
+        utxos.filter { manuallySelectedOutpoints.contains($0.outpoint) && !isFrozen(outpoint: $0.outpoint) }
+    }
+
+    /// Total of manually selected UTXOs
+    var coinControlTotal: UInt64 {
+        coinControlUTXOs.reduce(0) { $0 + $1.value }
+    }
+
+    func toggleUTXOSelection(outpoint: String) {
+        if manuallySelectedOutpoints.contains(outpoint) {
+            manuallySelectedOutpoints.remove(outpoint)
+        } else {
+            manuallySelectedOutpoints.insert(outpoint)
+        }
+    }
+
+    func isUTXOSelected(outpoint: String) -> Bool {
+        manuallySelectedOutpoints.contains(outpoint)
+    }
+
     // Sign + Broadcast
     @Published var isSigning: Bool = false
     @Published var signedTxHex: String?
@@ -447,14 +473,31 @@ final class WalletVM: ObservableObject {
             return
         }
 
-        let frozenSet = FrozenUTXOStore.shared.frozenOutpoints
-        sendPreview = CoinSelection.select(
-            from: utxos,
-            target: amount,
-            feeRate: sendFeeRate,
-            strategy: selectedStrategy,
-            frozenOutpoints: frozenSet
-        )
+        if coinControlEnabled && !manuallySelectedOutpoints.isEmpty {
+            // Manual coin control — use only selected UTXOs
+            let selected = coinControlUTXOs
+            let totalInput = selected.reduce(UInt64(0)) { $0 + $1.value }
+            let inputCount = selected.count
+            let fee = UInt64(ceil(Double(11 + 68 * inputCount + 31 * 2) * sendFeeRate))
+            let change = totalInput > amount + fee ? totalInput - amount - fee : 0
+
+            sendPreview = CoinSelection.SelectionResult(
+                selectedUTXOs: selected,
+                fee: fee,
+                change: change,
+                hasChange: change >= 546
+            )
+        } else {
+            // Automatic coin selection
+            let frozenSet = FrozenUTXOStore.shared.frozenOutpoints
+            sendPreview = CoinSelection.select(
+                from: utxos,
+                target: amount,
+                feeRate: sendFeeRate,
+                strategy: selectedStrategy,
+                frozenOutpoints: frozenSet
+            )
+        }
     }
 
     // MARK: - Build PSBT for sending
@@ -805,6 +848,8 @@ final class WalletVM: ObservableObject {
         signedTxHex = nil
         broadcastTxid = nil
         sendStep = .form
+        coinControlEnabled = false
+        manuallySelectedOutpoints.removeAll()
     }
 
     // MARK: - UTXO management

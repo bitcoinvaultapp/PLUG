@@ -616,22 +616,37 @@ struct WalletView: View {
                         }
                     }
 
-                    // Address status badge
+                    // Address balance + status
                     let status = vm.addressStatus(for: vm.currentReceiveAddress)
-                    HStack(spacing: 6) {
-                        Circle()
-                            .fill(status == .fresh ? Color.green : status == .funded ? Color.orange : Color.red)
-                            .frame(width: 8, height: 8)
-                        Text(status == .fresh ? "Fresh address" : status == .funded ? "Funded" : "Used — do not reuse")
-                            .font(.system(size: 13, weight: .semibold, design: .monospaced))
-                            .foregroundStyle(status == .fresh ? .green : status == .funded ? .orange : .red)
+                    let addrUtxos = vm.utxos.filter { $0.address == vm.currentReceiveAddress }
+                    let addrBalance = addrUtxos.reduce(0 as UInt64) { $0 + $1.value }
+
+                    VStack(spacing: 10) {
+                        // Balance
+                        if addrBalance > 0 {
+                            Text("\(addrBalance) sats")
+                                .font(.system(size: 22, weight: .bold, design: .monospaced))
+                            Text("\(addrUtxos.count) UTXO\(addrUtxos.count == 1 ? "" : "s")")
+                                .font(.system(size: 12, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                        }
+
+                        // Status badge
+                        HStack(spacing: 6) {
+                            Circle()
+                                .fill(status == .fresh ? Color.green : status == .funded ? Color.orange : Color.red)
+                                .frame(width: 8, height: 8)
+                            Text(status == .fresh ? "Fresh address" : status == .funded ? "Funded" : "Used — do not reuse")
+                                .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                                .foregroundStyle(status == .fresh ? .green : status == .funded ? .orange : .red)
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(
+                            (status == .fresh ? Color.green : status == .funded ? Color.orange : Color.red).opacity(0.1),
+                            in: Capsule()
+                        )
                     }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 8)
-                    .background(
-                        (status == .fresh ? Color.green : status == .funded ? Color.orange : Color.red).opacity(0.1),
-                        in: Capsule()
-                    )
 
                     // Reuse warning
                     if status == .used {
@@ -692,6 +707,71 @@ struct WalletView: View {
                             .multilineTextAlignment(.center)
                     }
                     .padding()
+                    .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
+                    .padding(.horizontal)
+
+                    // All addresses summary
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text("ALL ADDRESSES")
+                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 16)
+                            .padding(.bottom, 8)
+
+                        ForEach(0...vm.maxAddressIndex, id: \.self) { i in
+                            let addr = vm.addresses.first { !$0.isChange && $0.index == UInt32(i) }
+                            if let a = addr {
+                                let s = vm.addressStatus(for: a.address)
+                                let bal = vm.utxos.filter { $0.address == a.address }.reduce(0 as UInt64) { $0 + $1.value }
+                                let utxoCount = vm.utxos.filter { $0.address == a.address }.count
+
+                                // Only show addresses with activity or the current one
+                                if s != .fresh || a.index == vm.currentReceiveIndex {
+                                    Button {
+                                        vm.selectAddressIndex(a.index)
+                                    } label: {
+                                        HStack(spacing: 10) {
+                                            Circle()
+                                                .fill(s == .fresh ? Color.green : s == .funded ? Color.orange : Color.red)
+                                                .frame(width: 8, height: 8)
+
+                                            VStack(alignment: .leading, spacing: 2) {
+                                                Text("#\(a.index)  \(String(a.address.prefix(10)))...\(String(a.address.suffix(6)))")
+                                                    .font(.system(size: 12, weight: .medium, design: .monospaced))
+                                                    .foregroundStyle(.primary)
+                                                if bal > 0 {
+                                                    Text("\(utxoCount) UTXO\(utxoCount == 1 ? "" : "s")")
+                                                        .font(.system(size: 10, design: .monospaced))
+                                                        .foregroundStyle(.secondary)
+                                                }
+                                            }
+
+                                            Spacer()
+
+                                            if bal > 0 {
+                                                Text("\(bal) sats")
+                                                    .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                                                    .foregroundStyle(.primary)
+                                            } else {
+                                                Text(s == .fresh ? "fresh" : "empty")
+                                                    .font(.system(size: 11, design: .monospaced))
+                                                    .foregroundStyle(.secondary)
+                                            }
+                                        }
+                                        .padding(.horizontal, 16)
+                                        .padding(.vertical, 10)
+                                        .background(a.index == vm.currentReceiveIndex ? Color.btcOrange.opacity(0.08) : Color.clear)
+                                    }
+                                    .buttonStyle(.plain)
+
+                                    if i < vm.maxAddressIndex {
+                                        Divider().padding(.leading, 34)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    .padding(.vertical, 12)
                     .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
                     .padding(.horizontal)
                 }

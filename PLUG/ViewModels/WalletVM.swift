@@ -483,6 +483,7 @@ final class WalletVM: ObservableObject {
 
             sendPreview = CoinSelection.SelectionResult(
                 selectedUTXOs: selected,
+                totalInput: totalInput,
                 fee: fee,
                 change: change,
                 hasChange: change >= 546

@@ -134,7 +134,7 @@ struct ContractCreatedSheet: View {
                 .font(.subheadline.bold())
 
             switch contract.type {
-            case .tirelire:
+            case .vault:
                 if let lockHeight = contract.lockBlockHeight {
                     let blocks = max(0, lockHeight - currentBlockHeight)
                     Text("Locked until block \(lockHeight)")
@@ -144,7 +144,7 @@ struct ContractCreatedSheet: View {
                         .foregroundStyle(.secondary)
                 }
 
-            case .heritage:
+            case .inheritance:
                 if let csvBlocks = contract.csvBlocks {
                     Text("Inactivity delay: \(BlockDurationPicker.blocksToHumanTime(blocks: csvBlocks))")
                     Text("The heir can claim after \(csvBlocks) blocks of owner inactivity.")
@@ -164,7 +164,7 @@ struct ContractCreatedSheet: View {
                         .foregroundStyle(.secondary)
                 }
 
-            case .cagnotte:
+            case .pool:
                 if let m = contract.multisigM, let keys = contract.multisigPubkeys {
                     Text("Multisig \(m)-of-\(keys.count)")
                     Text("Requires \(m) of \(keys.count) signatures to spend.")
@@ -196,12 +196,12 @@ struct ContractCreatedSheet: View {
                 .font(.subheadline.bold())
 
             switch contract.type {
-            case .tirelire:
+            case .vault:
                 step("1", "Send sats to the address above to fund your vault")
                 step("2", "Wait until the unlock block height is reached")
                 step("3", "Spend with your Ledger once unlocked")
 
-            case .heritage:
+            case .inheritance:
                 step("1", "Send sats to the contract address")
                 step("2", "Use 'Keep Alive' regularly to prevent the heir from claiming")
                 step("3", "Share the address and witness script with your heir")
@@ -212,7 +212,7 @@ struct ContractCreatedSheet: View {
                 step("3", "Send sats to the contract address")
                 step("4", "The receiver claims with the preimage, or you recover after the timeout")
 
-            case .cagnotte:
+            case .pool:
                 step("1", "Share the address with all participants")
                 step("2", "Each participant sends their contribution")
                 step("3", "To spend, coordinate \(contract.multisigM ?? 2) signatures via PSBT")

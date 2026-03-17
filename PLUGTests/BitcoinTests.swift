@@ -171,9 +171,9 @@ final class BitcoinTests: XCTestCase {
 
     // MARK: - 3. ScriptBuilder Tests
 
-    func testTirelireScriptStructure() {
+    func testVaultScriptStructure() {
         let pubkey = Data(hex: "0320b911c22be58f73e2acb9ca493243aeed6fdb27fe92b31b2d787dd4c9e7c0f8")!
-        let builder = ScriptBuilder.tirelireScript(locktime: 900000, pubkey: pubkey)
+        let builder = ScriptBuilder.vaultScript(locktime: 900000, pubkey: pubkey)
         let hex = builder.script.hex
 
         // Script: <PUSH 33 bytes> <pubkey> OP_CHECKSIGVERIFY <locktime> OP_CHECKLOCKTIMEVERIFY
@@ -182,19 +182,19 @@ final class BitcoinTests: XCTestCase {
         XCTAssertTrue(hex.hasSuffix("b1"), "Should end with OP_CHECKLOCKTIMEVERIFY (0xB1)")
     }
 
-    func testTirelireScriptContainsPubkey() {
+    func testVaultScriptContainsPubkey() {
         let pubkeyHex = "0320b911c22be58f73e2acb9ca493243aeed6fdb27fe92b31b2d787dd4c9e7c0f8"
         let pubkey = Data(hex: pubkeyHex)!
-        let builder = ScriptBuilder.tirelireScript(locktime: 900000, pubkey: pubkey)
+        let builder = ScriptBuilder.vaultScript(locktime: 900000, pubkey: pubkey)
         let hex = builder.script.hex
 
         XCTAssertTrue(hex.contains(pubkeyHex), "Script should contain the pubkey")
     }
 
-    func testHeritageScriptStructure() {
+    func testInheritanceScriptStructure() {
         let owner = Data(hex: "0320b911c22be58f73e2acb9ca493243aeed6fdb27fe92b31b2d787dd4c9e7c0f8")!
         let heir = Data(hex: "025b813f54de8a89b3968e42d924926fadb15ae8d0cf28cac7363a244b8ee37637")!
-        let builder = ScriptBuilder.heritageScript(ownerPubkey: owner, heirPubkey: heir, csvBlocks: 52560)
+        let builder = ScriptBuilder.inheritanceScript(ownerPubkey: owner, heirPubkey: heir, csvBlocks: 52560)
         let hex = builder.script.hex
 
         // Script: <OWNER> OP_CHECKSIG OP_IFDUP OP_NOTIF <HEIR> OP_CHECKSIGVERIFY <N> OP_CSV OP_ENDIF
@@ -259,7 +259,7 @@ final class BitcoinTests: XCTestCase {
 
     func testP2WSHAddress() {
         let pubkey = Data(hex: "0320b911c22be58f73e2acb9ca493243aeed6fdb27fe92b31b2d787dd4c9e7c0f8")!
-        let builder = ScriptBuilder.tirelireScript(locktime: 900000, pubkey: pubkey)
+        let builder = ScriptBuilder.vaultScript(locktime: 900000, pubkey: pubkey)
         let address = builder.p2wshAddress(isTestnet: true)
         XCTAssertNotNil(address, "P2WSH address should be generated")
         XCTAssertTrue(address!.hasPrefix("tb1q"), "Testnet P2WSH v0 should start with tb1q")

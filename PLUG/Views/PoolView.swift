@@ -1,7 +1,7 @@
 import SwiftUI
 
-struct CagnotteView: View {
-    @StateObject private var vm = CagnotteVM()
+struct PoolView: View {
+    @StateObject private var vm = PoolVM()
     @State private var showCreate = false
     @State private var showCreated = false
     @State private var showImportPSBT = false
@@ -13,7 +13,7 @@ struct CagnotteView: View {
     var body: some View {
         NavigationStack {
             List {
-                PlugHeader(pageName: "Cagnotte")
+                PlugHeader(pageName: "Pool")
                     .listRowInsets(EdgeInsets())
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
@@ -23,7 +23,7 @@ struct CagnotteView: View {
                         Image(systemName: "person.3.fill")
                             .font(.system(size: 40))
                             .foregroundStyle(.secondary)
-                        Text("No Cagnotte")
+                        Text("No Pool")
                             .font(.headline)
                         Text("Create an M-of-N multisig")
                             .font(.subheadline)
@@ -33,7 +33,7 @@ struct CagnotteView: View {
                     .padding(.vertical, 32)
                 } else {
                     ForEach(vm.contracts) { contract in
-                        cagnotteRow(contract)
+                        poolRow(contract)
                     }
                     .onDelete { indexSet in
                         if let i = indexSet.first {
@@ -48,7 +48,7 @@ struct CagnotteView: View {
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Menu {
-                        Button("New Cagnotte") { showCreate = true }
+                        Button("New Pool") { showCreate = true }
                         Button("Import PSBT") { showImportPSBT = true }
                     } label: {
                         Image(systemName: "plus")
@@ -82,7 +82,7 @@ struct CagnotteView: View {
         }
     }
 
-    private func cagnotteRow(_ contract: Contract) -> some View {
+    private func poolRow(_ contract: Contract) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Image(systemName: "person.3.fill")
@@ -173,20 +173,20 @@ struct CagnotteView: View {
 
     // MARK: - Create Sheet
 
-    private var cagnotteMValid: Bool {
+    private var poolMValid: Bool {
         guard let mInt = Int(vm.m), mInt > 0 else { return false }
         let filledKeys = vm.pubkeys.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
         return mInt <= filledKeys.count
     }
 
-    private var cagnotteDuplicateKeys: Bool {
+    private var poolDuplicateKeys: Bool {
         let trimmed = vm.pubkeys
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
         return Set(trimmed).count != trimmed.count
     }
 
-    private var cagnotteSortedKeys: [String] {
+    private var poolSortedKeys: [String] {
         let parsed: [Data] = vm.pubkeys.compactMap { pk in
             let trimmed = pk.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty else { return nil }
@@ -205,7 +205,7 @@ struct CagnotteView: View {
         NavigationStack {
             Form {
                 Section("Name") {
-                    TextField("My Cagnotte", text: $vm.name)
+                    TextField("My Pool", text: $vm.name)
                 }
 
                 Section {
@@ -271,7 +271,7 @@ struct CagnotteView: View {
                         }
                     }
 
-                    if cagnotteDuplicateKeys {
+                    if poolDuplicateKeys {
                         HStack(spacing: 4) {
                             Image(systemName: "exclamationmark.triangle.fill")
                                 .foregroundStyle(.red)
@@ -284,9 +284,9 @@ struct CagnotteView: View {
                     Text("Public keys (\(vm.pubkeys.count))")
                 }
 
-                if !cagnotteSortedKeys.isEmpty && cagnotteSortedKeys.count >= 2 {
+                if !poolSortedKeys.isEmpty && poolSortedKeys.count >= 2 {
                     Section("BIP67 order (deterministic sort)") {
-                        ForEach(Array(cagnotteSortedKeys.enumerated()), id: \.offset) { i, key in
+                        ForEach(Array(poolSortedKeys.enumerated()), id: \.offset) { i, key in
                             Text("\(i+1). \(key.prefix(20))...\(key.suffix(8))")
                                 .font(.system(.caption2, design: .monospaced))
                                 .foregroundStyle(.secondary)
@@ -307,16 +307,16 @@ struct CagnotteView: View {
                 }
 
                 Section {
-                    Button("Create Cagnotte") {
+                    Button("Create Pool") {
                         Task {
                             await vm.create()
                             if vm.createdContract != nil { showCreate = false }
                         }
                     }
-                    .disabled(!cagnotteMValid || cagnotteDuplicateKeys || vm.name.isEmpty || vm.amount.isEmpty)
+                    .disabled(!poolMValid || poolDuplicateKeys || vm.name.isEmpty || vm.amount.isEmpty)
                 }
             }
-            .navigationTitle("New Cagnotte")
+            .navigationTitle("New Pool")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

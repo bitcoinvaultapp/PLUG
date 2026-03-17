@@ -1,7 +1,7 @@
 import Foundation
 
 @MainActor
-final class TirelireVM: ObservableObject {
+final class VaultVM: ObservableObject {
 
     @Published var name: String = ""
     @Published var lockBlockHeight: String = ""
@@ -33,15 +33,15 @@ final class TirelireVM: ObservableObject {
 
     var isTestnet: Bool { NetworkConfig.shared.isTestnet }
 
-    var tirelires: [Contract] {
-        ContractStore.shared.tirelires.filter { $0.isTestnet == isTestnet }
+    var vaults: [Contract] {
+        ContractStore.shared.vaults.filter { $0.isTestnet == isTestnet }
     }
 
     func refresh() async {
         isLoading = true
         do {
             currentBlockHeight = try await MempoolAPI.shared.getBlockHeight()
-            contracts = tirelires
+            contracts = vaults
             let result = await ContractSpendCoordinator.refreshBalances(
                 contracts: contracts, blockHeight: currentBlockHeight
             )
@@ -74,7 +74,7 @@ final class TirelireVM: ObservableObject {
         return currentBlockHeight >= lockHeight
     }
 
-    /// Create a new tirelire contract
+    /// Create a new vault contract
     func create() async {
         // Prevent double creation
         guard !isLoading else { return }
@@ -101,7 +101,7 @@ final class TirelireVM: ObservableObject {
         let lh = lockHeight
         guard let result = await Task.detached(priority: .userInitiated) { () -> (Data, Data, String)? in
             guard let derivedKey = xpub.derivePath([0, 0]) else { return nil }
-            let script = ScriptBuilder.tirelireScript(locktime: Int64(lh), pubkey: derivedKey.key)
+            let script = ScriptBuilder.vaultScript(locktime: Int64(lh), pubkey: derivedKey.key)
             guard let address = script.p2wshAddress(isTestnet: isTest) else { return nil }
             return (script.script, script.witnessScriptHash, address)
         }.value else {
@@ -112,7 +112,7 @@ final class TirelireVM: ObservableObject {
 
         let (scriptData, witnessHash, address) = result
 
-        let contract = Contract.newTirelire(
+        let contract = Contract.newVault(
             name: name,
             script: scriptData,
             witnessScript: witnessHash,
@@ -124,7 +124,7 @@ final class TirelireVM: ObservableObject {
 
         ContractStore.shared.add(contract)
         createdContract = contract
-        contracts = tirelires
+        contracts = vaults
 
         // Reset form
         self.name = ""
@@ -135,7 +135,7 @@ final class TirelireVM: ObservableObject {
 
     func delete(id: String) {
         ContractStore.shared.delete(id: id)
-        contracts = tirelires
+        contracts = vaults
     }
 
     // MARK: - Spend
@@ -178,10 +178,10 @@ final class TirelireVM: ObservableObject {
         return balance > estimatedFee ? balance - estimatedFee : 0
     }
 
-    /// Spend from a tirelire contract.
+    /// Spend from a vault contract.
     /// Builds, signs, and finalizes the transaction but does NOT broadcast.
     /// Sets `txForReview` and `psbtForReview` so the user can review before calling `confirmBroadcast()`.
-    func spendTirelire() async {
+    func spendVault() async {
         guard let contract = selectedContract else {
             spendError = "No contract selected"
             return
@@ -207,7 +207,7 @@ final class TirelireVM: ObservableObject {
             )
 
             let address = spendAddress.trimmingCharacters(in: .whitespacesAndNewlines)
-            let psbtData = try SpendManager.buildTirelireSpendPSBT(
+            let psbtData = try SpendManager.buildVaultSpendPSBT(
                 contract: contract, utxos: utxos,
                 destinationAddress: address,
                 feeRate: spendFeeRate, isTestnet: isTestnet
@@ -240,9 +240,9 @@ final class TirelireVM: ObservableObject {
             // Sign + finalize but do NOT broadcast (2-stage review)
             let (txHex, updatedContract) = try await ContractSpendCoordinator.signAndFinalize(
                 psbtData: psbtData, contract: contract,
-                spendPath: .tirelireSpend,
+                spendPath: .vaultSpend,
                 inputAddressInfos: inputInfos,
-                buildWitness: SpendManager.tirelireWitness,
+                buildWitness: SpendManager.vaultWitness,
                 isTestnet: isTestnet
             )
 
@@ -280,7 +280,7 @@ final class TirelireVM: ObservableObject {
                 contract.isUnlocked = true
                 contract.txid = txid
                 ContractStore.shared.update(contract)
-                contracts = tirelires
+                contracts = vaults
             }
         } catch {
             spendError = error.localizedDescription

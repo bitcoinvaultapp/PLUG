@@ -14,7 +14,7 @@
 		06C4A226DAE149678E041B80 /* PSBTBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2585F52F00384540A9ED260B /* PSBTBuilder.swift */; };
 		0717CE1392EB47B5BECB8A31 /* PaymentChannel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 167C53634494444EAA10CCDE /* PaymentChannel.swift */; };
 		0BDF145A671342398662AFF5 /* Secp256k1.swift in Sources */ = {isa = PBXBuildFile; fileRef = 797D5492187443319629F3A1 /* Secp256k1.swift */; };
-		0D4845A5D34346A488323ECB /* HeritageVM.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDA078E2B10E406096D58C0F /* HeritageVM.swift */; };
+		0D4845A5D34346A488323ECB /* InheritanceVM.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDA078E2B10E406096D58C0F /* InheritanceVM.swift */; };
 		10FCAF1D894B45216C0D03B5 /* PlugHeader.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6A64D455F12FF9A2C8FA2497 /* PlugHeader.swift */; };
 		16F63862FFE4499BA1B6567D /* ChannelView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51795899F8E24918A9F82E1A /* ChannelView.swift */; };
 		1BE563E737F2437D98AF0C0E /* NetworkConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = FEC430D148544643A9A746D5 /* NetworkConfig.swift */; };
@@ -24,12 +24,12 @@
 		32855C550DA14DE4B6B290ED /* BalanceCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C9C5C31F3974738BA667A84 /* BalanceCache.swift */; };
 		33E0E899CFA54702B8C674E7 /* Consolidation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0596CC81D9A94D0C947597A3 /* Consolidation.swift */; };
 		36AE7487263E463CBD1040B7 /* BackupVM.swift in Sources */ = {isa = PBXBuildFile; fileRef = 305D7B19CAC343CF91A704E0 /* BackupVM.swift */; };
-		379C9F920AB442A5A6C90933 /* TirelireVM.swift in Sources */ = {isa = PBXBuildFile; fileRef = E04387B9381A48B69FA5213E /* TirelireVM.swift */; };
+		379C9F920AB442A5A6C90933 /* VaultVM.swift in Sources */ = {isa = PBXBuildFile; fileRef = E04387B9381A48B69FA5213E /* VaultVM.swift */; };
 		3A5C51538AAB478BA541DF82 /* WalletVM.swift in Sources */ = {isa = PBXBuildFile; fileRef = 37A930D932D44FCD997B2341 /* WalletVM.swift */; };
 		3B8CD0360F42400C8F43E6EA /* CoinSelection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 803DC3F17DDC4CFF9EE83329 /* CoinSelection.swift */; };
 		3F333E456137E94AAA55253D /* ContractCreatedSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = C0380AE678FAC82C6BFC889D /* ContractCreatedSheet.swift */; };
 		408A23193D5F4331A17F45C0 /* OpReturnView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D90C526206F64436A492A1CF /* OpReturnView.swift */; };
-		4514BF61BAD7464A9CBDF412 /* TirelireView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1A783BF0EF943799E191B60 /* TirelireView.swift */; };
+		4514BF61BAD7464A9CBDF412 /* VaultView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1A783BF0EF943799E191B60 /* VaultView.swift */; };
 		4669F37AF23C43A9AEF6B579 /* Bech32.swift in Sources */ = {isa = PBXBuildFile; fileRef = 48A6B14304204432B6064973 /* Bech32.swift */; };
 		467073F5ED7647BF9368014C /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 45F504D3A8F348F9B2F6807E /* HomeView.swift */; };
 		4C3CEA6FC45E468BAF48902C /* SettingsVM.swift in Sources */ = {isa = PBXBuildFile; fileRef = E59436B3F3FD4201B2146A21 /* SettingsVM.swift */; };
@@ -49,9 +49,9 @@
 		7F2011ED88354CA282177BFE /* LedgerManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 81F6A0BBADF64A19ACC177F7 /* LedgerManager.swift */; };
 		8241FADBED484B6F929586C7 /* LedgerProtocolV2.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBA8025746014E7899930816 /* LedgerProtocolV2.swift */; };
 		862E1EFF48F74F14B0315B0B /* KeyDerivation.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9105F5B315443E1B2A3D108 /* KeyDerivation.swift */; };
-		8B7FDF38B0964688BE97A4D3 /* CagnotteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A884B446CE2440CB1907750 /* CagnotteView.swift */; };
+		8B7FDF38B0964688BE97A4D3 /* PoolView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A884B446CE2440CB1907750 /* PoolView.swift */; };
 		918B15C8A430427CB0B32032 /* OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4EBADE241CD43C3899BBF2A /* OnboardingView.swift */; };
-		9265C6221BE14A73A788C1A6 /* HeritageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 076420C949DA47D0AD5D755B /* HeritageView.swift */; };
+		9265C6221BE14A73A788C1A6 /* InheritanceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 076420C949DA47D0AD5D755B /* InheritanceView.swift */; };
 		93E29DCF1B3C4D3DA88A5D5B /* OpReturnVM.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FF7B4BC7F964333865FCE8D /* OpReturnVM.swift */; };
 		94DD5D71A1454D36A507B166 /* BroadcastQueue.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0DA97C15BF345878B198C42 /* BroadcastQueue.swift */; };
 		98F439E5AB71480D8E596A09 /* HTLCView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D23BF30901F4A0999486DFB /* HTLCView.swift */; };
@@ -68,7 +68,7 @@
 		C55C8F633F3547BDA290FCF1 /* ContractStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B82807B07804640B0EE0CEA /* ContractStore.swift */; };
 		C90D5BAD68B94EA6B358A327 /* LedgerSigningV2.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB32A89F415A45D68D854856 /* LedgerSigningV2.swift */; };
 		CBE7D0DD097744558D5E23CF /* OpReturn.swift in Sources */ = {isa = PBXBuildFile; fileRef = EB07BC9029134FCCB6DC44AF /* OpReturn.swift */; };
-		CC3596CA1AB3489391F69134 /* CagnotteVM.swift in Sources */ = {isa = PBXBuildFile; fileRef = DFB459EAC1FD4DE5A6ABE280 /* CagnotteVM.swift */; };
+		CC3596CA1AB3489391F69134 /* PoolVM.swift in Sources */ = {isa = PBXBuildFile; fileRef = DFB459EAC1FD4DE5A6ABE280 /* PoolVM.swift */; };
 		CCF6A9139CE443CF852FD659 /* Miniscript.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40BAB247172247409516A81F /* Miniscript.swift */; };
 		CD15BA073DC340A09F1CD507 /* ChannelVM.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CF20C6E47FF41FB9B126797 /* ChannelVM.swift */; };
 		D1F5C73B647A4DA6A7220022 /* BackupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 785505D4169E4E659C5E19E5 /* BackupView.swift */; };
@@ -86,12 +86,12 @@
 /* Begin PBXFileReference section */
 		02321F0298FC47929A895DEF /* FrozenUTXOStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/Core/Storage/FrozenUTXOStore.swift; sourceTree = SOURCE_ROOT; };
 		0596CC81D9A94D0C947597A3 /* Consolidation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/Core/Bitcoin/Consolidation.swift; sourceTree = SOURCE_ROOT; };
-		076420C949DA47D0AD5D755B /* HeritageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/Views/HeritageView.swift; sourceTree = SOURCE_ROOT; };
+		076420C949DA47D0AD5D755B /* InheritanceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/Views/InheritanceView.swift; sourceTree = SOURCE_ROOT; };
 		0DCBD91A95484614BAFE1A3B /* DemoMode.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/Core/Ledger/DemoMode.swift; sourceTree = SOURCE_ROOT; };
 		129ED9B211F84620A3BD6400 /* ScriptBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/Core/Bitcoin/ScriptBuilder.swift; sourceTree = SOURCE_ROOT; };
 		167C53634494444EAA10CCDE /* PaymentChannel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/Core/Bitcoin/PaymentChannel.swift; sourceTree = SOURCE_ROOT; };
 		1818831F5C3E4F578B779D4A /* BIP329Labels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/Core/Storage/BIP329Labels.swift; sourceTree = SOURCE_ROOT; };
-		1A884B446CE2440CB1907750 /* CagnotteView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/Views/CagnotteView.swift; sourceTree = SOURCE_ROOT; };
+		1A884B446CE2440CB1907750 /* PoolView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/Views/PoolView.swift; sourceTree = SOURCE_ROOT; };
 		1C400DA3806B4A1083E905D4 /* ScriptEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/Views/ScriptEditorView.swift; sourceTree = SOURCE_ROOT; };
 		1C9C5C31F3974738BA667A84 /* BalanceCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/Core/Storage/BalanceCache.swift; sourceTree = SOURCE_ROOT; };
 		20FBB8C99E144C30837CCBBB /* BlockFilterService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/Core/Network/BlockFilterService.swift; sourceTree = SOURCE_ROOT; };
@@ -137,19 +137,19 @@
 		A9E19A67CE12B403917993E5 /* ContractSigner.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ContractSigner.swift; path = PLUG/Core/Ledger/ContractSigner.swift; sourceTree = SOURCE_ROOT; };
 		B7E4A31D5C9F48E2A1D063F8 /* ContractSpendCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/Core/ContractSpendCoordinator.swift; sourceTree = SOURCE_ROOT; };
 		BBA8025746014E7899930816 /* LedgerProtocolV2.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/Core/Ledger/LedgerProtocolV2.swift; sourceTree = SOURCE_ROOT; };
-		BDA078E2B10E406096D58C0F /* HeritageVM.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/ViewModels/HeritageVM.swift; sourceTree = SOURCE_ROOT; };
+		BDA078E2B10E406096D58C0F /* InheritanceVM.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/ViewModels/InheritanceVM.swift; sourceTree = SOURCE_ROOT; };
 		C0380AE678FAC82C6BFC889D /* ContractCreatedSheet.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ContractCreatedSheet.swift; path = PLUG/Views/ContractCreatedSheet.swift; sourceTree = SOURCE_ROOT; };
 		C0B453F732964C1F80467094 /* TxLabelStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/Core/Storage/TxLabelStore.swift; sourceTree = SOURCE_ROOT; };
 		C4238C941CF547CBB5A7B532 /* LedgerProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/Core/Ledger/LedgerProtocol.swift; sourceTree = SOURCE_ROOT; };
 		CCFE9E5776564F7A82315693 /* HomeVM.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/ViewModels/HomeVM.swift; sourceTree = SOURCE_ROOT; };
 		D0DA97C15BF345878B198C42 /* BroadcastQueue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/Core/Storage/BroadcastQueue.swift; sourceTree = SOURCE_ROOT; };
-		D1A783BF0EF943799E191B60 /* TirelireView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/Views/TirelireView.swift; sourceTree = SOURCE_ROOT; };
+		D1A783BF0EF943799E191B60 /* VaultView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/Views/VaultView.swift; sourceTree = SOURCE_ROOT; };
 		D43439F0925B47D9887979A8 /* WalletView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/Views/WalletView.swift; sourceTree = SOURCE_ROOT; };
 		D4EBADE241CD43C3899BBF2A /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/Views/OnboardingView.swift; sourceTree = SOURCE_ROOT; };
 		D90C526206F64436A492A1CF /* OpReturnView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/Views/OpReturnView.swift; sourceTree = SOURCE_ROOT; };
 		DB32A89F415A45D68D854856 /* LedgerSigningV2.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/Core/Ledger/LedgerSigningV2.swift; sourceTree = SOURCE_ROOT; };
-		DFB459EAC1FD4DE5A6ABE280 /* CagnotteVM.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/ViewModels/CagnotteVM.swift; sourceTree = SOURCE_ROOT; };
-		E04387B9381A48B69FA5213E /* TirelireVM.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/ViewModels/TirelireVM.swift; sourceTree = SOURCE_ROOT; };
+		DFB459EAC1FD4DE5A6ABE280 /* PoolVM.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/ViewModels/PoolVM.swift; sourceTree = SOURCE_ROOT; };
+		E04387B9381A48B69FA5213E /* VaultVM.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/ViewModels/VaultVM.swift; sourceTree = SOURCE_ROOT; };
 		E2AE3A171EB843FE8CBBB1CE /* FeeBumping.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/Core/Bitcoin/FeeBumping.swift; sourceTree = SOURCE_ROOT; };
 		E59436B3F3FD4201B2146A21 /* SettingsVM.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/ViewModels/SettingsVM.swift; sourceTree = SOURCE_ROOT; };
 		EB07BC9029134FCCB6DC44AF /* OpReturn.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/Core/Bitcoin/OpReturn.swift; sourceTree = SOURCE_ROOT; };
@@ -225,30 +225,30 @@
 				75731786685843199FFC88B3 /* Models.swift */,
 				FAA9890C5BA44689B59981B5 /* PLUGApp.swift */,
 				305D7B19CAC343CF91A704E0 /* BackupVM.swift */,
-				DFB459EAC1FD4DE5A6ABE280 /* CagnotteVM.swift */,
+				DFB459EAC1FD4DE5A6ABE280 /* PoolVM.swift */,
 				8CF20C6E47FF41FB9B126797 /* ChannelVM.swift */,
 				42A63DBA14DE40A08874D989 /* HTLCVM.swift */,
-				BDA078E2B10E406096D58C0F /* HeritageVM.swift */,
+				BDA078E2B10E406096D58C0F /* InheritanceVM.swift */,
 				CCFE9E5776564F7A82315693 /* HomeVM.swift */,
 				23BDB1B24B184A1B9E6A52DF /* LedgerVM.swift */,
 				6FF7B4BC7F964333865FCE8D /* OpReturnVM.swift */,
 				31ABECE5C09B45068D526264 /* ScriptVM.swift */,
 				E59436B3F3FD4201B2146A21 /* SettingsVM.swift */,
-				E04387B9381A48B69FA5213E /* TirelireVM.swift */,
+				E04387B9381A48B69FA5213E /* VaultVM.swift */,
 				37A930D932D44FCD997B2341 /* WalletVM.swift */,
 				688C3AA31D894CC18E1C31D9 /* AddressBookView.swift */,
 				785505D4169E4E659C5E19E5 /* BackupView.swift */,
-				1A884B446CE2440CB1907750 /* CagnotteView.swift */,
+				1A884B446CE2440CB1907750 /* PoolView.swift */,
 				51795899F8E24918A9F82E1A /* ChannelView.swift */,
 				3D23BF30901F4A0999486DFB /* HTLCView.swift */,
-				076420C949DA47D0AD5D755B /* HeritageView.swift */,
+				076420C949DA47D0AD5D755B /* InheritanceView.swift */,
 				45F504D3A8F348F9B2F6807E /* HomeView.swift */,
 				3F611B15984D4BCB9F127B0F /* LedgerView.swift */,
 				D4EBADE241CD43C3899BBF2A /* OnboardingView.swift */,
 				D90C526206F64436A492A1CF /* OpReturnView.swift */,
 				1C400DA3806B4A1083E905D4 /* ScriptEditorView.swift */,
 				87D26F8A2AE4454AA4F9912C /* SettingsView.swift */,
-				D1A783BF0EF943799E191B60 /* TirelireView.swift */,
+				D1A783BF0EF943799E191B60 /* VaultView.swift */,
 				D43439F0925B47D9887979A8 /* WalletView.swift */,
 				A683E7B0DA204321AF79BB83 /* Assets.xcassets */,
 				36FADF2DB870432C97DD3D1D /* Products */,
@@ -372,30 +372,30 @@
 				AB8C85327A4941A58A367812 /* Models.swift in Sources */,
 				DA9C282C94834E7DB86240DA /* PLUGApp.swift in Sources */,
 				36AE7487263E463CBD1040B7 /* BackupVM.swift in Sources */,
-				CC3596CA1AB3489391F69134 /* CagnotteVM.swift in Sources */,
+				CC3596CA1AB3489391F69134 /* PoolVM.swift in Sources */,
 				CD15BA073DC340A09F1CD507 /* ChannelVM.swift in Sources */,
 				020A7B84E10843828A3B1762 /* HTLCVM.swift in Sources */,
-				0D4845A5D34346A488323ECB /* HeritageVM.swift in Sources */,
+				0D4845A5D34346A488323ECB /* InheritanceVM.swift in Sources */,
 				5AEB3232E67243D9A5EE2791 /* HomeVM.swift in Sources */,
 				FDB7AD0C20DE4AB3BFD1EBDF /* LedgerVM.swift in Sources */,
 				93E29DCF1B3C4D3DA88A5D5B /* OpReturnVM.swift in Sources */,
 				69AF41D335EA4CA1A5EE0F6A /* ScriptVM.swift in Sources */,
 				4C3CEA6FC45E468BAF48902C /* SettingsVM.swift in Sources */,
-				379C9F920AB442A5A6C90933 /* TirelireVM.swift in Sources */,
+				379C9F920AB442A5A6C90933 /* VaultVM.swift in Sources */,
 				3A5C51538AAB478BA541DF82 /* WalletVM.swift in Sources */,
 				7BD2C6EFF3BD47B094E2F726 /* AddressBookView.swift in Sources */,
 				D1F5C73B647A4DA6A7220022 /* BackupView.swift in Sources */,
-				8B7FDF38B0964688BE97A4D3 /* CagnotteView.swift in Sources */,
+				8B7FDF38B0964688BE97A4D3 /* PoolView.swift in Sources */,
 				16F63862FFE4499BA1B6567D /* ChannelView.swift in Sources */,
 				98F439E5AB71480D8E596A09 /* HTLCView.swift in Sources */,
-				9265C6221BE14A73A788C1A6 /* HeritageView.swift in Sources */,
+				9265C6221BE14A73A788C1A6 /* InheritanceView.swift in Sources */,
 				467073F5ED7647BF9368014C /* HomeView.swift in Sources */,
 				526B750C93204332954F061A /* LedgerView.swift in Sources */,
 				918B15C8A430427CB0B32032 /* OnboardingView.swift in Sources */,
 				408A23193D5F4331A17F45C0 /* OpReturnView.swift in Sources */,
 				5EED7F7DEF67485BAE1CF0FE /* ScriptEditorView.swift in Sources */,
 				F21F025938B546BEB40DDC12 /* SettingsView.swift in Sources */,
-				4514BF61BAD7464A9CBDF412 /* TirelireView.swift in Sources */,
+				4514BF61BAD7464A9CBDF412 /* VaultView.swift in Sources */,
 				207C805B24CE4D549D1A69FB /* WalletView.swift in Sources */,
 				0125621986D82555A44C63DB /* BlockDurationPicker.swift in Sources */,
 				3F333E456137E94AAA55253D /* ContractCreatedSheet.swift in Sources */,
@@ -441,8 +441,8 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = PLUG;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.finance";
-				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "PLUG utilise le Bluetooth pour communiquer avec votre Ledger Nano X";
-				INFOPLIST_KEY_NSBluetoothPeripheralUsageDescription = "PLUG utilise le Bluetooth pour communiquer avec votre Ledger Nano X";
+				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "PLUG uses Bluetooth to communicate with your Ledger Nano X";
+				INFOPLIST_KEY_NSBluetoothPeripheralUsageDescription = "PLUG uses Bluetooth to communicate with your Ledger Nano X";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -473,8 +473,8 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = PLUG;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.finance";
-				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "PLUG utilise le Bluetooth pour communiquer avec votre Ledger Nano X";
-				INFOPLIST_KEY_NSBluetoothPeripheralUsageDescription = "PLUG utilise le Bluetooth pour communiquer avec votre Ledger Nano X";
+				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "PLUG uses Bluetooth to communicate with your Ledger Nano X";
+				INFOPLIST_KEY_NSBluetoothPeripheralUsageDescription = "PLUG uses Bluetooth to communicate with your Ledger Nano X";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;

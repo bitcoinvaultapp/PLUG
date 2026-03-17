@@ -1,7 +1,7 @@
 import Foundation
 
 @MainActor
-final class HeritageVM: ObservableObject {
+final class InheritanceVM: ObservableObject {
 
     @Published var name: String = ""
     @Published var csvBlocks: String = "" // relative timelock in blocks
@@ -28,15 +28,15 @@ final class HeritageVM: ObservableObject {
 
     var isTestnet: Bool { NetworkConfig.shared.isTestnet }
 
-    var heritages: [Contract] {
-        ContractStore.shared.heritages.filter { $0.isTestnet == isTestnet }
+    var inheritances: [Contract] {
+        ContractStore.shared.inheritances.filter { $0.isTestnet == isTestnet }
     }
 
     func refresh() async {
         isLoading = true
         do {
             currentBlockHeight = try await MempoolAPI.shared.getBlockHeight()
-            contracts = heritages
+            contracts = inheritances
             let result = await ContractSpendCoordinator.refreshBalances(
                 contracts: contracts, blockHeight: currentBlockHeight
             )
@@ -59,7 +59,7 @@ final class HeritageVM: ObservableObject {
         return min(1.0, Double(fundedAmount(for: contract)) / Double(contract.amount))
     }
 
-    /// Create a new heritage contract
+    /// Create a new inheritance contract
     func create() async {
         guard !isLoading else { return }
         guard !name.isEmpty,
@@ -85,11 +85,11 @@ final class HeritageVM: ObservableObject {
         let csvVal = csv
 
         // Derive keys off main thread
-        struct HeritageResult {
+        struct InheritanceResult {
             let scriptData: Data; let witnessHash: Data; let address: String
             let ownerPk: Data; let heirPk: Data
         }
-        guard let result: HeritageResult = await Task.detached(priority: .userInitiated) { () -> HeritageResult? in
+        guard let result: InheritanceResult = await Task.detached(priority: .userInitiated) { () -> InheritanceResult? in
             guard let ownerKey = xpub.derivePath([0, 0]) else { return nil }
 
             let heirPubkey: Data
@@ -102,11 +102,11 @@ final class HeritageVM: ObservableObject {
                 return nil
             }
 
-            let script = ScriptBuilder.heritageScript(
+            let script = ScriptBuilder.inheritanceScript(
                 ownerPubkey: ownerKey.key, heirPubkey: heirPubkey, csvBlocks: Int64(csvVal)
             )
             guard let address = script.p2wshAddress(isTestnet: isTest) else { return nil }
-            return HeritageResult(
+            return InheritanceResult(
                 scriptData: script.script, witnessHash: script.witnessScriptHash,
                 address: address, ownerPk: ownerKey.key, heirPk: heirPubkey
             )
@@ -116,7 +116,7 @@ final class HeritageVM: ObservableObject {
             return
         }
 
-        var contract = Contract.newHeritage(
+        var contract = Contract.newInheritance(
             name: name,
             script: result.scriptData,
             witnessScript: result.witnessHash,
@@ -134,7 +134,7 @@ final class HeritageVM: ObservableObject {
 
         ContractStore.shared.add(contract)
         createdContract = contract
-        contracts = heritages
+        contracts = inheritances
 
         // Reset form
         self.name = ""
@@ -146,7 +146,7 @@ final class HeritageVM: ObservableObject {
 
     func delete(id: String) {
         ContractStore.shared.delete(id: id)
-        contracts = heritages
+        contracts = inheritances
     }
 
     // MARK: - Keep Alive (Owner)
@@ -162,15 +162,15 @@ final class HeritageVM: ObservableObject {
                 contract: contract, feeRate: spendFeeRate
             )
 
-            let psbtData = try SpendManager.buildHeritageKeepAlivePSBT(
+            let psbtData = try SpendManager.buildInheritanceKeepAlivePSBT(
                 contract: contract, utxos: utxos,
                 feeRate: spendFeeRate, isTestnet: isTestnet
             )
 
             let (txid, _) = try await ContractSpendCoordinator.signFinalizeAndBroadcast(
                 psbtData: psbtData, contract: contract,
-                spendPath: .heritageKeepAlive,
-                buildWitness: SpendManager.heritageKeepAliveWitness,
+                spendPath: .inheritanceKeepAlive,
+                buildWitness: SpendManager.inheritanceKeepAliveWitness,
                 isTestnet: isTestnet
             )
             spendResult = txid
@@ -179,7 +179,7 @@ final class HeritageVM: ObservableObject {
             var updated = contract
             updated.lastKeptAlive = Date()
             ContractStore.shared.update(updated)
-            contracts = heritages
+            contracts = inheritances
 
         } catch {
             spendError = error.localizedDescription
@@ -190,7 +190,7 @@ final class HeritageVM: ObservableObject {
 
     // MARK: - Heir Claim
 
-    /// Heir claims the heritage after the CSV timelock has passed.
+    /// Heir claims the inheritance after the CSV timelock has passed.
     func heirClaim(contract: Contract, destinationAddress: String) async {
         guard !destinationAddress.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             spendError = "Destination address required"
@@ -207,7 +207,7 @@ final class HeritageVM: ObservableObject {
             )
 
             let address = destinationAddress.trimmingCharacters(in: .whitespacesAndNewlines)
-            let psbtData = try SpendManager.buildHeritageHeirClaimPSBT(
+            let psbtData = try SpendManager.buildInheritanceHeirClaimPSBT(
                 contract: contract, utxos: utxos,
                 destinationAddress: address,
                 feeRate: spendFeeRate, isTestnet: isTestnet
@@ -215,8 +215,8 @@ final class HeritageVM: ObservableObject {
 
             let (txid, _) = try await ContractSpendCoordinator.signFinalizeAndBroadcast(
                 psbtData: psbtData, contract: contract,
-                spendPath: .heritageHeirClaim,
-                buildWitness: SpendManager.heritageHeirClaimWitness,
+                spendPath: .inheritanceHeirClaim,
+                buildWitness: SpendManager.inheritanceHeirClaimWitness,
                 isTestnet: isTestnet
             )
             spendResult = txid

@@ -393,7 +393,7 @@ struct HTLCView: View {
                     value: $vm.timeoutBlocks,
                     currentBlockHeight: vm.currentBlockHeight,
                     mode: .absoluteCLTV,
-                    presets: [("1h", 6), ("6h", 36), ("1j", 144), ("1sem", 1008)]
+                    presets: [("1h", 6), ("6h", 36), ("1d", 144), ("1w", 1008)]
                 )
 
                 Section("Amount (sats)") {
@@ -547,7 +547,7 @@ struct HTLCView: View {
                         Text(contract.name).font(.headline)
                         Text("\(contract.amount) sats").font(.subheadline.monospacedDigit())
                         if let timeout = contract.timeoutBlocks {
-                            Text("Timeout: bloc \(timeout)")
+                            Text("Timeout: block \(timeout)")
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                     }

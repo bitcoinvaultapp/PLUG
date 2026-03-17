@@ -80,9 +80,9 @@ struct Transaction: Identifiable, Codable {
 // MARK: - Contract types
 
 enum ContractType: String, Codable, CaseIterable {
-    case tirelire
-    case heritage
-    case cagnotte
+    case vault
+    case inheritance
+    case pool
     case htlc
     case channel
 }
@@ -99,12 +99,12 @@ struct Contract: Identifiable, Codable {
     var isTestnet: Bool
 
     // Type-specific fields
-    var lockBlockHeight: Int?     // Tirelire: CLTV block height
-    var csvBlocks: Int?           // Heritage: CSV relative blocks
-    var ownerPubkey: String?      // Heritage: owner pubkey hex
-    var heirPubkey: String?       // Heritage: heir pubkey hex
-    var multisigM: Int?           // Cagnotte: M threshold
-    var multisigPubkeys: [String]? // Cagnotte: all pubkeys hex
+    var lockBlockHeight: Int?     // Vault: CLTV block height
+    var csvBlocks: Int?           // Inheritance: CSV relative blocks
+    var ownerPubkey: String?      // Inheritance: owner pubkey hex
+    var heirPubkey: String?       // Inheritance: heir pubkey hex
+    var multisigM: Int?           // Pool: M threshold
+    var multisigPubkeys: [String]? // Pool: all pubkeys hex
 
     // HTLC / Channel fields
     var hashLock: String?         // HTLC: SHA256 hash lock hex
@@ -122,12 +122,12 @@ struct Contract: Identifiable, Codable {
     var walletPolicyDescriptor: String? // descriptor template, e.g. "wsh(and_v(v:pk(@0/**),after(850000)))"
 
     // External party xpubs (needed for V2 multi-key policies)
-    var heirXpub: String?             // Heritage: heir's xpub/tpub
+    var heirXpub: String?             // Inheritance: heir's xpub/tpub
     var receiverXpub: String?         // HTLC/Channel: receiver xpub
     var senderXpub: String?           // HTLC/Channel: sender xpub (when signing as receiver)
-    var multisigXpubs: [String]?      // Cagnotte: all co-signer xpubs
+    var multisigXpubs: [String]?      // Pool: all co-signer xpubs
 
-    static func newTirelire(
+    static func newVault(
         name: String,
         script: Data,
         witnessScript: Data,
@@ -138,7 +138,7 @@ struct Contract: Identifiable, Codable {
     ) -> Contract {
         Contract(
             id: UUID().uuidString,
-            type: .tirelire,
+            type: .vault,
             name: name,
             createdAt: Date(),
             script: script.hex,
@@ -150,7 +150,7 @@ struct Contract: Identifiable, Codable {
         )
     }
 
-    static func newHeritage(
+    static func newInheritance(
         name: String,
         script: Data,
         witnessScript: Data,
@@ -163,7 +163,7 @@ struct Contract: Identifiable, Codable {
     ) -> Contract {
         Contract(
             id: UUID().uuidString,
-            type: .heritage,
+            type: .inheritance,
             name: name,
             createdAt: Date(),
             script: script.hex,
@@ -177,7 +177,7 @@ struct Contract: Identifiable, Codable {
         )
     }
 
-    static func newCagnotte(
+    static func newPool(
         name: String,
         script: Data,
         witnessScript: Data,
@@ -189,7 +189,7 @@ struct Contract: Identifiable, Codable {
     ) -> Contract {
         Contract(
             id: UUID().uuidString,
-            type: .cagnotte,
+            type: .pool,
             name: name,
             createdAt: Date(),
             script: script.hex,
@@ -319,13 +319,13 @@ struct WalletAddress: Identifiable, Codable {
 
 enum DashboardAlert: Identifiable {
     case vaultUnlocked(contractName: String)
-    case heritageApproaching(contractName: String, blocksRemaining: Int)
+    case inheritanceApproaching(contractName: String, blocksRemaining: Int)
     case unconfirmedTx(txid: String)
 
     var id: String {
         switch self {
         case .vaultUnlocked(let name): return "vault_\(name)"
-        case .heritageApproaching(let name, _): return "heritage_\(name)"
+        case .inheritanceApproaching(let name, _): return "inheritance_\(name)"
         case .unconfirmedTx(let txid): return "tx_\(txid)"
         }
     }
@@ -334,8 +334,8 @@ enum DashboardAlert: Identifiable {
         switch self {
         case .vaultUnlocked(let name):
             return "Vault \"\(name)\" is unlocked!"
-        case .heritageApproaching(let name, let blocks):
-            return "Heritage \"\(name)\": \(blocks) blocks remaining"
+        case .inheritanceApproaching(let name, let blocks):
+            return "Inheritance \"\(name)\": \(blocks) blocks remaining"
         case .unconfirmedTx(let txid):
             return "Unconfirmed transaction: \(String(txid.prefix(8)))..."
         }

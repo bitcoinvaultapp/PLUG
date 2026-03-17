@@ -94,7 +94,7 @@ final class BiometricStore: ObservableObject {
     func unlockApp() async -> Bool {
         guard isEnabled, isLocked else { return true }
 
-        let success = await authenticate(reason: "Déverrouillez PLUG")
+        let success = await authenticate(reason: "Unlock PLUG")
         if success {
             await MainActor.run {
                 isLocked = false

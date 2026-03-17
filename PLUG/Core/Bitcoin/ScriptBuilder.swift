@@ -312,11 +312,11 @@ class ScriptBuilder {
 
 extension ScriptBuilder {
 
-    /// Tirelire: CLTV time-lock vault
+    /// Vault: CLTV time-lock vault
     /// Miniscript: and_v(v:pk(KEY), after(N))
     /// Script: <KEY> OP_CHECKSIGVERIFY <N> OP_CHECKLOCKTIMEVERIFY
     /// This format matches the Ledger's miniscript compiler output exactly.
-    static func tirelireScript(locktime: Int64, pubkey: Data) -> ScriptBuilder {
+    static func vaultScript(locktime: Int64, pubkey: Data) -> ScriptBuilder {
         ScriptBuilder()
             .pushData(pubkey)
             .addOp(.op_checksigverify)
@@ -324,11 +324,11 @@ extension ScriptBuilder {
             .addOp(.op_checklocktimeverify)
     }
 
-    /// Heritage: CSV timelock with owner priority
+    /// Inheritance: CSV timelock with owner priority
     /// Miniscript: or_d(pk(@0),and_v(v:pk(@1),older(N)))
     /// Script: <OWNER> OP_CHECKSIG OP_IFDUP OP_NOTIF <HEIR> OP_CHECKSIGVERIFY <N> OP_CSV OP_ENDIF
     /// This format matches the Ledger's miniscript compiler output exactly.
-    static func heritageScript(ownerPubkey: Data, heirPubkey: Data, csvBlocks: Int64) -> ScriptBuilder {
+    static func inheritanceScript(ownerPubkey: Data, heirPubkey: Data, csvBlocks: Int64) -> ScriptBuilder {
         ScriptBuilder()
             .pushData(ownerPubkey)
             .addOp(.op_checksig)
@@ -341,7 +341,7 @@ extension ScriptBuilder {
             .addOp(.op_endif)
     }
 
-    /// Cagnotte: M-of-N multisig (BIP67 sorted keys)
+    /// Pool: M-of-N multisig (BIP67 sorted keys)
     /// OP_0 <M> <pubkey1> ... <pubkeyN> <N> OP_CHECKMULTISIG
     static func multisigScript(m: Int, pubkeys: [Data]) -> ScriptBuilder {
         // BIP67: sort public keys lexicographically

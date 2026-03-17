@@ -1,7 +1,7 @@
 import SwiftUI
 
-struct HeritageView: View {
-    @StateObject private var vm = HeritageVM()
+struct InheritanceView: View {
+    @StateObject private var vm = InheritanceVM()
     @State private var showCreate = false
     @State private var showCreated = false
     @State private var showClaim = false
@@ -13,7 +13,7 @@ struct HeritageView: View {
     var body: some View {
         NavigationStack {
             List {
-                PlugHeader(pageName: "Heritage")
+                PlugHeader(pageName: "Inheritance")
                     .listRowInsets(EdgeInsets())
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
@@ -23,7 +23,7 @@ struct HeritageView: View {
                         Image(systemName: "person.2.circle")
                             .font(.system(size: 40))
                             .foregroundStyle(.secondary)
-                        Text("No Heritage")
+                        Text("No Inheritance")
                             .font(.headline)
                         Text("Set up a conditional transfer with CSV")
                             .font(.subheadline)
@@ -33,7 +33,7 @@ struct HeritageView: View {
                     .padding(.vertical, 32)
                 } else {
                     ForEach(vm.contracts) { contract in
-                        heritageRow(contract)
+                        inheritanceRow(contract)
                     }
                     .onDelete { indexSet in
                         if let i = indexSet.first {
@@ -87,7 +87,7 @@ struct HeritageView: View {
         return formatter.localizedString(for: date, relativeTo: Date())
     }
 
-    private func heritageRow(_ contract: Contract) -> some View {
+    private func inheritanceRow(_ contract: Contract) -> some View {
         let funded = vm.fundedAmount(for: contract)
         let target = contract.amount
         let progress = vm.progress(for: contract)
@@ -281,8 +281,8 @@ struct HeritageView: View {
 
     // MARK: - Create Sheet
 
-    private var heritagePreviewAddress: String? {
-        guard heritageHeirKeyValid,
+    private var inheritancePreviewAddress: String? {
+        guard inheritanceHeirKeyValid,
               let csv = Int(vm.csvBlocks), csv > 0,
               let xpubStr = KeychainStore.shared.loadXpub(isTestnet: vm.isTestnet),
               let xpub = ExtendedPublicKey.fromBase58(xpubStr),
@@ -299,13 +299,13 @@ struct HeritageView: View {
             return nil
         }
 
-        let script = ScriptBuilder.heritageScript(
+        let script = ScriptBuilder.inheritanceScript(
             ownerPubkey: ownerKey.key, heirPubkey: heirPubkey, csvBlocks: Int64(csv)
         )
         return script.p2wshAddress(isTestnet: vm.isTestnet)
     }
 
-    private var heritageHeirKeyValid: Bool {
+    private var inheritanceHeirKeyValid: Bool {
         let trimmed = vm.heirXpub.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return false }
         // Valid xpub/tpub
@@ -323,16 +323,16 @@ struct HeritageView: View {
         NavigationStack {
             Form {
                 Section("Name") {
-                    TextField("My Heritage", text: $vm.name)
+                    TextField("My Inheritance", text: $vm.name)
                 }
 
                 Section {
-                    TextField("xpub/tpub ou pubkey hex (33 bytes)", text: $vm.heirXpub)
+                    TextField("xpub/tpub or pubkey hex (33 bytes)", text: $vm.heirXpub)
                         .font(.system(.caption, design: .monospaced))
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
 
-                    if !vm.heirXpub.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !heritageHeirKeyValid {
+                    if !vm.heirXpub.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !inheritanceHeirKeyValid {
                         HStack(spacing: 4) {
                             Image(systemName: "exclamationmark.triangle.fill")
                                 .foregroundStyle(.red)
@@ -365,7 +365,7 @@ struct HeritageView: View {
                         .keyboardType(.numberPad)
                 }
 
-                if let address = heritagePreviewAddress {
+                if let address = inheritancePreviewAddress {
                     Section("P2WSH Address (preview)") {
                         Text(address)
                             .font(.system(.caption2, design: .monospaced))
@@ -380,16 +380,16 @@ struct HeritageView: View {
                 }
 
                 Section {
-                    Button("Create Heritage") {
+                    Button("Create Inheritance") {
                         Task {
                             await vm.create()
                             if vm.createdContract != nil { showCreate = false }
                         }
                     }
-                    .disabled(vm.name.isEmpty || vm.csvBlocks.isEmpty || vm.heirXpub.isEmpty || vm.amount.isEmpty || !heritageHeirKeyValid)
+                    .disabled(vm.name.isEmpty || vm.csvBlocks.isEmpty || vm.heirXpub.isEmpty || vm.amount.isEmpty || !inheritanceHeirKeyValid)
                 }
             }
-            .navigationTitle("New Heritage")
+            .navigationTitle("New Inheritance")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -435,7 +435,7 @@ struct HeritageView: View {
                     } header: {
                         Text("Fee (sat/vB)")
                     } footer: {
-                        Text("Funds will be sent back to the same Heritage address, minus fees. This resets the heir's CSV counter.")
+                        Text("Funds will be sent back to the same Inheritance address, minus fees. This resets the heir's CSV counter.")
                     }
 
                     if let error = vm.spendError {
@@ -542,7 +542,7 @@ struct HeritageView: View {
                         }
                     } else {
                         Section {
-                            Button("Claim Heritage") {
+                            Button("Claim Inheritance") {
                                 Task {
                                     await vm.heirClaim(
                                         contract: contract,
@@ -564,7 +564,7 @@ struct HeritageView: View {
                     }
                 }
             }
-            .navigationTitle("Claim Heritage")
+            .navigationTitle("Claim Inheritance")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

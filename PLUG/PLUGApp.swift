@@ -74,7 +74,7 @@ struct MainTabView: View {
                     }
 
                 NavigationStack {
-                    CagnotteView()
+                    PoolView()
                 }
                     .tag(3)
                     .tabItem {
@@ -93,7 +93,7 @@ struct MainTabView: View {
     }
 }
 
-// MARK: - Contracts Hub (replaces separate Tirelire/Heritage tabs)
+// MARK: - Contracts Hub (replaces separate Vault/Inheritance tabs)
 
 struct ContractsHubView: View {
     var body: some View {
@@ -109,7 +109,7 @@ struct ContractsHubView: View {
             }
 
             Section {
-                NavigationLink(destination: TirelireView()) {
+                NavigationLink(destination: VaultView()) {
                     contractHubRow(
                         title: "Time-Lock Vaults",
                         desc: "Lock sats until a future date",
@@ -118,7 +118,7 @@ struct ContractsHubView: View {
                     )
                 }
 
-                NavigationLink(destination: HeritageView()) {
+                NavigationLink(destination: InheritanceView()) {
                     contractHubRow(
                         title: "Inheritance",
                         desc: "Automatic heir access after inactivity",

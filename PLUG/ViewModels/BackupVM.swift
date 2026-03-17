@@ -14,7 +14,7 @@ final class BackupVM: ObservableObject {
     /// Export all contracts and labels as encrypted backup
     func exportBackup() {
         guard !exportPassword.isEmpty else {
-            error = "Mot de passe requis"
+            error = "Password required"
             return
         }
 
@@ -29,7 +29,7 @@ final class BackupVM: ObservableObject {
         let backup = BackupPayload(contracts: contracts, labels: labels)
 
         guard let jsonData = try? JSONEncoder().encode(backup) else {
-            error = "Impossible d'encoder les donnees"
+            error = "Unable to encode data"
             isLoading = false
             return
         }
@@ -39,7 +39,7 @@ final class BackupVM: ObservableObject {
         let encrypted = xorCrypt(data: jsonData, key: keyData)
 
         exportedData = encrypted
-        message = "Backup exporte avec succes"
+        message = "Backup exported successfully"
         exportPassword = ""
         isLoading = false
     }
@@ -47,12 +47,12 @@ final class BackupVM: ObservableObject {
     /// Import backup from encrypted base64 data
     func importBackup() {
         guard !importPassword.isEmpty else {
-            error = "Mot de passe requis"
+            error = "Password required"
             return
         }
 
         guard let encryptedData = Data(base64Encoded: importData.trimmingCharacters(in: .whitespacesAndNewlines)) else {
-            error = "Donnees Base64 invalides"
+            error = "Invalid Base64 data"
             return
         }
 
@@ -64,7 +64,7 @@ final class BackupVM: ObservableObject {
         let decrypted = xorCrypt(data: encryptedData, key: keyData)
 
         guard let backup = try? JSONDecoder().decode(BackupPayload.self, from: decrypted) else {
-            error = "Mot de passe incorrect ou donnees corrompues"
+            error = "Incorrect password or corrupted data"
             isLoading = false
             return
         }
@@ -81,7 +81,7 @@ final class BackupVM: ObservableObject {
             TxLabelStore.shared.setLabel(label, forTxid: txid)
         }
 
-        message = "Backup importe avec succes (\(backup.contracts.count) contrats, \(backup.labels.count) labels)"
+        message = "Backup imported successfully (\(backup.contracts.count) contracts, \(backup.labels.count) labels)"
         importPassword = ""
         importData = ""
         isLoading = false
@@ -104,7 +104,7 @@ final class BackupVM: ObservableObject {
     /// Import labels from BIP329 format
     func importBIP329(data: Data) {
         guard let text = String(data: data, encoding: .utf8) else {
-            error = "Donnees BIP329 invalides"
+            error = "Invalid BIP329 data"
             return
         }
 
@@ -122,7 +122,7 @@ final class BackupVM: ObservableObject {
             }
         }
 
-        message = "\(count) labels BIP329 importes"
+        message = "\(count) BIP329 labels imported"
     }
 
     // MARK: - Private helpers

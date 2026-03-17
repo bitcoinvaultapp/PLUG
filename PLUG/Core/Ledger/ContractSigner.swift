@@ -11,25 +11,25 @@ struct WalletPolicyBuilder {
         let keysInfo: [String]  // ["[fp/path]xpub", "xpub_external", ...]
     }
 
-    // MARK: - Tirelire (CLTV vault)
+    // MARK: - Vault (CLTV vault)
     // Script: <locktime> OP_CLTV OP_DROP <pk> OP_CHECKSIG
     // Miniscript: and_v(v:pk(@0/**),after(N))
 
-    static func tirelirePolicy(lockBlockHeight: Int, masterFP: String, keyOrigin: String, xpub: String) -> Policy {
+    static func vaultPolicy(lockBlockHeight: Int, masterFP: String, keyOrigin: String, xpub: String) -> Policy {
         Policy(
-            name: "Tirelire",
+            name: "Vault",
             descriptorTemplate: "wsh(and_v(v:pk(@0/**),after(\(lockBlockHeight))))",
             keysInfo: ["[\(masterFP)/\(keyOrigin)]\(xpub)"]
         )
     }
 
-    // MARK: - Heritage (CSV with IF/ELSE)
+    // MARK: - Inheritance (CSV with IF/ELSE)
     // Script: IF <owner_pk> CHECKSIG ELSE <csv> CSV DROP <heir_pk> CHECKSIG ENDIF
     // Miniscript: or_d(pk(@0/**),and_v(v:pk(@1/**),older(N)))
 
-    static func heritageOwnerPolicy(csvBlocks: Int, masterFP: String, keyOrigin: String, ownerXpub: String, heirXpub: String) -> Policy {
+    static func inheritanceOwnerPolicy(csvBlocks: Int, masterFP: String, keyOrigin: String, ownerXpub: String, heirXpub: String) -> Policy {
         Policy(
-            name: "Heritage",
+            name: "Inheritance",
             descriptorTemplate: "wsh(or_d(pk(@0/**),and_v(v:pk(@1/**),older(\(csvBlocks)))))",
             keysInfo: [
                 "[\(masterFP)/\(keyOrigin)]\(ownerXpub)",  // @0 = owner (internal)
@@ -38,9 +38,9 @@ struct WalletPolicyBuilder {
         )
     }
 
-    static func heritageHeirPolicy(csvBlocks: Int, masterFP: String, keyOrigin: String, ownerXpub: String, heirXpub: String) -> Policy {
+    static func inheritanceHeirPolicy(csvBlocks: Int, masterFP: String, keyOrigin: String, ownerXpub: String, heirXpub: String) -> Policy {
         Policy(
-            name: "Heritage Heir",
+            name: "Inheritance Heir",
             descriptorTemplate: "wsh(or_d(pk(@1/**),and_v(v:pk(@0/**),older(\(csvBlocks)))))",
             keysInfo: [
                 "[\(masterFP)/\(keyOrigin)]\(heirXpub)",   // @0 = heir (internal)
@@ -74,16 +74,16 @@ struct WalletPolicyBuilder {
         )
     }
 
-    // MARK: - Cagnotte (M-of-N multisig)
+    // MARK: - Pool (M-of-N multisig)
     // Miniscript: sortedmulti(M,@0/**,@1/**,...,@(N-1)/**)
 
-    static func cagnottePolicy(m: Int, masterFP: String, keyOrigin: String, internalXpub: String, internalKeyIndex: Int, allXpubs: [String]) -> Policy {
+    static func poolPolicy(m: Int, masterFP: String, keyOrigin: String, internalXpub: String, internalKeyIndex: Int, allXpubs: [String]) -> Policy {
         let keyPlaceholders = (0..<allXpubs.count).map { "@\($0)/**" }.joined(separator: ",")
         let keysInfo = allXpubs.enumerated().map { i, xpub in
             i == internalKeyIndex ? "[\(masterFP)/\(keyOrigin)]\(xpub)" : xpub
         }
         return Policy(
-            name: "Cagnotte \(m)-of-\(allXpubs.count)",
+            name: "Pool \(m)-of-\(allXpubs.count)",
             descriptorTemplate: "wsh(sortedmulti(\(m),\(keyPlaceholders)))",
             keysInfo: keysInfo
         )
@@ -110,14 +110,14 @@ struct WalletPolicyBuilder {
 struct ContractSigner {
 
     enum SpendPath {
-        case tirelireSpend
-        case heritageKeepAlive
-        case heritageHeirClaim
+        case vaultSpend
+        case inheritanceKeepAlive
+        case inheritanceHeirClaim
         case htlcClaim
         case htlcRefund
         case channelCooperativeClose
         case channelRefund
-        case cagnotteSpend
+        case poolSpend
     }
 
     /// Sign a contract spend via V2 protocol.
@@ -203,22 +203,22 @@ struct ContractSigner {
 
     private static func buildPolicy(contract: Contract, spendPath: SpendPath, masterFP: String, keyOrigin: String, xpub: String) -> WalletPolicyBuilder.Policy {
         switch spendPath {
-        case .tirelireSpend:
-            return WalletPolicyBuilder.tirelirePolicy(
+        case .vaultSpend:
+            return WalletPolicyBuilder.vaultPolicy(
                 lockBlockHeight: contract.lockBlockHeight ?? 0,
                 masterFP: masterFP, keyOrigin: keyOrigin, xpub: xpub
             )
 
-        case .heritageKeepAlive:
-            return WalletPolicyBuilder.heritageOwnerPolicy(
+        case .inheritanceKeepAlive:
+            return WalletPolicyBuilder.inheritanceOwnerPolicy(
                 csvBlocks: contract.csvBlocks ?? 0,
                 masterFP: masterFP, keyOrigin: keyOrigin,
                 ownerXpub: xpub,
                 heirXpub: contract.heirXpub ?? contract.heirPubkey ?? ""
             )
 
-        case .heritageHeirClaim:
-            return WalletPolicyBuilder.heritageHeirPolicy(
+        case .inheritanceHeirClaim:
+            return WalletPolicyBuilder.inheritanceHeirPolicy(
                 csvBlocks: contract.csvBlocks ?? 0,
                 masterFP: masterFP, keyOrigin: keyOrigin,
                 ownerXpub: contract.senderXpub ?? contract.ownerPubkey ?? "",
@@ -251,8 +251,8 @@ struct ContractSigner {
                 receiverXpub: contract.receiverXpub ?? contract.receiverPubkey ?? ""
             )
 
-        case .cagnotteSpend:
-            return WalletPolicyBuilder.cagnottePolicy(
+        case .poolSpend:
+            return WalletPolicyBuilder.poolPolicy(
                 m: contract.multisigM ?? 2,
                 masterFP: masterFP, keyOrigin: keyOrigin,
                 internalXpub: xpub,

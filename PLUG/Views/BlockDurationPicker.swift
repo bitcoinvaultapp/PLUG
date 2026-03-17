@@ -5,8 +5,8 @@ import SwiftUI
 struct BlockDurationPicker: View {
 
     enum Mode {
-        case absoluteCLTV  // Tirelire, HTLC, Channel: target = currentHeight + blocks
-        case relativeCSV   // Heritage: target = blocks (relative delay)
+        case absoluteCLTV  // Vault, HTLC, Channel: target = currentHeight + blocks
+        case relativeCSV   // Inheritance: target = blocks (relative delay)
     }
 
     @Binding var value: String       // The raw string bound to the VM (block height or block count)
@@ -51,7 +51,7 @@ struct BlockDurationPicker: View {
                         .foregroundStyle(.red)
                 } else if blocks > 0 {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("\(Self.blocksToHumanTime(blocks: blocks)) (\(blocks) blocs)")
+                        Text("\(Self.blocksToHumanTime(blocks: blocks)) (\(blocks) blocks)")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         Text(Self.blocksToDateString(blocks: blocks))
@@ -77,15 +77,15 @@ struct BlockDurationPicker: View {
             let years = totalDays / 365
             let remainingDays = totalDays % 365
             let months = remainingDays / 30
-            return months > 0 ? "~\(years)a \(months)m" : "~\(years)a"
+            return months > 0 ? "~\(years)y \(months)mo" : "~\(years)y"
         } else if totalDays >= 30 {
             let months = totalDays / 30
             let days = totalDays % 30
-            return days > 0 ? "~\(months)m \(days)j" : "~\(months)m"
+            return days > 0 ? "~\(months)mo \(days)d" : "~\(months)mo"
         } else if totalHours >= 24 {
             let days = totalHours / 24
             let hours = totalHours % 24
-            return hours > 0 ? "~\(days)j \(hours)h" : "~\(days)j"
+            return hours > 0 ? "~\(days)d \(hours)h" : "~\(days)d"
         } else if totalHours > 0 {
             let mins = totalMinutes % 60
             return mins > 0 ? "~\(totalHours)h \(mins)min" : "~\(totalHours)h"

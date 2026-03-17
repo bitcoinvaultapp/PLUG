@@ -10,19 +10,19 @@ struct SpendManager {
 
     static let dustThreshold: UInt64 = 546
 
-    // MARK: - Tirelire Spend
+    // MARK: - Vault Spend
 
-    /// Build PSBT for spending from a tirelire (CLTV timelock).
+    /// Build PSBT for spending from a vault (CLTV timelock).
     /// Witness stack: [signature, witnessScript]
     /// nLockTime = contract.lockBlockHeight, sequence = 0xFFFFFFFE
-    static func buildTirelireSpendPSBT(
+    static func buildVaultSpendPSBT(
         contract: Contract,
         utxos: [UTXO],
         destinationAddress: String,
         feeRate: Double,
         isTestnet: Bool
     ) throws -> Data {
-        guard contract.type == .tirelire else {
+        guard contract.type == .vault else {
             throw SpendError.invalidContract
         }
         guard let lockHeight = contract.lockBlockHeight else {
@@ -82,23 +82,23 @@ struct SpendManager {
         )
     }
 
-    /// Build witness stack for tirelire spend
-    static func tirelireWitness(signature: Data, witnessScript: Data) -> [Data] {
+    /// Build witness stack for vault spend
+    static func vaultWitness(signature: Data, witnessScript: Data) -> [Data] {
         [signature, witnessScript]
     }
 
-    // MARK: - Heritage Keep-Alive (Owner)
+    // MARK: - Inheritance Keep-Alive (Owner)
 
-    /// Build PSBT for heritage keep-alive (owner resets CSV timer).
+    /// Build PSBT for inheritance keep-alive (owner resets CSV timer).
     /// Witness stack: [signature, 0x01, witnessScript]
-    /// Spends back to SAME heritage address. sequence = 0xFFFFFFFD (RBF enabled).
-    static func buildHeritageKeepAlivePSBT(
+    /// Spends back to SAME inheritance address. sequence = 0xFFFFFFFD (RBF enabled).
+    static func buildInheritanceKeepAlivePSBT(
         contract: Contract,
         utxos: [UTXO],
         feeRate: Double,
         isTestnet: Bool
     ) throws -> Data {
-        guard contract.type == .heritage else {
+        guard contract.type == .inheritance else {
             throw SpendError.invalidContract
         }
         guard let witnessScriptData = Data(hex: contract.script) else {
@@ -151,25 +151,25 @@ struct SpendManager {
         return PSBTBuilder.buildPSBT(inputs: inputs, outputs: outputs, locktime: 0)
     }
 
-    /// Build witness stack for heritage owner keep-alive (or_d primary path)
+    /// Build witness stack for inheritance owner keep-alive (or_d primary path)
     /// The owner signature satisfies pk(@0) directly — OP_IFDUP sees TRUE, skips NOTIF branch
-    static func heritageKeepAliveWitness(signature: Data, witnessScript: Data) -> [Data] {
+    static func inheritanceKeepAliveWitness(signature: Data, witnessScript: Data) -> [Data] {
         [signature, witnessScript]
     }
 
-    // MARK: - Heritage Heir Claim
+    // MARK: - Inheritance Heir Claim
 
-    /// Build PSBT for heritage heir claim.
+    /// Build PSBT for inheritance heir claim.
     /// Witness stack: [signature, 0x00, witnessScript]
     /// sequence = contract.csvBlocks (relative timelock)
-    static func buildHeritageHeirClaimPSBT(
+    static func buildInheritanceHeirClaimPSBT(
         contract: Contract,
         utxos: [UTXO],
         destinationAddress: String,
         feeRate: Double,
         isTestnet: Bool
     ) throws -> Data {
-        guard contract.type == .heritage else {
+        guard contract.type == .inheritance else {
             throw SpendError.invalidContract
         }
         guard let csvBlocks = contract.csvBlocks else {
@@ -226,17 +226,17 @@ struct SpendManager {
         return PSBTBuilder.buildPSBT(inputs: inputs, outputs: outputs, locktime: 0)
     }
 
-    /// Build witness stack for heritage heir claim (or_d fallback path)
+    /// Build witness stack for inheritance heir claim (or_d fallback path)
     /// Empty owner sig (0) causes OP_IFDUP to not dup, OP_NOTIF enters heir branch
-    static func heritageHeirClaimWitness(signature: Data, witnessScript: Data) -> [Data] {
+    static func inheritanceHeirClaimWitness(signature: Data, witnessScript: Data) -> [Data] {
         [signature, Data(), witnessScript]
     }
 
-    // MARK: - Cagnotte Spend (Multisig)
+    // MARK: - Pool Spend (Multisig)
 
-    /// Build PSBT for cagnotte multisig spend (first signer).
+    /// Build PSBT for pool multisig spend (first signer).
     /// Other signers import the PSBT and add their signatures.
-    static func buildCagnotteSpendPSBT(
+    static func buildPoolSpendPSBT(
         contract: Contract,
         utxos: [UTXO],
         destinationAddress: String,
@@ -244,7 +244,7 @@ struct SpendManager {
         feeRate: Double,
         isTestnet: Bool
     ) throws -> Data {
-        guard contract.type == .cagnotte else {
+        guard contract.type == .pool else {
             throw SpendError.invalidContract
         }
         guard let witnessScriptData = Data(hex: contract.script) else {

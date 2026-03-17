@@ -1,7 +1,7 @@
 import SwiftUI
 
-struct TirelireView: View {
-    @StateObject private var vm = TirelireVM()
+struct VaultView: View {
+    @StateObject private var vm = VaultVM()
     @State private var showCreate = false
     @State private var showSpend = false
     @State private var showCreated = false
@@ -13,18 +13,18 @@ struct TirelireView: View {
     var body: some View {
         NavigationStack {
             List {
-                PlugHeader(pageName: "Tirelire")
+                PlugHeader(pageName: "Vault")
                     .listRowInsets(EdgeInsets())
                     .listRowBackground(Color.clear)
                     .listRowSeparator(.hidden)
 
-                // Existing tirelires
+                // Existing vaults
                 if vm.contracts.isEmpty {
                     VStack(spacing: 12) {
                         Image(systemName: "lock.shield")
                             .font(.system(size: 40))
                             .foregroundStyle(.secondary)
-                        Text("No Tirelire")
+                        Text("No Vault")
                             .font(.headline)
                         Text("Lock bitcoins over time")
                             .font(.subheadline)
@@ -34,7 +34,7 @@ struct TirelireView: View {
                     .padding(.vertical, 32)
                 } else {
                     ForEach(vm.contracts) { contract in
-                        tirelireRow(contract)
+                        vaultRow(contract)
                     }
                     .onDelete { indexSet in
                         if let i = indexSet.first {
@@ -96,7 +96,7 @@ struct TirelireView: View {
         }
     }
 
-    private func tirelireRow(_ contract: Contract) -> some View {
+    private func vaultRow(_ contract: Contract) -> some View {
         let funded = vm.fundedAmount(for: contract)
         let target = contract.amount
         let progress = vm.progress(for: contract)
@@ -227,18 +227,18 @@ struct TirelireView: View {
 
     // MARK: - Create Sheet
 
-    private var tirelireLockHeightValid: Bool {
+    private var vaultLockHeightValid: Bool {
         guard let lockHeight = Int(vm.lockBlockHeight) else { return false }
         return lockHeight > vm.currentBlockHeight
     }
 
-    private var tirelirePreviewAddress: String? {
-        guard tirelireLockHeightValid,
+    private var vaultPreviewAddress: String? {
+        guard vaultLockHeightValid,
               let lockHeight = Int(vm.lockBlockHeight),
               let xpubStr = KeychainStore.shared.loadXpub(isTestnet: vm.isTestnet),
               let xpub = ExtendedPublicKey.fromBase58(xpubStr),
               let derivedKey = xpub.derivePath([0, 0]) else { return nil }
-        let script = ScriptBuilder.tirelireScript(locktime: Int64(lockHeight), pubkey: derivedKey.key)
+        let script = ScriptBuilder.vaultScript(locktime: Int64(lockHeight), pubkey: derivedKey.key)
         return script.p2wshAddress(isTestnet: vm.isTestnet)
     }
 
@@ -246,7 +246,7 @@ struct TirelireView: View {
         NavigationStack {
             Form {
                 Section("Name") {
-                    TextField("My Tirelire", text: $vm.name)
+                    TextField("My Vault", text: $vm.name)
                 }
 
                 BlockDurationPicker(
@@ -261,7 +261,7 @@ struct TirelireView: View {
                         .keyboardType(.numberPad)
                 }
 
-                if tirelireLockHeightValid, let lockHeight = Int(vm.lockBlockHeight) {
+                if vaultLockHeightValid, let lockHeight = Int(vm.lockBlockHeight) {
                     Section("Information") {
                         Text("The sats will be locked until block \(lockHeight). No one will be able to spend them before then.")
                             .font(.caption)
@@ -269,7 +269,7 @@ struct TirelireView: View {
                     }
                 }
 
-                if let address = tirelirePreviewAddress {
+                if let address = vaultPreviewAddress {
                     Section("P2WSH Address (preview)") {
                         Text(address)
                             .font(.system(.caption2, design: .monospaced))
@@ -285,7 +285,7 @@ struct TirelireView: View {
                 }
 
                 Section {
-                    Button("Create Tirelire") {
+                    Button("Create Vault") {
                         Task {
                             await vm.create()
                             if vm.createdContract != nil {
@@ -293,10 +293,10 @@ struct TirelireView: View {
                             }
                         }
                     }
-                    .disabled(vm.name.isEmpty || vm.lockBlockHeight.isEmpty || vm.amount.isEmpty || !tirelireLockHeightValid)
+                    .disabled(vm.name.isEmpty || vm.lockBlockHeight.isEmpty || vm.amount.isEmpty || !vaultLockHeightValid)
                 }
             }
-            .navigationTitle("New Tirelire")
+            .navigationTitle("New Vault")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -434,7 +434,7 @@ struct TirelireView: View {
                     } else {
                         Section {
                             Button("Spend") {
-                                Task { await vm.spendTirelire() }
+                                Task { await vm.spendVault() }
                             }
                             .disabled(vm.spendAddress.isEmpty || vm.isSpending || vm.netSpendAmount == 0)
 
@@ -450,7 +450,7 @@ struct TirelireView: View {
                     }
                 }
             }
-            .navigationTitle("Spend Tirelire")
+            .navigationTitle("Spend Vault")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

@@ -23,19 +23,19 @@ final class HomeVM: ObservableObject {
     var walletBalance: UInt64 { totalBalance }
 
     var vaultsBalance: UInt64 {
-        tirelires.reduce(0) { $0 + $1.amount }
+        vaults.reduce(0) { $0 + $1.amount }
     }
 
-    var heritageBalance: UInt64 {
-        heritages.reduce(0) { $0 + $1.amount }
+    var inheritanceBalance: UInt64 {
+        inheritances.reduce(0) { $0 + $1.amount }
     }
 
     var poolsBalance: UInt64 {
-        cagnottes.reduce(0) { $0 + $1.amount }
+        pools.reduce(0) { $0 + $1.amount }
     }
 
     var grandTotal: UInt64 {
-        walletBalance + vaultsBalance + heritageBalance + poolsBalance
+        walletBalance + vaultsBalance + inheritanceBalance + poolsBalance
     }
 
     var balanceBTC: Double {
@@ -58,7 +58,7 @@ final class HomeVM: ObservableObject {
         return [
             Distribution(label: "Wallet", percent: Double(walletBalance) / total * 100, color: "wallet"),
             Distribution(label: "Vaults", percent: Double(vaultsBalance) / total * 100, color: "vault"),
-            Distribution(label: "Heritage", percent: Double(heritageBalance) / total * 100, color: "heritage"),
+            Distribution(label: "Inheritance", percent: Double(inheritanceBalance) / total * 100, color: "inheritance"),
             Distribution(label: "Pools", percent: Double(poolsBalance) / total * 100, color: "pool"),
         ].filter { $0.percent > 0 }
     }
@@ -69,20 +69,20 @@ final class HomeVM: ObservableObject {
         ContractStore.shared.contractsForNetwork(isTestnet: isTestnet)
     }
 
-    var tirelires: [Contract] {
-        activeContracts.filter { $0.type == .tirelire }
+    var vaults: [Contract] {
+        activeContracts.filter { $0.type == .vault }
     }
 
-    var heritages: [Contract] {
-        activeContracts.filter { $0.type == .heritage }
+    var inheritances: [Contract] {
+        activeContracts.filter { $0.type == .inheritance }
     }
 
-    var cagnottes: [Contract] {
-        activeContracts.filter { $0.type == .cagnotte }
+    var pools: [Contract] {
+        activeContracts.filter { $0.type == .pool }
     }
 
     var readyVaultsCount: Int {
-        tirelires.filter { vault in
+        vaults.filter { vault in
             guard let lh = vault.lockBlockHeight else { return false }
             return blockHeight >= lh
         }.count
@@ -103,7 +103,7 @@ final class HomeVM: ObservableObject {
         return blockHeight >= lh
     }
 
-    func heritageWindow(_ contract: Contract) -> String {
+    func inheritanceWindow(_ contract: Contract) -> String {
         guard let csv = contract.csvBlocks else { return "" }
         let hours = csv * 10 / 60
         let days = hours / 24
@@ -168,7 +168,7 @@ final class HomeVM: ObservableObject {
 
     private func updateAlerts() {
         var newAlerts: [DashboardAlert] = []
-        for contract in tirelires {
+        for contract in vaults {
             if let lockHeight = contract.lockBlockHeight, blockHeight >= lockHeight {
                 newAlerts.append(.vaultUnlocked(contractName: contract.name))
             }

@@ -879,7 +879,7 @@ struct LedgerSigningV2 {
 
             // TODO: Add NON_WITNESS_UTXO (key 0x00) with the full previous transaction
             // for BIP-174 compliance. Ledger shows a warning without it for segwit v0.
-            // Required for P2WSH contract spending (Tirelire, Heritage, etc.)
+            // Required for P2WSH contract spending (Vault, Inheritance, etc.)
 
             // WITNESS_UTXO (0x01) — CRITICAL: Ledger needs this to validate input amount
             // Format: value(8 bytes LE) + scriptPubKey(varint_len + script)

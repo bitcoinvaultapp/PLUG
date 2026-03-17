@@ -12,9 +12,9 @@ PLUG is a Bitcoin programmability tool — not a wallet. It lets you create comp
 
 | Contract | Type | Description |
 |----------|------|-------------|
-| **Tirelire** | `CLTV` | Time-locked vault — funds locked until a specific block height |
-| **Heritage** | `CSV` | Inheritance — owner spends anytime, heir spends after relative delay |
-| **Cagnotte** | `M-of-N` | Multisig pool — M signatures required out of N participants |
+| **Vault** | `CLTV` | Time-locked vault — funds locked until a specific block height |
+| **Inheritance** | `CSV` | Inheritance — owner spends anytime, heir spends after relative delay |
+| **Pool** | `M-of-N` | Multisig pool — M signatures required out of N participants |
 | **HTLC** | `SHA256` | Hash Time-Lock — atomic swaps and conditional payments |
 | **Channel** | `2-of-2 + CLTV` | Payment channel with unilateral refund timeout |
 

@@ -2,7 +2,7 @@ import Foundation
 import Combine
 
 // MARK: - Contract Store
-// CRUD for all contract types (tirelires, heritages, cagnottes)
+// CRUD for all contract types (vaults, inheritances, pools)
 // Persisted in Keychain
 
 final class ContractStore: ObservableObject {
@@ -42,16 +42,16 @@ final class ContractStore: ObservableObject {
 
     // MARK: - Filtered access
 
-    var tirelires: [Contract] {
-        contracts.filter { $0.type == .tirelire }
+    var vaults: [Contract] {
+        contracts.filter { $0.type == .vault }
     }
 
-    var heritages: [Contract] {
-        contracts.filter { $0.type == .heritage }
+    var inheritances: [Contract] {
+        contracts.filter { $0.type == .inheritance }
     }
 
-    var cagnottes: [Contract] {
-        contracts.filter { $0.type == .cagnotte }
+    var pools: [Contract] {
+        contracts.filter { $0.type == .pool }
     }
 
     var htlcs: [Contract] {

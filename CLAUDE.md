@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 PLUG is a **Bitcoin programmability tool** — not a wallet. It lets users create complex smart contract transactions on the Bitcoin network ("code money"). The **Ledger hardware wallet is always the signer** — users keep custody of their funds.
 
-It supports standard P2WPKH transactions and advanced Bitcoin smart contracts (P2WSH): time-locked vaults (Tirelire), inheritance (Heritage), multisig pools (Cagnotte), HTLCs, and payment channels.
+It supports standard P2WPKH transactions and advanced Bitcoin smart contracts (P2WSH): time-locked vaults (Vault), inheritance (Inheritance), multisig pools (Pool), HTLCs, and payment channels.
 
 The repo also contains `app-bitcoin-new/`, the Ledger device-side Bitcoin application (C, for Nano X/S+/Stax/Flex/Apex P), and `bitcoinbook/`, a reference copy of "Mastering Bitcoin" (AsciiDoc).
 
@@ -82,7 +82,7 @@ print(f'Fingerprint: {fpr.hex()}, xpub: {xpub}')
 - **Core/Network/** — `MempoolAPI` (mempool.space REST + TLS pinning), `NetworkConfig` (testnet/mainnet runtime switching), `WebSocketManager` (real-time blocks/price)
 - **Core/Storage/** — `KeychainStore` (xpubs, master fingerprint, coin_type — all keys in `KeychainKey` enum), `ContractStore`, `FrozenUTXOStore`, `TxLabelStore`, `AddressBook`, `BIP329Labels`, `BackupManager`
 - **Views/** — Shared components: `PlugHeader` (branded "PLUG. PageName" header with testnet badge, connect status, settings), `BlockDurationPicker` (human-friendly duration with calendar dates), `ContractCreatedSheet` (post-creation QR + next steps + export)
-- **ViewModels/** — One per feature: `WalletVM` (send flow: build->sign->broadcast, xpub cache validation), `HomeVM` (dashboard aggregation), `TirelireVM`, `HeritageVM`, `CagnotteVM`, `HTLCVM`, `ChannelVM`, etc.
+- **ViewModels/** — One per feature: `WalletVM` (send flow: build->sign->broadcast, xpub cache validation), `HomeVM` (dashboard aggregation), `VaultVM`, `InheritanceVM`, `PoolVM`, `HTLCVM`, `ChannelVM`, etc.
 
 ### Ledger App (app-bitcoin-new/)
 
@@ -110,7 +110,7 @@ Protocol specification: `doc/bitcoin.md` (commands), `doc/wallet.md` (wallet pol
 - **Master fingerprint from device**: Always fetched via GET_MASTER_FINGERPRINT (INS=0x05), never derived from xpub parent fingerprint (which is different from the master fingerprint)
 - **Keychain persistence**: iOS keychain survives app deletion. `PLUGApp.init()` runs versioned migration (`keychain_version`) to clear stale data when the Ledger integration changes.
 - **xpub cache validation**: `WalletVM.loadWallet()` compares stored xpub string with keychain to detect changes (no EC derivation needed for the check)
-- **Safety features**: Dust output warnings (< 546 sats), absurd fee alerts (> 100 sat/vB), fee sniping defense (nLockTime), duplicate key check (Cagnotte), transaction pinning warning, HTLC preimage keychain backup, delete confirmation with balance warning
+- **Safety features**: Dust output warnings (< 546 sats), absurd fee alerts (> 100 sat/vB), fee sniping defense (nLockTime), duplicate key check (Pool), transaction pinning warning, HTLC preimage keychain backup, delete confirmation with balance warning
 - **RBF**: Standard sends use sequence 0xFFFFFFFD (BIP125 RBF); timelock spends use 0xFFFFFFFE to enforce nLockTime
 - **Network**: All blockchain data comes from mempool.space API with certificate pinning
 
@@ -118,13 +118,13 @@ Protocol specification: `doc/bitcoin.md` (commands), `doc/wallet.md` (wallet pol
 
 **CRITICAL**: All scripts must match the Ledger's miniscript compiler output exactly. Different byte order = different P2WSH address = 0x6A80 signing failure.
 
-### Tirelire (CLTV time-lock vault)
+### Vault (CLTV time-lock vault)
 - **Descriptor**: `wsh(and_v(v:pk(@0/**),after(N)))`
 - **Script**: `<KEY> OP_CHECKSIGVERIFY <N> OP_CHECKLOCKTIMEVERIFY`
 - **Keys**: 1 (internal only)
 - **Witness**: `[signature, witnessScript]`
 
-### Heritage (CSV inheritance)
+### Inheritance (CSV inheritance)
 - **Descriptor**: `wsh(or_d(pk(@0/**),and_v(v:pk(@1/**),older(N))))`
 - **Script**: `<OWNER> OP_CHECKSIG OP_IFDUP OP_NOTIF <HEIR> OP_CHECKSIGVERIFY <N> OP_CSV OP_ENDIF`
 - **Keys**: 2 (@0=owner internal, @1=heir external xpub)
@@ -138,7 +138,7 @@ Protocol specification: `doc/bitcoin.md` (commands), `doc/wallet.md` (wallet pol
 - **Claim witness**: `[preimage, signature, witnessScript]`
 - **Refund witness**: `[signature, <empty>, witnessScript]`
 
-### Cagnotte (M-of-N multisig)
+### Pool (M-of-N multisig)
 - **Descriptor**: `wsh(sortedmulti(M,@0/**,@1/**,...,@(N-1)/**))`
 - **Script**: `<M> <K1> ... <KN> <N> OP_CHECKMULTISIG` (keys BIP67 sorted)
 - **Keys**: N (one internal with origin, rest external xpubs)
@@ -229,7 +229,7 @@ version(0x02) + name_len + name + varint(desc_len) + SHA256(descriptor) + varint
 - **Dust output warning**: Blocks transactions where output < 546 sats
 - **Absurd fee warning**: Orange alert when fee rate > 100 sat/vB
 - **Fee sniping defense**: nLockTime = currentBlockHeight on standard sends
-- **Duplicate key check**: Cagnotte rejects same pubkey used twice
+- **Duplicate key check**: Pool rejects same pubkey used twice
 - **Transaction pinning warning**: Warns/blocks when > 5/20 unconfirmed UTXOs
 - **HTLC preimage backup**: Auto-saved to keychain, recoverable with "Reveal" button
 - **Delete confirmation**: Warns about funded balance before contract deletion

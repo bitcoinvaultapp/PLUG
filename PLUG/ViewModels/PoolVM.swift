@@ -1,7 +1,7 @@
 import Foundation
 
 @MainActor
-final class CagnotteVM: ObservableObject {
+final class PoolVM: ObservableObject {
 
     @Published var name: String = ""
     @Published var m: String = "2" // threshold
@@ -24,15 +24,15 @@ final class CagnotteVM: ObservableObject {
 
     var isTestnet: Bool { NetworkConfig.shared.isTestnet }
 
-    var cagnottes: [Contract] {
-        ContractStore.shared.cagnottes.filter { $0.isTestnet == isTestnet }
+    var pools: [Contract] {
+        ContractStore.shared.pools.filter { $0.isTestnet == isTestnet }
     }
 
     func refresh() async {
         isLoading = true
         do {
             currentBlockHeight = try await MempoolAPI.shared.getBlockHeight()
-            contracts = cagnottes
+            contracts = pools
             let result = await ContractSpendCoordinator.refreshBalances(
                 contracts: contracts, blockHeight: currentBlockHeight
             )
@@ -64,7 +64,7 @@ final class CagnotteVM: ObservableObject {
         pubkeys.remove(at: index)
     }
 
-    /// Create a new cagnotte (multisig)
+    /// Create a new pool (multisig)
     func create() async {
         guard !isLoading else { return }
         guard !name.isEmpty,
@@ -80,11 +80,11 @@ final class CagnotteVM: ObservableObject {
         let pkInputs = pubkeys
         let isTest = isTestnet
 
-        struct CagnotteResult {
+        struct PoolResult {
             let scriptData: Data; let witnessHash: Data; let address: String
             let keys: [Data]; let errorMsg: String?
         }
-        let parseResult: CagnotteResult = await Task.detached(priority: .userInitiated) {
+        let parseResult: PoolResult = await Task.detached(priority: .userInitiated) {
             var parsedKeys: [Data] = []
             for pkStr in pkInputs {
                 let trimmed = pkStr.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -95,24 +95,24 @@ final class CagnotteVM: ObservableObject {
                 } else if let hexData = Data(hex: trimmed), hexData.count == 33 {
                     parsedKeys.append(hexData)
                 } else {
-                    return CagnotteResult(scriptData: Data(), witnessHash: Data(), address: "", keys: [], errorMsg: "Invalid key: \(String(trimmed.prefix(16)))...")
+                    return PoolResult(scriptData: Data(), witnessHash: Data(), address: "", keys: [], errorMsg: "Invalid key: \(String(trimmed.prefix(16)))...")
                 }
             }
 
             // Check for duplicate keys
             let uniqueKeys = Set(parsedKeys)
             if uniqueKeys.count != parsedKeys.count {
-                return CagnotteResult(scriptData: Data(), witnessHash: Data(), address: "", keys: [], errorMsg: "Public keys must all be different. Duplicate keys detected.")
+                return PoolResult(scriptData: Data(), witnessHash: Data(), address: "", keys: [], errorMsg: "Public keys must all be different. Duplicate keys detected.")
             }
 
             guard mInt <= parsedKeys.count else {
-                return CagnotteResult(scriptData: Data(), witnessHash: Data(), address: "", keys: [], errorMsg: "M (\(mInt)) > N (\(parsedKeys.count))")
+                return PoolResult(scriptData: Data(), witnessHash: Data(), address: "", keys: [], errorMsg: "M (\(mInt)) > N (\(parsedKeys.count))")
             }
             let script = ScriptBuilder.multisigScript(m: mInt, pubkeys: parsedKeys)
             guard let address = script.p2wshAddress(isTestnet: isTest) else {
-                return CagnotteResult(scriptData: Data(), witnessHash: Data(), address: "", keys: [], errorMsg: "Unable to generate address")
+                return PoolResult(scriptData: Data(), witnessHash: Data(), address: "", keys: [], errorMsg: "Unable to generate address")
             }
-            return CagnotteResult(
+            return PoolResult(
                 scriptData: script.script, witnessHash: script.witnessScriptHash,
                 address: address, keys: parsedKeys, errorMsg: nil
             )
@@ -124,7 +124,7 @@ final class CagnotteVM: ObservableObject {
             return
         }
 
-        var contract = Contract.newCagnotte(
+        var contract = Contract.newPool(
             name: name,
             script: parseResult.scriptData,
             witnessScript: parseResult.witnessHash,
@@ -146,7 +146,7 @@ final class CagnotteVM: ObservableObject {
 
         ContractStore.shared.add(contract)
         createdContract = contract
-        contracts = cagnottes
+        contracts = pools
 
         // Reset
         self.name = ""
@@ -171,6 +171,6 @@ final class CagnotteVM: ObservableObject {
 
     func delete(id: String) {
         ContractStore.shared.delete(id: id)
-        contracts = cagnottes
+        contracts = pools
     }
 }

@@ -7,7 +7,7 @@ extension Color {
     static let cardDark = Color(red: 0.11, green: 0.11, blue: 0.16)
     static let btcOrange = Color(red: 0.97, green: 0.58, blue: 0.10)
     static let vaultYellow = Color(red: 0.93, green: 0.79, blue: 0.15)
-    static let heritagePurple = Color(red: 0.65, green: 0.40, blue: 0.90)
+    static let inheritancePurple = Color(red: 0.65, green: 0.40, blue: 0.90)
     static let poolTeal = Color(red: 0.20, green: 0.82, blue: 0.73)
     static let accentGreen = Color(red: 0.30, green: 0.85, blue: 0.40)
     static let dimText = Color(red: 0.45, green: 0.45, blue: 0.52)
@@ -165,48 +165,48 @@ struct HomeView: View {
                 .font(.headline)
 
             // Vaults card
-            if !vm.tirelires.isEmpty {
+            if !vm.vaults.isEmpty {
                 contractTypeCard(
                     icon: "lock.fill",
                     iconBg: Color.vaultYellow,
                     title: "Vaults",
-                    count: vm.tirelires.count,
+                    count: vm.vaults.count,
                     totalSats: vm.vaultsBalance,
                     badges: vaultBadges
                 ) {
-                    ForEach(vm.tirelires) { vault in
+                    ForEach(vm.vaults) { vault in
                         vaultRow(vault)
                     }
                 }
             }
 
-            // Heritage card
-            if !vm.heritages.isEmpty {
+            // Inheritance card
+            if !vm.inheritances.isEmpty {
                 contractTypeCard(
                     icon: "shield.fill",
-                    iconBg: Color.heritagePurple,
-                    title: "Heritage",
-                    count: vm.heritages.count,
-                    totalSats: vm.heritageBalance,
-                    badges: [("CSV", Color.heritagePurple)]
+                    iconBg: Color.inheritancePurple,
+                    title: "Inheritance",
+                    count: vm.inheritances.count,
+                    totalSats: vm.inheritanceBalance,
+                    badges: [("CSV", Color.inheritancePurple)]
                 ) {
-                    ForEach(vm.heritages) { heritage in
-                        heritageRow(heritage)
+                    ForEach(vm.inheritances) { inheritance in
+                        inheritanceRow(inheritance)
                     }
                 }
             }
 
             // Pools card
-            if !vm.cagnottes.isEmpty {
+            if !vm.pools.isEmpty {
                 contractTypeCard(
                     icon: "person.2.fill",
                     iconBg: Color.poolTeal,
                     title: "Pools",
-                    count: vm.cagnottes.count,
+                    count: vm.pools.count,
                     totalSats: vm.poolsBalance,
                     badges: [("MULTI", Color.poolTeal)]
                 ) {
-                    ForEach(vm.cagnottes) { pool in
+                    ForEach(vm.pools) { pool in
                         poolRow(pool)
                     }
                 }
@@ -313,14 +313,14 @@ struct HomeView: View {
         .padding(.vertical, 3)
     }
 
-    // MARK: - Heritage row
+    // MARK: - Inheritance row
 
-    private func heritageRow(_ heritage: Contract) -> some View {
+    private func inheritanceRow(_ inheritance: Contract) -> some View {
         HStack {
             Circle()
                 .fill(Color.accentGreen)
                 .frame(width: 6, height: 6)
-            Text(heritage.name)
+            Text(inheritance.name)
                 .font(.system(size: 13, weight: .medium))
             Spacer()
             HStack(spacing: 4) {
@@ -328,7 +328,7 @@ struct HomeView: View {
                     .foregroundStyle(Color.accentGreen)
                 Text("\u{00B7}")
                     .foregroundStyle(.secondary)
-                Text(vm.heritageWindow(heritage))
+                Text(vm.inheritanceWindow(inheritance))
                     .foregroundStyle(Color.accentGreen)
             }
             .font(.system(size: 11, weight: .medium, design: .monospaced))

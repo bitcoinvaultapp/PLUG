@@ -338,7 +338,7 @@ struct ChannelView: View {
                     value: $vm.timeoutBlocks,
                     currentBlockHeight: vm.currentBlockHeight,
                     mode: .absoluteCLTV,
-                    presets: [("1j", 144), ("1sem", 1008), ("1m", 4320)]
+                    presets: [("1d", 144), ("1w", 1008), ("1mo", 4320)]
                 )
 
                 Section("Amount (sats)") {
@@ -501,7 +501,7 @@ struct ChannelView: View {
                         Text(contract.name).font(.headline)
                         Text("\(contract.amount) sats").font(.subheadline.monospacedDigit())
                         if let timeout = contract.timeoutBlocks {
-                            Text("Timeout: bloc \(timeout)")
+                            Text("Timeout: block \(timeout)")
                                 .font(.caption).foregroundStyle(.secondary)
                         }
                     }

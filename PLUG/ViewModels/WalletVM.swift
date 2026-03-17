@@ -149,6 +149,34 @@ final class WalletVM: ObservableObject {
 
     // MARK: - Load wallet data
 
+    private var cancellables = Set<AnyCancellable>()
+
+    init() {
+        // Listen for xpub changes (new Ledger connected, different device, etc.)
+        NotificationCenter.default.publisher(for: .ledgerXpubChanged)
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] _ in
+                self?.invalidateAndReload()
+            }
+            .store(in: &cancellables)
+    }
+
+    /// Full reset: clear all cached data and reload from scratch.
+    /// Called when a new Ledger is connected or xpub changes.
+    func invalidateAndReload() {
+        addresses.removeAll()
+        utxos.removeAll()
+        transactions.removeAll()
+        totalBalance = 0
+        currentReceiveAddress = ""
+        currentReceiveIndex = 0
+        addressStatuses.removeAll()
+        cachedXpubString = nil
+        error = nil
+        print("[WalletVM] Full wallet reset — xpub changed, will rescan")
+        Task { await loadWallet() }
+    }
+
     /// Force re-derivation of addresses (call after Ledger reconnect or xpub change)
     func invalidateAddresses() {
         addresses.removeAll()

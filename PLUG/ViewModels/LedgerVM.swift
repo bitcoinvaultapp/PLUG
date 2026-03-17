@@ -1,6 +1,10 @@
 import Foundation
 import Combine
 
+extension Notification.Name {
+    static let ledgerXpubChanged = Notification.Name("ledgerXpubChanged")
+}
+
 @MainActor
 final class LedgerVM: ObservableObject {
 
@@ -50,7 +54,9 @@ final class LedgerVM: ObservableObject {
         LedgerManager.shared.disconnect()
     }
 
-    /// Fetch xpub from connected Ledger and save to Keychain
+    /// Fetch xpub from connected Ledger and save to Keychain.
+    /// If the xpub changed (different Ledger or different app), clears all cached
+    /// wallet data to prevent showing stale UTXOs from another device.
     func fetchAndSaveXpub() async {
         isLoading = true
         error = nil
@@ -60,8 +66,19 @@ final class LedgerVM: ObservableObject {
             let path = LedgerProtocol.defaultPath(isTestnet: isTestnet)
             let result = try await LedgerManager.shared.getXpub(path: path, display: true)
 
+            // Check if xpub changed — if so, wipe cached wallet data
+            let previousXpub = KeychainStore.shared.loadXpub(isTestnet: isTestnet)
+            if previousXpub != nil && previousXpub != result.xpub {
+                print("[LedgerVM] xpub changed — clearing stale wallet cache")
+                // Post notification so WalletVM can invalidate its cache
+                NotificationCenter.default.post(name: .ledgerXpubChanged, object: nil)
+            }
+
             KeychainStore.shared.saveXpub(result.xpub, isTestnet: isTestnet)
             xpubResult = result.xpub
+
+            // Always notify wallet to reload with fresh data
+            NotificationCenter.default.post(name: .ledgerXpubChanged, object: nil)
 
         } catch {
             self.error = error.localizedDescription

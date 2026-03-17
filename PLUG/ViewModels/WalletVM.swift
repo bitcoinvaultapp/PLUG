@@ -62,7 +62,6 @@ final class WalletVM: ObservableObject {
     /// Fresh = no on-chain activity. Funded = has UTXOs. Used = appeared as input (spent from).
     private func updateAddressStatuses() {
         var statuses: [String: WalletAddress.Status] = [:]
-        let receiving = addresses.filter { !$0.isChange }
 
         // Collect all addresses that appeared as inputs (spent from → pubkey exposed)
         var spentFromAddresses = Set<String>()
@@ -74,21 +73,22 @@ final class WalletVM: ObservableObject {
             }
         }
 
-        for addr in receiving {
+        // Track ALL addresses (receiving + change)
+        for addr in addresses {
             let hasUtxos = utxos.contains { $0.address == addr.address }
             let wasSpentFrom = spentFromAddresses.contains(addr.address)
             let receivedAnything = transactions.contains { tx in
                 tx.vout.contains { $0.scriptpubkeyAddress == addr.address }
             }
 
-            if wasSpentFrom && !hasUtxos {
-                statuses[addr.address] = .used  // Spent from, no remaining UTXOs → retired
+            if wasSpentFrom {
+                statuses[addr.address] = .used   // Pubkey exposed — never reuse
             } else if hasUtxos {
-                statuses[addr.address] = .funded // Has UTXOs
+                statuses[addr.address] = .funded  // Has UTXOs, not yet spent from
             } else if receivedAnything {
-                statuses[addr.address] = .used   // Received before but 0 balance → used up
+                statuses[addr.address] = .used    // Received before but 0 balance
             } else {
-                statuses[addr.address] = .fresh  // Never seen on-chain
+                statuses[addr.address] = .fresh   // Never seen on-chain
             }
         }
 
@@ -399,6 +399,46 @@ final class WalletVM: ObservableObject {
         }
     }
 
+    // MARK: - Change address rotation
+
+    /// Find the next fresh (unused) change address. Never reuse a change address
+    /// that has been spent from — the pubkey is already exposed on-chain.
+    private func nextFreshChangeAddress() -> WalletAddress? {
+        let changeAddresses = addresses.filter { $0.isChange }.sorted { $0.index < $1.index }
+
+        // Find first change address with no on-chain activity
+        for addr in changeAddresses {
+            let hasUtxos = utxos.contains { $0.address == addr.address }
+            let wasUsed = transactions.contains { tx in
+                // Check if this address appeared as an input (spent from)
+                tx.vin.contains { $0.prevout?.scriptpubkeyAddress == addr.address }
+            }
+            let receivedAnything = transactions.contains { tx in
+                tx.vout.contains { $0.scriptpubkeyAddress == addr.address }
+            }
+
+            // Fresh = never seen on-chain at all
+            if !hasUtxos && !wasUsed && !receivedAnything {
+                return addr
+            }
+        }
+
+        // All change addresses used — derive the next one
+        let nextIndex = (changeAddresses.last?.index ?? 0) + 1
+        guard let xpub = xpub else { return changeAddresses.first }
+
+        let derived = AddressDerivation.deriveAddresses(
+            xpub: xpub, change: 1, startIndex: nextIndex, count: 1, isTestnet: isTestnet
+        )
+        if let newAddr = derived.first {
+            let walletAddr = WalletAddress(index: newAddr.index, address: newAddr.address, publicKey: newAddr.publicKey.hex, isChange: true)
+            addresses.append(walletAddr)
+            return walletAddr
+        }
+
+        return changeAddresses.first // fallback
+    }
+
     // MARK: - Send preview
 
     func previewSend() {
@@ -477,10 +517,9 @@ final class WalletVM: ObservableObject {
             scriptPubKey: destScript
         ))
 
-        // Change output
+        // Change output — always use a FRESH change address (never reuse)
         if preview.hasChange {
-            // Get change address
-            let changeAddr = addresses.first { $0.isChange }
+            let changeAddr = nextFreshChangeAddress()
             if let addr = changeAddr,
                let changeScript = PSBTBuilder.scriptPubKeyFromAddress(addr.address, isTestnet: isTestnet) {
                 outputs.append(PSBTBuilder.TxOutput(

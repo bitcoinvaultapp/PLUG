@@ -35,10 +35,25 @@ final class DemoMode: ObservableObject {
 
         // Force testnet
         NetworkConfig.shared.isTestnet = true
+
+        // Notify wallet to reload with demo xpub
+        NotificationCenter.default.post(name: .ledgerXpubChanged, object: nil)
     }
 
     func deactivate() {
         isActive = false
+
+        // Remove demo xpub from Keychain to prevent stale data mixing
+        // with real Ledger data. The real xpub will be re-injected on
+        // next Ledger connection.
+        let currentXpub = KeychainStore.shared.loadXpub(isTestnet: true)
+        if currentXpub == Self.testXpub {
+            KeychainStore.shared.deleteXpub(isTestnet: true)
+            print("[DemoMode] Removed demo xpub from Keychain")
+        }
+
+        // Notify wallet to clear stale data
+        NotificationCenter.default.post(name: .ledgerXpubChanged, object: nil)
     }
 
     /// Handle APDU in demo mode (simulate Ledger responses)

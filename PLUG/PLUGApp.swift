@@ -16,15 +16,14 @@ struct PLUGApp: App {
 
         // Clear stale keychain data when Ledger integration is updated
         // iOS keychain persists across app deletion, causing address mismatches
+        // v3: Clear ALL keychain data — removes phantom xpub from demo mode
+        // and any stale data from previous sessions. iOS keychain persists
+        // across app deletion, so this is the only way to guarantee clean state.
         let keychainVersion = UserDefaults.standard.integer(forKey: "keychain_version")
-        if keychainVersion < 2 {
-            KeychainStore.shared.deleteXpub(isTestnet: true)
-            KeychainStore.shared.deleteXpub(isTestnet: false)
-            KeychainStore.shared.delete(forKey: KeychainStore.KeychainKey.ledgerMasterFingerprint.rawValue)
-            KeychainStore.shared.delete(forKey: KeychainStore.KeychainKey.ledgerOriginalXpub.rawValue)
-            KeychainStore.shared.delete(forKey: KeychainStore.KeychainKey.ledgerCoinType.rawValue)
-            UserDefaults.standard.set(2, forKey: "keychain_version")
-            print("[PLUG] Cleared stale keychain data (v2 migration)")
+        if keychainVersion < 3 {
+            KeychainStore.shared.clearAll()
+            UserDefaults.standard.set(3, forKey: "keychain_version")
+            print("[PLUG] Cleared ALL keychain data (v3 migration — demo mode removal)")
         }
     }
 

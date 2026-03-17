@@ -38,8 +38,11 @@ final class WalletVM: ObservableObject {
     // Receive
     @Published var currentReceiveAddress: String = ""
     @Published var currentReceiveIndex: UInt32 = 0
-    /// Max address index the user can pick (gap limit)
-    let maxAddressIndex: UInt32 = 19
+    /// Max address index the user can pick (derived from scan)
+    var maxAddressIndex: UInt32 {
+        let maxScanned = addresses.filter { !$0.isChange }.map { $0.index }.max() ?? 19
+        return max(maxScanned, 19)
+    }
 
     // Address status tracking (privacy hygiene)
     /// Status for each address: fresh, funded, or used (spent from)
@@ -188,51 +191,85 @@ final class WalletVM: ObservableObject {
         }
         cachedXpubString = currentXpubStr
 
-        // Derive addresses off main thread (EC arithmetic is CPU-heavy)
-        // Use 5 addresses for faster loading; scan more on demand
+        // Gap limit scan: derive addresses in batches until we find 20
+        // consecutive unused addresses. This finds all funds regardless of index.
         let isTest = isTestnet
         let xpubCopy = xpub
-        let addrCount: UInt32 = 5
-        let (receiving, change) = await Task.detached(priority: .userInitiated) {
-            let recv = AddressDerivation.deriveAddresses(
-                xpub: xpubCopy, change: 0, startIndex: 0, count: addrCount, isTestnet: isTest
-            )
-            let chg = AddressDerivation.deriveAddresses(
-                xpub: xpubCopy, change: 1, startIndex: 0, count: addrCount, isTestnet: isTest
-            )
-            return (recv, chg)
-        }.value
+        let gapLimit = 20
+        let batchSize: UInt32 = 20
 
-        addresses = receiving.map { WalletAddress(index: $0.index, address: $0.address, publicKey: $0.publicKey.hex, isChange: false) }
-            + change.map { WalletAddress(index: $0.index, address: $0.address, publicKey: $0.publicKey.hex, isChange: true) }
+        var allReceiving: [WalletAddress] = []
+        var allChange: [WalletAddress] = []
+        var allUTXOs: [UTXO] = []
+        var allTxs: [Transaction] = []
 
-        // Set receive address to first unused
-        if let firstUnused = addresses.first(where: { !$0.isChange }) {
-            currentReceiveAddress = firstUnused.address
-            currentReceiveIndex = firstUnused.index
+        // Scan receiving addresses (change=0) with gap limit
+        var consecutiveEmpty = 0
+        var scanIndex: UInt32 = 0
+        print("[WalletVM] Starting gap limit scan (gap=\(gapLimit))...")
+
+        while consecutiveEmpty < gapLimit {
+            // Derive a batch
+            let startIdx = scanIndex
+            let batch = await Task.detached(priority: .userInitiated) {
+                AddressDerivation.deriveAddresses(
+                    xpub: xpubCopy, change: 0, startIndex: startIdx, count: batchSize, isTestnet: isTest
+                )
+            }.value
+
+            // Check each address for on-chain activity
+            for item in batch {
+                let walletAddr = WalletAddress(index: item.index, address: item.address, publicKey: item.publicKey.hex, isChange: false)
+                allReceiving.append(walletAddr)
+
+                do {
+                    let addrUtxos = try await MempoolAPI.shared.getAddressUTXOs(address: item.address)
+                    let addrTxs = try await MempoolAPI.shared.getAddressTransactions(address: item.address)
+
+                    if addrUtxos.isEmpty && addrTxs.isEmpty {
+                        consecutiveEmpty += 1
+                    } else {
+                        consecutiveEmpty = 0
+                        allUTXOs.append(contentsOf: addrUtxos)
+                        allTxs.append(contentsOf: addrTxs)
+                    }
+                } catch {
+                    consecutiveEmpty += 1
+                }
+
+                if consecutiveEmpty >= gapLimit { break }
+            }
+
+            scanIndex += batchSize
+            print("[WalletVM] Scanned up to index #\(scanIndex - 1), gap=\(consecutiveEmpty)")
         }
 
-        // Fetch UTXOs for all addresses (parallel)
-        let addrList = addresses
-        let (allUTXOs, allTxs): ([UTXO], [Transaction]) = await withTaskGroup(of: (utxos: [UTXO], txs: [Transaction]).self) { group in
-            for addr in addrList {
-                group.addTask {
-                    do {
-                        async let u = MempoolAPI.shared.getAddressUTXOs(address: addr.address)
-                        async let t = MempoolAPI.shared.getAddressTransactions(address: addr.address)
-                        return (try await u, try await t)
-                    } catch {
-                        return ([], [])
-                    }
-                }
+        print("[WalletVM] Gap limit reached at index #\(scanIndex). Found \(allReceiving.count) addresses, \(allUTXOs.count) UTXOs")
+
+        // Derive a few change addresses (less critical, typically fewer)
+        let changeBatch = await Task.detached(priority: .userInitiated) {
+            AddressDerivation.deriveAddresses(
+                xpub: xpubCopy, change: 1, startIndex: 0, count: batchSize, isTestnet: isTest
+            )
+        }.value
+        allChange = changeBatch.map { WalletAddress(index: $0.index, address: $0.address, publicKey: $0.publicKey.hex, isChange: true) }
+
+        // Fetch UTXOs for change addresses
+        for addr in allChange {
+            if let changeUtxos = try? await MempoolAPI.shared.getAddressUTXOs(address: addr.address) {
+                allUTXOs.append(contentsOf: changeUtxos)
             }
-            var utxos: [UTXO] = []
-            var txs: [Transaction] = []
-            for await result in group {
-                utxos.append(contentsOf: result.utxos)
-                txs.append(contentsOf: result.txs)
+            if let changeTxs = try? await MempoolAPI.shared.getAddressTransactions(address: addr.address) {
+                allTxs.append(contentsOf: changeTxs)
             }
-            return (utxos, txs)
+        }
+
+        addresses = allReceiving + allChange
+
+        // Set receive address to first unused
+        if let firstUnused = allReceiving.first(where: { !$0.isChange }) {
+            currentReceiveAddress = firstUnused.address
+            currentReceiveIndex = firstUnused.index
         }
 
         // Deduplicate transactions

@@ -304,9 +304,14 @@ final class WalletVM: ObservableObject {
         var seen = Set<String>()
         let dedupedTxs = allTxs.filter { seen.insert($0.txid).inserted }
 
-        utxos = allUTXOs
+        // CRITICAL: Only keep UTXOs on OUR derived addresses.
+        // Prevents phantom UTXOs from demo mode or previous Ledger sessions.
+        let knownAddresses = Set(addresses.map { $0.address })
+        let cleanUTXOs = allUTXOs.filter { knownAddresses.contains($0.address) }
+
+        utxos = cleanUTXOs
         transactions = dedupedTxs.sorted { ($0.status.blockTime ?? Int.max) > ($1.status.blockTime ?? Int.max) }
-        totalBalance = allUTXOs.reduce(0) { $0 + $1.value }
+        totalBalance = cleanUTXOs.reduce(0) { $0 + $1.value }
 
         // Track address lifecycle (fresh / funded / used)
         updateAddressStatuses()
@@ -345,9 +350,14 @@ final class WalletVM: ObservableObject {
 
         var seen = Set<String>()
         let dedupedTxs = allTxs.filter { seen.insert($0.txid).inserted }
-        utxos = allUTXOs
+
+        // Filter: only keep UTXOs on our derived addresses
+        let knownAddresses = Set(addresses.map { $0.address })
+        let cleanUTXOs = allUTXOs.filter { knownAddresses.contains($0.address) }
+
+        utxos = cleanUTXOs
         transactions = dedupedTxs.sorted { ($0.status.blockTime ?? Int.max) > ($1.status.blockTime ?? Int.max) }
-        totalBalance = allUTXOs.reduce(0) { $0 + $1.value }
+        totalBalance = cleanUTXOs.reduce(0) { $0 + $1.value }
 
         // Fetch fee estimates
         if let fees = try? await MempoolAPI.shared.getRecommendedFees() {

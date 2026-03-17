@@ -89,6 +89,53 @@ struct WalletPolicyBuilder {
         )
     }
 
+    // MARK: - Taproot policies (P2TR — BIP341/342)
+
+    /// Taproot key-path only: tr(@0/**)
+    /// Used for simple P2TR sends (no scripts, just Schnorr key-path spend).
+    static func taprootKeyPathPolicy(masterFP: String, keyOrigin: String, xpub: String) -> Policy {
+        Policy(
+            name: "Taproot",
+            descriptorTemplate: "tr(@0/**)",
+            keysInfo: ["[\(masterFP)/\(keyOrigin)]\(xpub)"]
+        )
+    }
+
+    /// Taproot vault: tr(@0/**,and_v(v:pk(@0/**),after(N)))
+    /// Key-path (always available) + script-path (CLTV enforced).
+    static func taprootVaultPolicy(lockBlockHeight: Int, masterFP: String, keyOrigin: String, xpub: String) -> Policy {
+        Policy(
+            name: "TR Vault",
+            descriptorTemplate: "tr(@0/**,and_v(v:pk(@0/**),after(\(lockBlockHeight))))",
+            keysInfo: ["[\(masterFP)/\(keyOrigin)]\(xpub)"]
+        )
+    }
+
+    /// Taproot inheritance: tr(@0/**,{pk(@0/**),and_v(v:pk(@1/**),older(N))})
+    /// Key-path = owner (fast, private). Script tree: owner branch + heir branch.
+    static func taprootInheritancePolicy(csvBlocks: Int, masterFP: String, keyOrigin: String, ownerXpub: String, heirXpub: String) -> Policy {
+        Policy(
+            name: "TR Inheritance",
+            descriptorTemplate: "tr(@0/**,{pk(@0/**),and_v(v:pk(@1/**),older(\(csvBlocks)))})",
+            keysInfo: [
+                "[\(masterFP)/\(keyOrigin)]\(ownerXpub)",
+                heirXpub
+            ]
+        )
+    }
+
+    /// Taproot HTLC: tr(@0/**,{andor(pk(@0/**),sha256(H),and_v(v:pk(@1/**),after(N)))})
+    static func taprootHTLCPolicy(hashLock: String, timeoutBlocks: Int, masterFP: String, keyOrigin: String, receiverXpub: String, senderXpub: String) -> Policy {
+        Policy(
+            name: "TR HTLC",
+            descriptorTemplate: "tr(@0/**,andor(pk(@0/**),sha256(\(hashLock)),and_v(v:pk(@1/**),after(\(timeoutBlocks)))))",
+            keysInfo: [
+                "[\(masterFP)/\(keyOrigin)]\(receiverXpub)",
+                senderXpub
+            ]
+        )
+    }
+
     // MARK: - Channel (2-of-2 + CLTV refund)
     // Miniscript: or_d(multi(2,@0/**,@1/**),and_v(v:pk(@0/**),after(N)))
 
@@ -118,6 +165,13 @@ struct ContractSigner {
         case channelCooperativeClose
         case channelRefund
         case poolSpend
+        // Taproot (P2TR)
+        case taprootKeyPath
+        case taprootVaultSpend
+        case taprootInheritanceOwner
+        case taprootInheritanceHeir
+        case taprootHTLCClaim
+        case taprootHTLCRefund
     }
 
     /// Sign a contract spend via V2 protocol.

@@ -212,6 +212,53 @@ struct Secp256k1 {
         return output
     }
 
+    // MARK: - X-Only Public Key (BIP340 / Taproot)
+
+    /// Extract x-only (32-byte) public key from a 33-byte compressed key.
+    /// Drops the 02/03 prefix byte.
+    static func xOnly(_ compressedKey: Data) -> Data {
+        guard compressedKey.count == 33 else { return compressedKey }
+        return Data(compressedKey[1...])
+    }
+
+    /// Check if a compressed public key has even Y coordinate (prefix 0x02).
+    static func hasEvenY(_ compressedKey: Data) -> Bool {
+        guard compressedKey.count == 33 else { return false }
+        return compressedKey[0] == 0x02
+    }
+
+    /// Lift an x-only (32-byte) key to a full compressed key with even Y (0x02 prefix).
+    /// BIP340 always assumes even Y for x-only keys.
+    static func liftXOnly(_ xOnlyKey: Data) -> Data {
+        guard xOnlyKey.count == 32 else { return xOnlyKey }
+        return Data([0x02]) + xOnlyKey
+    }
+
+    /// Tweak a public key by adding a scalar: P' = P + t*G
+    /// Uses secp256k1_ec_pubkey_tweak_add for constant-time operation.
+    /// Returns the compressed tweaked key and whether the result has even Y.
+    static func tweakAdd(pubkey: Data, tweak: Data) -> (key: Data, evenY: Bool)? {
+        guard pubkey.count == 33, tweak.count == 32 else { return nil }
+
+        var pk = secp256k1_pubkey()
+        let parseOk = pubkey.withUnsafeBytes {
+            secp256k1_ec_pubkey_parse(secp256k1Ctx, &pk, $0.baseAddress!.assumingMemoryBound(to: UInt8.self), 33)
+        }
+        guard parseOk == 1 else { return nil }
+
+        let tweakOk = tweak.withUnsafeBytes {
+            secp256k1_ec_pubkey_tweak_add(secp256k1Ctx, &pk, $0.baseAddress!.assumingMemoryBound(to: UInt8.self))
+        }
+        guard tweakOk == 1 else { return nil }
+
+        var output = Data(count: 33)
+        var outputLen = 33
+        output.withUnsafeMutableBytes {
+            secp256k1_ec_pubkey_serialize(secp256k1Ctx, $0.baseAddress!.assumingMemoryBound(to: UInt8.self), &outputLen, &pk, UInt32(SECP256K1_EC_COMPRESSED))
+        }
+        return (output, output[0] == 0x02)
+    }
+
     // MARK: - Private
 
     private static func scalarMultiplyGenerator(_ k: UInt256) -> Point {

@@ -431,4 +431,193 @@ final class BitcoinTests: XCTestCase {
         XCTAssertNotNil(nFromHex)
         XCTAssertEqual(nFromHex!, Secp256k1.n)
     }
+
+    // MARK: - 10. Taproot (P2TR / BIP340/341) Tests
+
+    func testXOnlyKey() {
+        let compressed = Data(hex: "0320b911c22be58f73e2acb9ca493243aeed6fdb27fe92b31b2d787dd4c9e7c0f8")!
+        let xOnly = Secp256k1.xOnly(compressed)
+        XCTAssertEqual(xOnly.count, 32)
+        XCTAssertEqual(xOnly.hex, "20b911c22be58f73e2acb9ca493243aeed6fdb27fe92b31b2d787dd4c9e7c0f8")
+    }
+
+    func testLiftXOnly() {
+        let xOnly = Data(hex: "20b911c22be58f73e2acb9ca493243aeed6fdb27fe92b31b2d787dd4c9e7c0f8")!
+        let full = Secp256k1.liftXOnly(xOnly)
+        XCTAssertEqual(full.count, 33)
+        XCTAssertEqual(full[0], 0x02, "Lifted x-only key should have 0x02 prefix (even Y)")
+    }
+
+    func testHasEvenY() {
+        let even = Data(hex: "0220b911c22be58f73e2acb9ca493243aeed6fdb27fe92b31b2d787dd4c9e7c0f8")!
+        let odd = Data(hex: "0320b911c22be58f73e2acb9ca493243aeed6fdb27fe92b31b2d787dd4c9e7c0f8")!
+        XCTAssertTrue(Secp256k1.hasEvenY(even))
+        XCTAssertFalse(Secp256k1.hasEvenY(odd))
+    }
+
+    func testTweakAdd() {
+        let pubkey = Data(hex: "0220b911c22be58f73e2acb9ca493243aeed6fdb27fe92b31b2d787dd4c9e7c0f8")!
+        let tweak = Crypto.sha256(Data("test_tweak".utf8))
+        let result = Secp256k1.tweakAdd(pubkey: pubkey, tweak: tweak)
+        XCTAssertNotNil(result, "tweakAdd should succeed with valid inputs")
+        XCTAssertEqual(result!.key.count, 33)
+        XCTAssertNotEqual(result!.key, pubkey, "Tweaked key should differ from original")
+    }
+
+    func testTaggedHash() {
+        let data = Data("hello".utf8)
+        let hash1 = TaprootBuilder.taggedHash(tag: "TapLeaf", data: data)
+        let hash2 = TaprootBuilder.taggedHash(tag: "TapBranch", data: data)
+        XCTAssertEqual(hash1.count, 32)
+        XCTAssertEqual(hash2.count, 32)
+        XCTAssertNotEqual(hash1, hash2, "Different tags should produce different hashes")
+    }
+
+    func testTaggedHashDeterministic() {
+        let data = Data("test".utf8)
+        let h1 = TaprootBuilder.taggedHash(tag: "TapTweak", data: data)
+        let h2 = TaprootBuilder.taggedHash(tag: "TapTweak", data: data)
+        XCTAssertEqual(h1, h2, "Tagged hash should be deterministic")
+    }
+
+    func testTapLeafHash() {
+        let script = Data(hex: "20b911c22be58f73e2acb9ca493243aeed6fdb27fe92b31b2d787dd4c9e7c0f8ac")!
+        let leafHash = TaprootBuilder.tapLeafHash(script: script)
+        XCTAssertEqual(leafHash.count, 32, "TapLeaf hash should be 32 bytes")
+    }
+
+    func testTapBranchHashSorting() {
+        let a = Crypto.sha256(Data("leaf_a".utf8))
+        let b = Crypto.sha256(Data("leaf_b".utf8))
+        // Order should not matter — canonical sorting
+        let hash1 = TaprootBuilder.tapBranchHash(left: a, right: b)
+        let hash2 = TaprootBuilder.tapBranchHash(left: b, right: a)
+        XCTAssertEqual(hash1, hash2, "TapBranch should sort children canonically")
+    }
+
+    func testComputeMerkleRootSingleLeaf() {
+        let script = Data(hex: "51")! // OP_1
+        let root = TaprootBuilder.computeMerkleRoot(scripts: [script])
+        XCTAssertNotNil(root)
+        XCTAssertEqual(root!.count, 32)
+        // Single leaf: root == tapLeafHash
+        XCTAssertEqual(root!, TaprootBuilder.tapLeafHash(script: script))
+    }
+
+    func testComputeMerkleRootTwoLeaves() {
+        let s1 = Data(hex: "51")! // OP_1
+        let s2 = Data(hex: "52")! // OP_2
+        let root = TaprootBuilder.computeMerkleRoot(scripts: [s1, s2])
+        XCTAssertNotNil(root)
+        let expected = TaprootBuilder.tapBranchHash(
+            left: TaprootBuilder.tapLeafHash(script: s1),
+            right: TaprootBuilder.tapLeafHash(script: s2)
+        )
+        XCTAssertEqual(root!, expected)
+    }
+
+    func testComputeMerkleRootEmpty() {
+        XCTAssertNil(TaprootBuilder.computeMerkleRoot(scripts: []))
+    }
+
+    func testTweakPublicKey() {
+        let internalKey = Data(hex: "20b911c22be58f73e2acb9ca493243aeed6fdb27fe92b31b2d787dd4c9e7c0f8")!
+        let tweaked = TaprootBuilder.tweakPublicKey(internalKey: internalKey, merkleRoot: nil)
+        XCTAssertNotNil(tweaked, "Key tweaking should succeed")
+        XCTAssertEqual(tweaked!.count, 32, "Tweaked key should be 32 bytes (x-only)")
+        XCTAssertNotEqual(tweaked!, internalKey, "Tweaked key should differ from internal key")
+    }
+
+    func testTweakPublicKeyWithMerkleRoot() {
+        let internalKey = Data(hex: "20b911c22be58f73e2acb9ca493243aeed6fdb27fe92b31b2d787dd4c9e7c0f8")!
+        let script = Data(hex: "51")!
+        let merkleRoot = TaprootBuilder.computeMerkleRoot(scripts: [script])
+
+        let tweakedNoScript = TaprootBuilder.tweakPublicKey(internalKey: internalKey, merkleRoot: nil)
+        let tweakedWithScript = TaprootBuilder.tweakPublicKey(internalKey: internalKey, merkleRoot: merkleRoot)
+
+        XCTAssertNotNil(tweakedNoScript)
+        XCTAssertNotNil(tweakedWithScript)
+        XCTAssertNotEqual(tweakedNoScript, tweakedWithScript, "Merkle root should change the tweaked key")
+    }
+
+    func testTweakPublicKeyFull() {
+        let internalKey = Data(hex: "20b911c22be58f73e2acb9ca493243aeed6fdb27fe92b31b2d787dd4c9e7c0f8")!
+        let result = TaprootBuilder.tweakPublicKeyFull(internalKey: internalKey, merkleRoot: nil)
+        XCTAssertNotNil(result)
+        XCTAssertEqual(result!.xOnly.count, 32)
+        XCTAssertEqual(result!.full.count, 33)
+        XCTAssertTrue(result!.parityBit == 0 || result!.parityBit == 1)
+    }
+
+    func testP2TRScriptPubKey() {
+        let tweakedKey = Data(repeating: 0xAB, count: 32)
+        let spk = TaprootBuilder.p2trScriptPubKey(tweakedKey: tweakedKey)
+        XCTAssertEqual(spk.count, 34, "P2TR scriptPubKey should be 34 bytes")
+        XCTAssertEqual(spk[0], 0x51, "First byte should be OP_1")
+        XCTAssertEqual(spk[1], 0x20, "Second byte should be push 32")
+        XCTAssertEqual(Data(spk[2...]), tweakedKey)
+    }
+
+    func testTaprootAddressGeneration() {
+        let internalKey = Data(hex: "20b911c22be58f73e2acb9ca493243aeed6fdb27fe92b31b2d787dd4c9e7c0f8")!
+        let address = TaprootBuilder.taprootAddress(internalKey: internalKey, isTestnet: true)
+        XCTAssertNotNil(address, "P2TR address should be generated")
+        XCTAssertTrue(address!.hasPrefix("tb1p"), "Testnet P2TR should start with tb1p")
+    }
+
+    func testTaprootAddressMainnet() {
+        let internalKey = Data(hex: "20b911c22be58f73e2acb9ca493243aeed6fdb27fe92b31b2d787dd4c9e7c0f8")!
+        let address = TaprootBuilder.taprootAddress(internalKey: internalKey, isTestnet: false)
+        XCTAssertNotNil(address)
+        XCTAssertTrue(address!.hasPrefix("bc1p"), "Mainnet P2TR should start with bc1p")
+    }
+
+    func testTaprootAddressWithScripts() {
+        let internalKey = Data(hex: "20b911c22be58f73e2acb9ca493243aeed6fdb27fe92b31b2d787dd4c9e7c0f8")!
+        let script = Data(hex: "51")!
+        let addrNoScript = TaprootBuilder.taprootAddress(internalKey: internalKey, isTestnet: true)
+        let addrWithScript = TaprootBuilder.taprootAddress(internalKey: internalKey, scripts: [script], isTestnet: true)
+        XCTAssertNotNil(addrNoScript)
+        XCTAssertNotNil(addrWithScript)
+        XCTAssertNotEqual(addrNoScript, addrWithScript, "Scripts should change the address")
+    }
+
+    func testControlBlock() {
+        let internalKey = Data(hex: "20b911c22be58f73e2acb9ca493243aeed6fdb27fe92b31b2d787dd4c9e7c0f8")!
+        let script = Data(hex: "51")!
+        let cb = TaprootBuilder.controlBlock(internalKey: internalKey, scripts: [script], scriptIndex: 0)
+        XCTAssertNotNil(cb)
+        // Single leaf: control block = 1 byte (version|parity) + 32 bytes (internal key) = 33 bytes
+        XCTAssertEqual(cb!.count, 33, "Single-leaf control block should be 33 bytes")
+        XCTAssertTrue(cb![0] & 0xFE == TaprootBuilder.tapscriptLeafVersion, "Should contain leaf version")
+    }
+
+    func testControlBlockTwoScripts() {
+        let internalKey = Data(hex: "20b911c22be58f73e2acb9ca493243aeed6fdb27fe92b31b2d787dd4c9e7c0f8")!
+        let s1 = Data(hex: "51")!
+        let s2 = Data(hex: "52")!
+        let cb = TaprootBuilder.controlBlock(internalKey: internalKey, scripts: [s1, s2], scriptIndex: 0)
+        XCTAssertNotNil(cb)
+        // Two leaves: 1 + 32 + 32 (one sibling hash) = 65 bytes
+        XCTAssertEqual(cb!.count, 65, "Two-leaf control block should be 65 bytes")
+    }
+
+    func testKeyPathWitness() {
+        let sig = Data(repeating: 0xAB, count: 64)
+        let witness = TaprootBuilder.keyPathWitness(signature: sig)
+        XCTAssertEqual(witness.count, 1)
+        XCTAssertEqual(witness[0], sig)
+    }
+
+    func testScriptPathWitness() {
+        let sig = Data(repeating: 0xAB, count: 64)
+        let script = Data(hex: "51")!
+        let cb = Data(repeating: 0xCD, count: 33)
+        let witness = TaprootBuilder.scriptPathWitness(stack: [sig], script: script, controlBlock: cb)
+        XCTAssertEqual(witness.count, 3) // sig, script, controlBlock
+        XCTAssertEqual(witness[0], sig)
+        XCTAssertEqual(witness[1], script)
+        XCTAssertEqual(witness[2], cb)
+    }
 }

@@ -111,10 +111,22 @@ struct TaprootBuilder {
     ///   - internalKey: 32-byte x-only internal public key
     ///   - merkleRoot: optional 32-byte MAST Merkle root
     /// - Returns: 32-byte x-only tweaked public key, or nil on error
+    /// Result of tweaking an internal key — includes parity for control block.
+    struct TweakResult {
+        let xOnly: Data       // 32-byte x-only tweaked key
+        let full: Data        // 33-byte compressed tweaked key
+        let parityBit: UInt8  // 0 if even Y, 1 if odd Y
+    }
+
     static func tweakPublicKey(internalKey: Data, merkleRoot: Data?) -> Data? {
+        tweakPublicKeyFull(internalKey: internalKey, merkleRoot: merkleRoot)?.xOnly
+    }
+
+    /// Full tweak result with parity info (needed for control blocks).
+    static func tweakPublicKeyFull(internalKey: Data, merkleRoot: Data?) -> TweakResult? {
         guard internalKey.count == 32 else { return nil }
 
-        // Compute the tweak scalar
+        // Compute the tweak scalar: t = TaggedHash("TapTweak", P || merkleRoot?)
         var tweakInput = Data()
         tweakInput.append(internalKey)
         if let root = merkleRoot {
@@ -122,22 +134,16 @@ struct TaprootBuilder {
         }
         let tweak = taggedHash(tag: "TapTweak", data: tweakInput)
 
-        // Q = P + t*G using secp256k1
-        // Lift x-only key to full point (assume even Y)
-        var fullKey = Data([0x02])
-        fullKey.append(internalKey)
+        // Lift x-only to compressed key with even Y (BIP340)
+        let fullKey = Secp256k1.liftXOnly(internalKey)
 
-        guard let tweakScalar = UInt256(data: tweak) else { return nil }
-        guard !tweakScalar.isZero else { return nil }
+        // Q = P + t*G using secp256k1_ec_pubkey_tweak_add (constant-time)
+        guard let result = Secp256k1.tweakAdd(pubkey: fullKey, tweak: tweak) else { return nil }
 
-        // Use secp256k1 point operations
-        guard let p = Secp256k1.parsePublicKey(fullKey) else { return nil }
-        let tG = Secp256k1.scalarMultiply(tweakScalar, Secp256k1.G)
-        let q = Secp256k1.pointAdd(p, tG)
-        guard !q.isInfinity else { return nil }
+        let xOnly = Secp256k1.xOnly(result.key)
+        let parityBit: UInt8 = result.evenY ? 0 : 1
 
-        // Return x-only (32 bytes)
-        return q.x.toData()
+        return TweakResult(xOnly: xOnly, full: result.key, parityBit: parityBit)
     }
 
     // MARK: - P2TR output script
@@ -154,6 +160,92 @@ struct TaprootBuilder {
         script.append(0x20) // push 32 bytes
         script.append(tweakedKey)
         return script
+    }
+
+    // MARK: - Control block construction (BIP341)
+
+    /// Build a control block for script-path spending.
+    ///
+    /// Format: (leaf_version | parity_bit) || internal_key || merkle_proof
+    ///
+    /// - Parameters:
+    ///   - internalKey: 32-byte x-only internal public key
+    ///   - merkleRoot: optional merkle root (nil if single leaf)
+    ///   - scriptIndex: index of the script being spent in the scripts array
+    ///   - scripts: all scripts in the MAST tree
+    /// - Returns: control block bytes, or nil on error
+    static func controlBlock(
+        internalKey: Data,
+        scripts: [Data],
+        scriptIndex: Int
+    ) -> Data? {
+        guard internalKey.count == 32, scriptIndex < scripts.count else { return nil }
+
+        let merkleRoot = computeMerkleRoot(scripts: scripts)
+        guard let tweakResult = tweakPublicKeyFull(internalKey: internalKey, merkleRoot: merkleRoot) else {
+            return nil
+        }
+
+        // First byte: leaf_version | parity_bit
+        let firstByte = tapscriptLeafVersion | tweakResult.parityBit
+
+        var cb = Data()
+        cb.append(firstByte)
+        cb.append(internalKey)
+
+        // Compute Merkle proof for the target leaf
+        let proof = merkleProof(scripts: scripts, leafIndex: scriptIndex)
+        for hash in proof {
+            cb.append(hash)
+        }
+
+        return cb
+    }
+
+    /// Compute the Merkle proof (sibling hashes) for a specific leaf index.
+    static func merkleProof(scripts: [Data], leafIndex: Int) -> [Data] {
+        guard scripts.count > 1 else { return [] }
+
+        var nodes = scripts.map { tapLeafHash(script: $0) }
+        var proof: [Data] = []
+        var idx = leafIndex
+
+        while nodes.count > 1 {
+            var nextLevel: [Data] = []
+            var i = 0
+            while i < nodes.count {
+                if i + 1 < nodes.count {
+                    // If our target is in this pair, record the sibling
+                    if i == idx || i + 1 == idx {
+                        let sibling = (i == idx) ? nodes[i + 1] : nodes[i]
+                        proof.append(sibling)
+                    }
+                    nextLevel.append(tapBranchHash(left: nodes[i], right: nodes[i + 1]))
+                } else {
+                    nextLevel.append(nodes[i])
+                }
+                i += 2
+            }
+            idx /= 2
+            nodes = nextLevel
+        }
+
+        return proof
+    }
+
+    // MARK: - Witness builders for Taproot spends
+
+    /// Key-path witness: just the Schnorr signature (64 bytes, or 65 with sighash).
+    static func keyPathWitness(signature: Data) -> [Data] {
+        [signature]
+    }
+
+    /// Script-path witness: [...stack items, script, controlBlock]
+    static func scriptPathWitness(stack: [Data], script: Data, controlBlock: Data) -> [Data] {
+        var witness = stack
+        witness.append(script)
+        witness.append(controlBlock)
+        return witness
     }
 
     // MARK: - P2TR address generation

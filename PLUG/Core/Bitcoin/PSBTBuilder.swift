@@ -17,6 +17,13 @@ struct PSBTBuilder {
         case witnessUtxo = 0x01
         case witnessScript = 0x05
         case bip32Derivation = 0x06
+        // Taproot (BIP371)
+        case tapKeySig = 0x13
+        case tapScriptSig = 0x14
+        case tapLeafScript = 0x15
+        case tapBip32Derivation = 0x16
+        case tapInternalKey = 0x17
+        case tapMerkleRoot = 0x18
     }
 
     enum OutputKey: UInt8 {
@@ -39,6 +46,12 @@ struct PSBTBuilder {
 
         /// BIP32 derivation info
         var bip32Derivation: [(pubkey: Data, fingerprint: Data, path: [UInt32])]?
+
+        // Taproot fields (BIP371)
+        var tapInternalKey: Data?       // 32-byte x-only internal key
+        var tapMerkleRoot: Data?        // 32-byte MAST root
+        var tapLeafScript: (script: Data, controlBlock: Data)?  // for script-path
+        var tapBip32Derivation: [(xOnlyKey: Data, leafHashes: [Data], fingerprint: Data, path: [UInt32])]?
 
         var outpoint: String {
             // Display txid in RPC byte order (reversed)
@@ -154,6 +167,52 @@ struct PSBTBuilder {
                 }
             }
 
+            // Taproot internal key (BIP371)
+            if let tapKey = input.tapInternalKey, tapKey.count == 32 {
+                psbt.append(keyValue(
+                    key: Data([InputKey.tapInternalKey.rawValue]),
+                    value: tapKey
+                ))
+            }
+
+            // Taproot merkle root
+            if let tapRoot = input.tapMerkleRoot, tapRoot.count == 32 {
+                psbt.append(keyValue(
+                    key: Data([InputKey.tapMerkleRoot.rawValue]),
+                    value: tapRoot
+                ))
+            }
+
+            // Taproot leaf script (for script-path spending)
+            if let tapLeaf = input.tapLeafScript {
+                var key = Data([InputKey.tapLeafScript.rawValue])
+                key.append(tapLeaf.controlBlock)
+                psbt.append(keyValue(key: key, value: tapLeaf.script + Data([TaprootBuilder.tapscriptLeafVersion])))
+            }
+
+            // Taproot BIP32 derivation
+            if let tapDerivations = input.tapBip32Derivation {
+                for deriv in tapDerivations {
+                    var key = Data([InputKey.tapBip32Derivation.rawValue])
+                    key.append(deriv.xOnlyKey)
+
+                    var value = Data()
+                    // Number of leaf hashes
+                    value.append(VarInt.encode(UInt64(deriv.leafHashes.count)))
+                    for lh in deriv.leafHashes {
+                        value.append(lh)
+                    }
+                    // BIP32 derivation path
+                    value.append(deriv.fingerprint)
+                    for idx in deriv.path {
+                        var le = idx.littleEndian
+                        value.append(Data(bytes: &le, count: 4))
+                    }
+
+                    psbt.append(keyValue(key: key, value: value))
+                }
+            }
+
             // Separator
             psbt.append(0x00)
         }
@@ -250,6 +309,11 @@ struct PSBTBuilder {
         script.append(0x20) // push 32 bytes
         script.append(scriptHash)
         return script
+    }
+
+    /// P2TR output script: OP_1 <32-byte-tweaked-key>
+    static func p2trScriptPubKey(tweakedKey: Data) -> Data {
+        TaprootBuilder.p2trScriptPubKey(tweakedKey: tweakedKey)
     }
 
     /// Create script pubkey from a bech32/bech32m address

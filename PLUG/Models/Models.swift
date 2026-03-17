@@ -378,13 +378,22 @@ struct DifficultyAdjustment: Codable {
 
 // MARK: - Wallet state
 
-struct WalletAddress: Identifiable, Codable {
+struct WalletAddress: Identifiable, Codable, Hashable {
     let index: UInt32
     let address: String
     let publicKey: String // hex
     let isChange: Bool
 
     var id: String { address }
+
+    /// Address lifecycle for privacy hygiene.
+    /// Fresh → Funded (received sats) → Used (spent from, pubkey exposed on-chain).
+    /// Never reuse a Used address — derive a new one instead.
+    enum Status: String, Codable {
+        case fresh       // Never seen on-chain — safe to receive
+        case funded      // Has unspent UTXOs — holding funds
+        case used        // Spent from — public key exposed, retired
+    }
 }
 
 // MARK: - Alert types for dashboard

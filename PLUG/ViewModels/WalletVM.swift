@@ -38,6 +38,81 @@ final class WalletVM: ObservableObject {
     // Receive
     @Published var currentReceiveAddress: String = ""
     @Published var currentReceiveIndex: UInt32 = 0
+    /// Max address index the user can pick (gap limit)
+    let maxAddressIndex: UInt32 = 19
+
+    // Address status tracking (privacy hygiene)
+    /// Status for each address: fresh, funded, or used (spent from)
+    @Published var addressStatuses: [String: WalletAddress.Status] = [:]
+
+    /// Returns the status of an address based on on-chain activity
+    func addressStatus(for address: String) -> WalletAddress.Status {
+        addressStatuses[address] ?? .fresh
+    }
+
+    /// True if an address has been spent from (pubkey exposed on-chain)
+    func isAddressUsed(_ address: String) -> Bool {
+        addressStatus(for: address) == .used
+    }
+
+    /// Compute address statuses from UTXOs and transactions.
+    /// Fresh = no on-chain activity. Funded = has UTXOs. Used = appeared as input (spent from).
+    private func updateAddressStatuses() {
+        var statuses: [String: WalletAddress.Status] = [:]
+        let receiving = addresses.filter { !$0.isChange }
+
+        // Collect all addresses that appeared as inputs (spent from → pubkey exposed)
+        var spentFromAddresses = Set<String>()
+        for tx in transactions {
+            for input in tx.vin {
+                if let prevAddr = input.prevout?.scriptpubkeyAddress {
+                    spentFromAddresses.insert(prevAddr)
+                }
+            }
+        }
+
+        for addr in receiving {
+            let hasUtxos = utxos.contains { $0.address == addr.address }
+            let wasSpentFrom = spentFromAddresses.contains(addr.address)
+            let receivedAnything = transactions.contains { tx in
+                tx.vout.contains { $0.scriptpubkeyAddress == addr.address }
+            }
+
+            if wasSpentFrom && !hasUtxos {
+                statuses[addr.address] = .used  // Spent from, no remaining UTXOs → retired
+            } else if hasUtxos {
+                statuses[addr.address] = .funded // Has UTXOs
+            } else if receivedAnything {
+                statuses[addr.address] = .used   // Received before but 0 balance → used up
+            } else {
+                statuses[addr.address] = .fresh  // Never seen on-chain
+            }
+        }
+
+        addressStatuses = statuses
+    }
+
+    /// Derive and select a specific receiving address index
+    func selectAddressIndex(_ index: UInt32) {
+        guard let xpubStr = KeychainStore.shared.loadXpub(isTestnet: isTestnet),
+              let xpub = ExtendedPublicKey.fromBase58(xpubStr) else { return }
+        // Check if already derived
+        if let existing = addresses.first(where: { !$0.isChange && $0.index == index }) {
+            currentReceiveAddress = existing.address
+            currentReceiveIndex = existing.index
+            return
+        }
+        // Derive on the fly
+        let derived = AddressDerivation.deriveAddresses(
+            xpub: xpub, change: 0, startIndex: index, count: 1, isTestnet: isTestnet
+        )
+        if let d = derived.first {
+            let walletAddr = WalletAddress(index: d.index, address: d.address, publicKey: d.publicKey.hex, isChange: false)
+            addresses.append(walletAddr)
+            currentReceiveAddress = walletAddr.address
+            currentReceiveIndex = walletAddr.index
+        }
+    }
 
     var isTestnet: Bool { NetworkConfig.shared.isTestnet }
 
@@ -47,6 +122,27 @@ final class WalletVM: ObservableObject {
     }
 
     var hasWallet: Bool { xpub != nil }
+
+    // MARK: - Balance breakdown
+
+    var confirmedBalance: UInt64 {
+        utxos.filter { $0.status.confirmed }.reduce(0) { $0 + $1.value }
+    }
+
+    var unconfirmedBalance: UInt64 {
+        utxos.filter { !$0.status.confirmed }.reduce(0) { $0 + $1.value }
+    }
+
+    var dustUtxos: [UTXO] {
+        utxos.filter { $0.value < 546 }
+    }
+
+    var unconfirmedCount: Int {
+        utxos.filter { !$0.status.confirmed }.count
+    }
+
+    /// Fee estimation (fetched on refresh)
+    @Published var feeEstimate: FeeEstimate?
 
     // MARK: - Load wallet data
 
@@ -147,6 +243,9 @@ final class WalletVM: ObservableObject {
         transactions = dedupedTxs.sorted { ($0.status.blockTime ?? Int.max) > ($1.status.blockTime ?? Int.max) }
         totalBalance = allUTXOs.reduce(0) { $0 + $1.value }
 
+        // Track address lifecycle (fresh / funded / used)
+        updateAddressStatuses()
+
         // Update current receive address to first unused
         await findNextReceiveAddress()
 
@@ -184,6 +283,15 @@ final class WalletVM: ObservableObject {
         utxos = allUTXOs
         transactions = dedupedTxs.sorted { ($0.status.blockTime ?? Int.max) > ($1.status.blockTime ?? Int.max) }
         totalBalance = allUTXOs.reduce(0) { $0 + $1.value }
+
+        // Fetch fee estimates
+        if let fees = try? await MempoolAPI.shared.getRecommendedFees() {
+            feeEstimate = fees
+        }
+
+        // Track address lifecycle
+        updateAddressStatuses()
+
         isLoading = false
     }
 

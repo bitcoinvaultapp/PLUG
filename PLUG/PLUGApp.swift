@@ -101,6 +101,7 @@ struct ContractsHubView: View {
             PlugHeader(pageName: "Contracts")
                 .listRowInsets(EdgeInsets())
                 .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
 
             Section {
                 Text("Bitcoin Script-based contracts using P2WSH")

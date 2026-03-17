@@ -7,6 +7,9 @@ struct OpReturnView: View {
         NavigationStack {
             Form {
                 PlugHeader(pageName: "OP_RETURN")
+                    .listRowInsets(EdgeInsets())
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
 
                 Section("Mode") {
                     Picker("Type", selection: $vm.mode) {

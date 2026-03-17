@@ -88,7 +88,20 @@ struct WalletView: View {
         return receiving.compactMap { addr in
             let addrUtxos = vm.utxos.filter { $0.address == addr.address }
             let status = vm.addressStatus(for: addr.address)
-            guard status != .fresh else { return nil } // Only show addresses with activity
+            guard status != .fresh else { return nil }
+            let balance = addrUtxos.reduce(0 as UInt64) { $0 + $1.value }
+            return (address: addr, balance: balance, utxoCount: addrUtxos.count, status: status)
+        }
+        .sorted { $0.address.index < $1.address.index }
+    }
+
+    /// Change addresses that have UTXOs or have been used
+    private var activeChangeAddresses: [(address: WalletAddress, balance: UInt64, utxoCount: Int, status: WalletAddress.Status)] {
+        let change = vm.addresses.filter { $0.isChange }
+        return change.compactMap { addr in
+            let addrUtxos = vm.utxos.filter { $0.address == addr.address }
+            let status = vm.addressStatus(for: addr.address)
+            guard status != .fresh else { return nil }
             let balance = addrUtxos.reduce(0 as UInt64) { $0 + $1.value }
             return (address: addr, balance: balance, utxoCount: addrUtxos.count, status: status)
         }
@@ -208,7 +221,61 @@ struct WalletView: View {
                         .buttonStyle(.plain)
                     }
                 } header: {
-                    Text("Addresses (\(activeAddresses.count))")
+                    Text("Receiving (\(activeAddresses.count))")
+                }
+            }
+
+            // Change addresses
+            if !activeChangeAddresses.isEmpty {
+                Section {
+                    ForEach(activeChangeAddresses, id: \.address.id) { item in
+                        Button {
+                            selectedAddress = item.address
+                        } label: {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 4) {
+                                    HStack(spacing: 6) {
+                                        Text("C#\(item.address.index)")
+                                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                            .foregroundStyle(.white)
+                                            .padding(.horizontal, 6)
+                                            .padding(.vertical, 2)
+                                            .background(item.status == .used ? Color.red : Color.btcOrange, in: RoundedRectangle(cornerRadius: 4))
+                                        Text(String(item.address.address.prefix(14)) + "..." + String(item.address.address.suffix(6)))
+                                            .font(.system(.caption, design: .monospaced))
+                                            .foregroundStyle(.primary)
+                                    }
+                                    HStack(spacing: 6) {
+                                        if item.utxoCount > 0 {
+                                            Text("\(item.utxoCount) UTXO\(item.utxoCount == 1 ? "" : "s")")
+                                                .font(.caption2)
+                                                .foregroundStyle(.secondary)
+                                        }
+                                        Text(item.status == .used ? "PUBKEY EXPOSED" : "FUNDED")
+                                            .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                            .foregroundStyle(item.status == .used ? .red : .orange)
+                                    }
+                                }
+
+                                Spacer()
+
+                                VStack(alignment: .trailing, spacing: 2) {
+                                    if item.balance > 0 {
+                                        Text("\(item.balance) sats")
+                                            .font(.subheadline.weight(.medium).monospacedDigit())
+                                            .foregroundStyle(.primary)
+                                    }
+                                    Text("change")
+                                        .font(.system(size: 9, weight: .medium, design: .monospaced))
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            .padding(.vertical, 2)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                } header: {
+                    Text("Change (\(activeChangeAddresses.count))")
                 }
             }
 

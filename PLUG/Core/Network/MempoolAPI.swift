@@ -7,15 +7,26 @@ final class MempoolAPI: NSObject, URLSessionDelegate {
 
     static let shared = MempoolAPI()
 
-    private lazy var session: URLSession = {
+    private lazy var clearnetSession: URLSession = {
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 15
         config.timeoutIntervalForResource = 30
         return URLSession(configuration: config, delegate: self, delegateQueue: nil)
     }()
 
+    /// Active session — routes through Tor SOCKS5 proxy when enabled
+    private var session: URLSession {
+        if TorConfig.shared.isEnabled, let torSession = TorConfig.shared.createTorSession() {
+            return torSession
+        }
+        return clearnetSession
+    }
+
     private var baseURL: String {
-        NetworkConfig.shared.mempoolBaseURL
+        if TorConfig.shared.isEnabled {
+            return TorConfig.shared.mempoolBaseURL
+        }
+        return NetworkConfig.shared.mempoolBaseURL
     }
 
     // MARK: - TLS Certificate Pinning

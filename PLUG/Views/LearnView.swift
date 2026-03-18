@@ -231,21 +231,31 @@ struct ChapterView: View {
 
     private func cleanInline(_ text: String) -> String {
         var s = text
-        // Remove ((index terms))
+        // Remove triple-paren index terms: ((("term", "sub"))) and ((("term")))
+        s = s.replacingOccurrences(of: "\\(\\(\\(.*?\\)\\)\\)", with: "", options: .regularExpression)
+        // Remove double-paren index terms: (("term"))
         s = s.replacingOccurrences(of: "\\(\\(.*?\\)\\)", with: "", options: .regularExpression)
-        // Remove <<cross references>> but keep display text
+        // Remove <<cross references>> — keep display text if present
         s = s.replacingOccurrences(of: "<<[^,>]+,\\s*([^>]+)>>", with: "$1", options: .regularExpression)
         s = s.replacingOccurrences(of: "<<.*?>>", with: "", options: .regularExpression)
-        // Remove pass-through
-        s = s.replacingOccurrences(of: "pass:[", with: "")
+        // Remove pass-through markers
+        s = s.replacingOccurrences(of: "pass:\\[.*?\\]", with: "", options: .regularExpression)
         s = s.replacingOccurrences(of: "++++", with: "")
-        // Remove inline formatting markers (keep text)
+        // Remove footnote markers
+        s = s.replacingOccurrences(of: "footnote:\\[.*?\\]", with: "", options: .regularExpression)
+        // Remove inline formatting — keep the text inside
         s = s.replacingOccurrences(of: "__", with: "")
         s = s.replacingOccurrences(of: "**", with: "")
         s = s.replacingOccurrences(of: "``", with: "")
-        // Single markers
         s = s.replacingOccurrences(of: "`([^`]+)`", with: "$1", options: .regularExpression)
         s = s.replacingOccurrences(of: "_([^_]+)_", with: "$1", options: .regularExpression)
+        // Remove id/startref attributes: id="...", startref="..."
+        s = s.replacingOccurrences(of: ",?\\s*id=\"[^\"]*\"", with: "", options: .regularExpression)
+        s = s.replacingOccurrences(of: ",?\\s*startref=\"[^\"]*\"", with: "", options: .regularExpression)
+        // Clean up orphan empty parens from stripped index terms
+        s = s.replacingOccurrences(of: "\\(\\)", with: "")
+        // Clean up double/triple spaces
+        s = s.replacingOccurrences(of: "  +", with: " ", options: .regularExpression)
         return s.trimmingCharacters(in: .whitespaces)
     }
 
@@ -278,10 +288,13 @@ struct ChapterView: View {
         while i < lines.count {
             let line = lines[i]
 
-            // Skip metadata lines
+            // Skip metadata / directive lines
             if line.hasPrefix("[[") || line.hasPrefix(":") || line.hasPrefix("ifdef::") ||
                line.hasPrefix("endif::") || line.hasPrefix("image::") || line.hasPrefix("include::") ||
-               line.hasPrefix("[role=") || line.hasPrefix("////") || line.hasPrefix(".") && line.count > 1 && line.dropFirst().first?.isUppercase == true {
+               line.hasPrefix("[role=") || line.hasPrefix("[source") || line.hasPrefix("[cols") ||
+               line.hasPrefix("[options") || line.hasPrefix("[%") || line.hasPrefix("[discrete") ||
+               line.hasPrefix("////") || line == "====" || line == "|===" ||
+               (line.hasPrefix(".") && line.count > 1 && !line.hasPrefix("..") && line.dropFirst().first?.isUppercase == true) {
                 i += 1
                 continue
             }
@@ -367,9 +380,20 @@ struct ChapterView: View {
                 continue
             }
 
-            // List items
+            // List items (unordered * and ordered . or numbers)
             if line.hasPrefix("* ") {
                 result.append(AdocBlock(type: .listItem, content: String(line.dropFirst(2))))
+                i += 1
+                continue
+            }
+            if line.hasPrefix(". ") && !line.hasPrefix("..") {
+                result.append(AdocBlock(type: .listItem, content: String(line.dropFirst(2))))
+                i += 1
+                continue
+            }
+
+            // Skip table rows
+            if line.hasPrefix("|") {
                 i += 1
                 continue
             }

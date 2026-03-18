@@ -29,6 +29,16 @@ struct ScriptEditorView: View {
                         .font(.system(.body, design: .monospaced))
                         .frame(minHeight: 100, maxHeight: 160)
                         .scrollContentBackground(.hidden)
+
+                    Button {
+                        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+                    } label: {
+                        Label("Done", systemImage: "keyboard.chevron.compact.down")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .trailing)
+                    }
+                    .buttonStyle(.plain)
                 } header: {
                     Text("Script")
                 }
@@ -102,6 +112,7 @@ struct ScriptEditorView: View {
             }
             .navigationTitle("")
             .toolbar(.hidden, for: .navigationBar)
+            .scrollDismissesKeyboard(.interactively)
         }
     }
 }

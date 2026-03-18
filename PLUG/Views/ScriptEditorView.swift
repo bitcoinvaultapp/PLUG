@@ -11,25 +11,22 @@ struct ScriptEditorView: View {
                 HStack {
                     PlugHeader(pageName: "Script")
                     Spacer()
-                    HStack(spacing: 10) {
+                    HStack(spacing: 8) {
                         Button { vm.reset() } label: {
-                            Text("Reset")
+                            Image(systemName: "arrow.counterclockwise")
                                 .font(.system(size: 13, weight: .medium))
                                 .foregroundStyle(.secondary)
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 8)
-                                .background(.ultraThinMaterial, in: Capsule())
+                                .frame(width: 32, height: 32)
+                                .background(.ultraThinMaterial, in: Circle())
                         }
                         Button { vm.execute() } label: {
-                            Label("Run", systemImage: "play.fill")
-                                .font(.system(size: 13, weight: .semibold))
+                            Image(systemName: "play.fill")
+                                .font(.system(size: 13))
                                 .foregroundStyle(.white)
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 8)
-                                .background(Color.green, in: Capsule())
+                                .frame(width: 32, height: 32)
+                                .background(Color.green, in: Circle())
                         }
                     }
-                    .padding(.trailing, 4)
                 }
                 .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 12, trailing: 0))
                 .listRowBackground(Color.clear)

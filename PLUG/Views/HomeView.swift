@@ -54,13 +54,19 @@ struct HomeView: View {
             .toolbar(.hidden, for: .navigationBar)
             .refreshable {
                 await vm.refresh()
-                await walletVM.loadWallet()
+                // Light refresh: update UTXOs + balances without full rescan
+                if walletVM.hasWallet && !walletVM.addresses.isEmpty {
+                    await walletVM.refreshUTXOs()
+                } else {
+                    await walletVM.loadWallet()
+                }
                 vm.updateBalance(walletVM.totalBalance)
             }
             .task {
-                async let refreshTask: () = vm.refresh()
-                async let walletTask: () = walletVM.loadWallet()
-                _ = await (refreshTask, walletTask)
+                await vm.refresh()
+                if walletVM.addresses.isEmpty {
+                    await walletVM.loadWallet()
+                }
                 vm.updateBalance(walletVM.totalBalance)
                 vm.connectWebSocket()
             }

@@ -352,7 +352,7 @@ final class WalletVM: ObservableObject {
 
     // MARK: - Refresh UTXOs only (no re-derivation)
 
-    private func refreshUTXOs() async {
+    func refreshUTXOs() async {
         isLoading = true
         let addrList = addresses
         let (allUTXOs, allTxs): ([UTXO], [Transaction]) = await withTaskGroup(of: (utxos: [UTXO], txs: [Transaction]).self) { group in

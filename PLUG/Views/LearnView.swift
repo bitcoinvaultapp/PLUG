@@ -1,4 +1,5 @@
 import SwiftUI
+import WebKit
 
 struct LearnView: View {
     var body: some View {
@@ -89,413 +90,200 @@ struct LearnView: View {
     }
 }
 
-// MARK: - Chapter Reader (GitHub-style AsciiDoc renderer)
+// MARK: - Chapter Reader (GitHub-rendered HTML via WKWebView)
 
 struct ChapterView: View {
     let filename: String
     let title: String
-    @State private var blocks: [AdocBlock] = []
+    @State private var htmlContent: String = ""
     @State private var isLoading = true
+    @State private var loadError: String?
 
     var body: some View {
-        ScrollView {
+        ZStack {
+            Color(red: 0.05, green: 0.07, blue: 0.09).ignoresSafeArea()
+
             if isLoading {
-                ProgressView()
-                    .padding(.top, 40)
-            } else if blocks.isEmpty {
-                Text("Could not load chapter.")
-                    .foregroundStyle(.secondary)
-                    .padding(.top, 40)
-            } else {
-                LazyVStack(alignment: .leading, spacing: 0) {
-                    ForEach(Array(blocks.enumerated()), id: \.offset) { _, block in
-                        blockView(block)
-                    }
+                VStack(spacing: 12) {
+                    ProgressView()
+                    Text("Loading from GitHub...")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
-                .padding(.horizontal, 16)
-                .padding(.bottom, 40)
+            } else if let error = loadError {
+                VStack(spacing: 12) {
+                    Image(systemName: "wifi.slash")
+                        .font(.system(size: 32))
+                        .foregroundStyle(.secondary)
+                    Text(error)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal)
+                }
+            } else {
+                ChapterWebView(html: htmlContent)
+                    .ignoresSafeArea(edges: .bottom)
             }
         }
-        .background(Color(red: 0.06, green: 0.07, blue: 0.09))
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
         .task {
-            await loadChapter()
+            await loadFromGitHub()
         }
     }
 
-    // MARK: - Block renderer
+    private func loadFromGitHub() async {
+        let apiURL = "https://api.github.com/repos/bitcoinbook/bitcoinbook/contents/\(filename)"
 
-    @ViewBuilder
-    private func blockView(_ block: AdocBlock) -> some View {
-        switch block.type {
-        case .heading(let level):
-            Text(block.content)
-                .font(headingFont(level))
-                .fontWeight(.bold)
-                .foregroundStyle(.white)
-                .padding(.top, level <= 2 ? 28 : 20)
-                .padding(.bottom, 8)
-            if level <= 2 {
-                Divider()
-                    .background(Color(white: 0.2))
-                    .padding(.bottom, 12)
-            }
-
-        case .paragraph:
-            Text(cleanInline(block.content))
-                .font(.system(size: 15))
-                .foregroundStyle(Color(white: 0.85))
-                .lineSpacing(6)
-                .padding(.vertical, 6)
-                .textSelection(.enabled)
-
-        case .code:
-            ScrollView(.horizontal, showsIndicators: false) {
-                Text(block.content)
-                    .font(.system(size: 13, design: .monospaced))
-                    .foregroundStyle(Color(red: 0.9, green: 0.55, blue: 0.2))
-                    .padding(14)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color(red: 0.1, green: 0.1, blue: 0.14), in: RoundedRectangle(cornerRadius: 8))
-            .overlay(RoundedRectangle(cornerRadius: 8).stroke(Color(white: 0.15), lineWidth: 1))
-            .padding(.vertical, 8)
-
-        case .tip:
-            admonitionBox(icon: "lightbulb.fill", color: .green, label: "TIP", content: block.content)
-
-        case .warning:
-            admonitionBox(icon: "exclamationmark.triangle.fill", color: .orange, label: "WARNING", content: block.content)
-
-        case .note:
-            admonitionBox(icon: "info.circle.fill", color: .blue, label: "NOTE", content: block.content)
-
-        case .listItem:
-            HStack(alignment: .top, spacing: 10) {
-                Circle()
-                    .fill(Color.btcOrange)
-                    .frame(width: 5, height: 5)
-                    .padding(.top, 8)
-                Text(cleanInline(block.content))
-                    .font(.system(size: 15))
-                    .foregroundStyle(Color(white: 0.85))
-                    .lineSpacing(6)
-            }
-            .padding(.vertical, 2)
-            .padding(.leading, 8)
-
-        case .separator:
-            Divider()
-                .background(Color(white: 0.15))
-                .padding(.vertical, 16)
-        }
-    }
-
-    private func headingFont(_ level: Int) -> Font {
-        switch level {
-        case 1: return .system(size: 28)
-        case 2: return .system(size: 22)
-        case 3: return .system(size: 18)
-        default: return .system(size: 16)
-        }
-    }
-
-    private func admonitionBox(icon: String, color: Color, label: String, content: String) -> some View {
-        HStack(alignment: .top, spacing: 10) {
-            Image(systemName: icon)
-                .foregroundStyle(color)
-                .font(.system(size: 14))
-                .padding(.top, 2)
-            VStack(alignment: .leading, spacing: 4) {
-                Text(label)
-                    .font(.system(size: 11, weight: .bold, design: .monospaced))
-                    .foregroundStyle(color)
-                Text(cleanInline(content))
-                    .font(.system(size: 14))
-                    .foregroundStyle(Color(white: 0.8))
-                    .lineSpacing(4)
-            }
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(color.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
-        .overlay(
-            RoundedRectangle(cornerRadius: 8)
-                .stroke(color.opacity(0.2), lineWidth: 1)
-        )
-        .padding(.vertical, 8)
-    }
-
-    // MARK: - Inline cleanup
-
-    private func cleanInline(_ text: String) -> String {
-        var s = text
-
-        // 1. Passthrough delimiters
-        s = s.replacingOccurrences(of: "\\+\\+\\+\\+", with: "")
-        s = s.replacingOccurrences(of: "\\*\\*\\*\\*", with: "")
-        s = s.replacingOccurrences(of: "////", with: "")
-
-        // 2. Index terms — handle nested parens with content
-        // ((("term", "sub", id="xxx"))) → remove entirely
-        while s.contains("(((") {
-            s = s.replacingOccurrences(of: "\\(\\(\\([^)]*\\)\\)\\)", with: "", options: .regularExpression)
-        }
-        while s.contains("((") {
-            s = s.replacingOccurrences(of: "\\(\\([^)]*\\)\\)", with: "", options: .regularExpression)
-        }
-
-        // 3. Cross-references: <<anchor,Display Text>> → Display Text
-        s = s.replacingOccurrences(of: "<<[^,>]+,\\s*([^>]+)>>", with: "$1", options: .regularExpression)
-        s = s.replacingOccurrences(of: "<<[^>]*>>", with: "", options: .regularExpression)
-
-        // 4. AsciiDoc links: https://url[Label] → Label
-        s = s.replacingOccurrences(of: "https?://[^\\[\\s]+\\[([^\\]]+)\\]", with: "$1", options: .regularExpression)
-        s = s.replacingOccurrences(of: "link:[^\\[]+\\[([^\\]]+)\\]", with: "$1", options: .regularExpression)
-        // Bare URLs without label — keep as-is (they're readable)
-
-        // 5. HTML: tags, entities
-        s = s.replacingOccurrences(of: "<a[^>]*>([^<]*)</a>", with: "$1", options: .regularExpression)
-        s = s.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
-        s = s.replacingOccurrences(of: "&amp;", with: "&")
-        s = s.replacingOccurrences(of: "&lt;", with: "<")
-        s = s.replacingOccurrences(of: "&gt;", with: ">")
-        s = s.replacingOccurrences(of: "&nbsp;", with: " ")
-        s = s.replacingOccurrences(of: "&#8217;", with: "'")
-        s = s.replacingOccurrences(of: "&#8220;", with: "\"")
-        s = s.replacingOccurrences(of: "&#8221;", with: "\"")
-
-        // 6. Pass-through: pass:[content] → content
-        s = s.replacingOccurrences(of: "pass:\\[([^\\]]*)\\]", with: "$1", options: .regularExpression)
-
-        // 7. LaTeX math: \begin{...} \end{...}, \times, =\!\!\!=
-        s = s.replacingOccurrences(of: "\\\\begin\\s*\\{([^}]*)\\}", with: "$1", options: .regularExpression)
-        s = s.replacingOccurrences(of: "\\\\end\\s*\\{?[^}]*\\}?", with: "", options: .regularExpression)
-        s = s.replacingOccurrences(of: "\\\\times", with: "x")
-        s = s.replacingOccurrences(of: "=\\\\!\\\\!\\\\!=", with: "==", options: .regularExpression)
-        s = s.replacingOccurrences(of: "\\\\!", with: "", options: .regularExpression)
-
-        // 8. Footnotes
-        s = s.replacingOccurrences(of: "footnote:\\[[^\\]]*\\]", with: "", options: .regularExpression)
-
-        // 9. Inline formatting — strip markers, keep text
-        s = s.replacingOccurrences(of: "\\*\\*([^*]+)\\*\\*", with: "$1", options: .regularExpression)
-        s = s.replacingOccurrences(of: "__([^_]+)__", with: "$1", options: .regularExpression)
-        s = s.replacingOccurrences(of: "``([^`]+)``", with: "$1", options: .regularExpression)
-        s = s.replacingOccurrences(of: "`([^`]+)`", with: "$1", options: .regularExpression)
-        s = s.replacingOccurrences(of: "(?<![a-zA-Z])_([^_]+)_(?![a-zA-Z])", with: "$1", options: .regularExpression)
-
-        // 10. Attribute refs: {attribute} → remove
-        s = s.replacingOccurrences(of: "\\{[a-zA-Z_][a-zA-Z0-9_]*\\}", with: "", options: .regularExpression)
-
-        // 11. Role/class markers: [.class]#text# → text
-        s = s.replacingOccurrences(of: "\\[[^\\]]*\\]#([^#]+)#", with: "$1", options: .regularExpression)
-
-        // 12. Cleanup
-        s = s.replacingOccurrences(of: "\\(\\)", with: "")
-        s = s.replacingOccurrences(of: "  +", with: " ", options: .regularExpression)
-        s = s.replacingOccurrences(of: " ,", with: ",")
-        s = s.replacingOccurrences(of: " \\.", with: ".", options: .regularExpression)
-        s = s.replacingOccurrences(of: "\"\"", with: "\"")
-
-        return s.trimmingCharacters(in: .whitespaces)
-    }
-
-    // MARK: - AsciiDoc parser
-
-    private func loadChapter() async {
-        let name = (filename as NSString).deletingPathExtension
-        let ext = (filename as NSString).pathExtension
-
-        guard let url = Bundle.main.url(forResource: name, withExtension: ext),
-              let text = try? String(contentsOf: url, encoding: .utf8) else {
+        guard let url = URL(string: apiURL) else {
+            loadError = "Invalid URL"
             isLoading = false
             return
         }
 
-        blocks = parseAsciidoc(text)
+        var request = URLRequest(url: url)
+        request.setValue("application/vnd.github.html", forHTTPHeaderField: "Accept")
+        request.timeoutInterval = 15
+
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+                loadError = "Could not fetch chapter."
+                isLoading = false
+                return
+            }
+
+            let body = String(data: data, encoding: .utf8) ?? ""
+            htmlContent = wrapInDarkTheme(body)
+        } catch {
+            loadError = "Network error. Check your connection."
+        }
+
         isLoading = false
     }
 
-    private func parseAsciidoc(_ text: String) -> [AdocBlock] {
-        let lines = text.components(separatedBy: "\n")
-        var result: [AdocBlock] = []
-        var i = 0
-        var inCode = false
-        var codeBuffer: [String] = []
-        var admonitionType: AdocBlock.BlockType?
-        var admonitionBuffer: [String] = []
-        var inAdmonition = false
-
-        while i < lines.count {
-            let line = lines[i]
-
-            // Skip metadata / directive / noise lines
-            let trimmedLine = line.trimmingCharacters(in: .whitespaces)
-            if trimmedLine.hasPrefix("[[") || trimmedLine.hasPrefix(":") ||
-               trimmedLine.hasPrefix("ifdef::") || trimmedLine.hasPrefix("endif::") ||
-               trimmedLine.hasPrefix("ifndef::") ||
-               trimmedLine.hasPrefix("image::") || trimmedLine.hasPrefix("include::") ||
-               trimmedLine.hasPrefix("//") ||  // comments
-               trimmedLine.hasPrefix("[") && trimmedLine.hasSuffix("]") ||  // [any attribute]
-               trimmedLine == "====" || trimmedLine == "|===" || trimmedLine == "+" ||
-               trimmedLine == "--" || trimmedLine == "****" ||
-               (trimmedLine.hasPrefix(".") && trimmedLine.count > 1 && !trimmedLine.hasPrefix("..") &&
-                trimmedLine.dropFirst().first?.isUppercase == true) {
-                i += 1
-                continue
+    private func wrapInDarkTheme(_ body: String) -> String {
+        """
+        <!DOCTYPE html>
+        <html>
+        <head>
+        <meta charset="utf-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+        <style>
+            * { box-sizing: border-box; }
+            body {
+                font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+                background: #0D1117;
+                color: #E6EDF3;
+                padding: 16px;
+                margin: 0;
+                font-size: 16px;
+                line-height: 1.7;
+                -webkit-text-size-adjust: 100%;
             }
-
-            // Code block delimiter
-            if line.hasPrefix("----") {
-                if inCode {
-                    result.append(AdocBlock(type: .code, content: codeBuffer.joined(separator: "\n")))
-                    codeBuffer.removeAll()
-                    inCode = false
-                } else {
-                    inCode = true
-                }
-                i += 1
-                continue
+            h1, h2, h3, h4, h5 {
+                color: #FFFFFF;
+                font-weight: 700;
+                margin-top: 28px;
+                margin-bottom: 12px;
+                border-bottom: 1px solid #21262D;
+                padding-bottom: 8px;
             }
-
-            if inCode {
-                codeBuffer.append(line)
-                i += 1
-                continue
+            h1 { font-size: 26px; }
+            h2 { font-size: 22px; }
+            h3 { font-size: 18px; border: none; }
+            h4 { font-size: 16px; border: none; }
+            p { margin: 12px 0; color: #C9D1D9; }
+            a { color: #F7931A; text-decoration: none; }
+            a:active { opacity: 0.7; }
+            code, pre code {
+                font-family: 'SF Mono', 'Menlo', monospace;
+                font-size: 13px;
             }
-
-            // Admonition block end
-            if line == "====" && inAdmonition {
-                if let type = admonitionType {
-                    result.append(AdocBlock(type: type, content: admonitionBuffer.joined(separator: " ")))
-                }
-                admonitionBuffer.removeAll()
-                admonitionType = nil
-                inAdmonition = false
-                i += 1
-                continue
+            code {
+                background: #161B22;
+                padding: 2px 6px;
+                border-radius: 4px;
+                color: #F7931A;
             }
-
-            if inAdmonition {
-                let trimmed = line.trimmingCharacters(in: .whitespaces)
-                if !trimmed.isEmpty {
-                    admonitionBuffer.append(trimmed)
-                }
-                i += 1
-                continue
+            pre {
+                background: #161B22;
+                border: 1px solid #21262D;
+                border-radius: 8px;
+                padding: 14px;
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
             }
-
-            // Admonition start: [TIP], [WARNING], [NOTE]
-            if line == "[TIP]" || line == "[WARNING]" || line == "[NOTE]" || line == "[IMPORTANT]" || line == "[CAUTION]" {
-                let type: AdocBlock.BlockType
-                switch line {
-                case "[TIP]": type = .tip
-                case "[WARNING]", "[CAUTION]": type = .warning
-                default: type = .note
-                }
-                admonitionType = type
-                // Next line should be ====
-                if i + 1 < lines.count && lines[i + 1].hasPrefix("====") {
-                    inAdmonition = true
-                    i += 2
-                } else {
-                    i += 1
-                }
-                continue
+            pre code {
+                background: none;
+                padding: 0;
+                color: #E6EDF3;
             }
-
-            // Headings
-            if line.hasPrefix("== ") {
-                result.append(AdocBlock(type: .heading(1), content: String(line.dropFirst(3))))
-                i += 1
-                continue
+            ul, ol { padding-left: 24px; color: #C9D1D9; }
+            li { margin: 4px 0; }
+            li::marker { color: #F7931A; }
+            em { color: #C9D1D9; font-style: italic; }
+            strong { color: #FFFFFF; }
+            table {
+                border-collapse: collapse;
+                width: 100%;
+                margin: 16px 0;
+                font-size: 14px;
             }
-            if line.hasPrefix("=== ") {
-                result.append(AdocBlock(type: .heading(2), content: String(line.dropFirst(4))))
-                i += 1
-                continue
+            th, td {
+                border: 1px solid #21262D;
+                padding: 8px 12px;
+                text-align: left;
             }
-            if line.hasPrefix("==== ") {
-                result.append(AdocBlock(type: .heading(3), content: String(line.dropFirst(5))))
-                i += 1
-                continue
+            th { background: #161B22; color: #F7931A; font-weight: 600; }
+            td { color: #C9D1D9; }
+            tr:nth-child(even) td { background: #0D1117; }
+            tr:nth-child(odd) td { background: #161B22; }
+            blockquote {
+                border-left: 3px solid #F7931A;
+                margin: 16px 0;
+                padding: 8px 16px;
+                color: #8B949E;
+                background: #161B22;
+                border-radius: 0 8px 8px 0;
             }
-            if line.hasPrefix("===== ") {
-                result.append(AdocBlock(type: .heading(4), content: String(line.dropFirst(6))))
-                i += 1
-                continue
+            hr {
+                border: none;
+                border-top: 1px solid #21262D;
+                margin: 24px 0;
             }
-
-            // List items (unordered * and ordered . or numbers)
-            if line.hasPrefix("* ") {
-                result.append(AdocBlock(type: .listItem, content: String(line.dropFirst(2))))
-                i += 1
-                continue
-            }
-            if line.hasPrefix(". ") && !line.hasPrefix("..") {
-                result.append(AdocBlock(type: .listItem, content: String(line.dropFirst(2))))
-                i += 1
-                continue
-            }
-
-            // Skip table rows
-            if line.hasPrefix("|") {
-                i += 1
-                continue
-            }
-
-            // Horizontal rule
-            if line == "---" || line == "'''" {
-                result.append(AdocBlock(type: .separator, content: ""))
-                i += 1
-                continue
-            }
-
-            // Empty line
-            if line.trimmingCharacters(in: .whitespaces).isEmpty {
-                i += 1
-                continue
-            }
-
-            // Paragraph — collect consecutive non-empty lines
-            var para: [String] = [line]
-            i += 1
-            while i < lines.count {
-                let next = lines[i].trimmingCharacters(in: .whitespaces)
-                if next.isEmpty || next.hasPrefix("==") ||
-                   next.hasPrefix("----") || next == "++++" || next == "****" || next == "////" ||
-                   next.hasPrefix("* ") || next.hasPrefix(". ") ||
-                   next.hasPrefix("[") || next.hasPrefix("[[") ||
-                   next.hasPrefix("image::") || next.hasPrefix("include::") ||
-                   next.hasPrefix("//") || next == "|===" || next == "====" {
-                    break
-                }
-                para.append(next)
-                i += 1
-            }
-            result.append(AdocBlock(type: .paragraph, content: para.joined(separator: " ")))
-        }
-
-        return result
+            img { max-width: 100%; border-radius: 8px; }
+            .anchor, .octicon { display: none; }
+            svg { display: none; }
+            .markdown-heading { margin-top: 24px; }
+            markdown-accessiblity-table { display: block; }
+        </style>
+        </head>
+        <body>
+        \(body)
+        </body>
+        </html>
+        """
     }
 }
 
-// MARK: - AsciiDoc Block Model
+// MARK: - WKWebView wrapper
 
-struct AdocBlock {
-    enum BlockType: Equatable {
-        case heading(Int)
-        case paragraph
-        case code
-        case tip
-        case warning
-        case note
-        case listItem
-        case separator
+struct ChapterWebView: UIViewRepresentable {
+    let html: String
+
+    func makeUIView(context: Context) -> WKWebView {
+        let config = WKWebViewConfiguration()
+        let webView = WKWebView(frame: .zero, configuration: config)
+        webView.isOpaque = false
+        webView.backgroundColor = UIColor(red: 0.05, green: 0.07, blue: 0.09, alpha: 1)
+        webView.scrollView.backgroundColor = UIColor(red: 0.05, green: 0.07, blue: 0.09, alpha: 1)
+        webView.scrollView.indicatorStyle = .white
+        return webView
     }
 
-    let type: BlockType
-    let content: String
+    func updateUIView(_ webView: WKWebView, context: Context) {
+        webView.loadHTMLString(html, baseURL: nil)
+    }
 }

@@ -210,12 +210,20 @@ final class ScriptVM: ObservableObject {
             guard stack.count >= 2 else { throw ScriptError.stackUnderflow }
             let b = stack.removeLast()
             let a = stack.removeLast()
-            stack.append(a == b ? ScriptNumber.encode(1) : Data())
+            // Compare as script numbers first (handles different encodings of same value),
+            // fall back to byte comparison for non-numeric data
+            let numA = ScriptNumber.decode(a)
+            let numB = ScriptNumber.decode(b)
+            let equal = (a == b) || (ScriptNumber.encode(numA) == a && ScriptNumber.encode(numB) == b && numA == numB)
+            stack.append(equal ? ScriptNumber.encode(1) : Data())
         case .op_equalverify:
             guard stack.count >= 2 else { throw ScriptError.stackUnderflow }
             let b = stack.removeLast()
             let a = stack.removeLast()
-            guard a == b else { throw ScriptError.verifyFailed("OP_EQUALVERIFY") }
+            let numA = ScriptNumber.decode(a)
+            let numB = ScriptNumber.decode(b)
+            let equal = (a == b) || (ScriptNumber.encode(numA) == a && ScriptNumber.encode(numB) == b && numA == numB)
+            guard equal else { throw ScriptError.verifyFailed("OP_EQUALVERIFY") }
 
         // Verify
         case .op_verify:

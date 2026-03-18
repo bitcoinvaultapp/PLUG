@@ -11,16 +11,20 @@ struct ScriptEditorView: View {
                 HStack {
                     PlugHeader(pageName: "Script")
                     Spacer()
-                    HStack(spacing: 12) {
+                    HStack(spacing: 8) {
                         Button { vm.reset() } label: {
                             Image(systemName: "arrow.counterclockwise")
                                 .font(.system(size: 14, weight: .medium))
                                 .foregroundStyle(.secondary)
+                                .padding(10)
+                                .background(Color(.systemGray5), in: RoundedRectangle(cornerRadius: 8))
                         }
                         Button { vm.execute() } label: {
                             Image(systemName: "play.fill")
                                 .font(.system(size: 14))
                                 .foregroundStyle(.green)
+                                .padding(10)
+                                .background(Color.green.opacity(0.15), in: RoundedRectangle(cornerRadius: 8))
                         }
                     }
                     .padding(.trailing, 12)

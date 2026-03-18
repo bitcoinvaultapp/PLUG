@@ -16,10 +16,20 @@ struct WalletView: View {
     }
     @State private var balanceDisplayMode: BalanceDisplay = .sats
 
+    private func formatWithSpaces(_ n: UInt64) -> String {
+        let s = String(n)
+        var result = ""
+        for (i, c) in s.reversed().enumerated() {
+            if i > 0 && i % 3 == 0 { result.append(" ") }
+            result.append(c)
+        }
+        return String(result.reversed())
+    }
+
     private var formattedBalance: String {
         switch balanceDisplayMode {
         case .sats:
-            return "\(vm.totalBalance)"
+            return formatWithSpaces(vm.totalBalance)
         case .btc:
             let btc = Double(vm.totalBalance) / 100_000_000
             return String(format: "%.8f", btc)

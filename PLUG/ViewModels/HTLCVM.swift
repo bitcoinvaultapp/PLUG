@@ -221,7 +221,7 @@ final class HTLCVM: ObservableObject {
 
             let (txid, _) = try await ContractSpendCoordinator.signFinalizeAndBroadcast(
                 psbtData: psbtData, contract: contract,
-                spendPath: .htlcClaim,
+                spendPath: contract.isTaproot ? .taprootHTLCClaim : .htlcClaim,
                 buildWitness: { sig, ws in
                     SpendManager.htlcClaimWitness(signature: sig, preimage: preimageData, witnessScript: ws)
                 },
@@ -267,7 +267,7 @@ final class HTLCVM: ObservableObject {
 
             let (txid, _) = try await ContractSpendCoordinator.signFinalizeAndBroadcast(
                 psbtData: psbtData, contract: contract,
-                spendPath: .htlcRefund,
+                spendPath: contract.isTaproot ? .taprootHTLCRefund : .htlcRefund,
                 buildWitness: SpendManager.htlcRefundWitness,
                 isTestnet: isTestnet
             )

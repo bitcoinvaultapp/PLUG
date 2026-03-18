@@ -212,7 +212,7 @@ final class InheritanceVM: ObservableObject {
 
             let (txid, _) = try await ContractSpendCoordinator.signFinalizeAndBroadcast(
                 psbtData: psbtData, contract: contract,
-                spendPath: .inheritanceKeepAlive,
+                spendPath: contract.isTaproot ? .taprootInheritanceOwner : .inheritanceKeepAlive,
                 buildWitness: SpendManager.inheritanceKeepAliveWitness,
                 isTestnet: isTestnet
             )
@@ -258,7 +258,7 @@ final class InheritanceVM: ObservableObject {
 
             let (txid, _) = try await ContractSpendCoordinator.signFinalizeAndBroadcast(
                 psbtData: psbtData, contract: contract,
-                spendPath: .inheritanceHeirClaim,
+                spendPath: contract.isTaproot ? .taprootInheritanceHeir : .inheritanceHeirClaim,
                 buildWitness: SpendManager.inheritanceHeirClaimWitness,
                 isTestnet: isTestnet
             )

@@ -292,7 +292,7 @@ final class VaultVM: ObservableObject {
             // Sign + finalize but do NOT broadcast (2-stage review)
             let (txHex, updatedContract) = try await ContractSpendCoordinator.signAndFinalize(
                 psbtData: psbtData, contract: contract,
-                spendPath: .vaultSpend,
+                spendPath: contract.isTaproot ? .taprootVaultSpend : .vaultSpend,
                 inputAddressInfos: inputInfos,
                 buildWitness: SpendManager.vaultWitness,
                 isTestnet: isTestnet

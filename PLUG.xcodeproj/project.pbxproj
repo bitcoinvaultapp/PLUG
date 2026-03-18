@@ -51,41 +51,8 @@
 		862E1EFF48F74F14B0315B0B /* PLUG/Core/Bitcoin/KeyDerivation.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9105F5B315443E1B2A3D108 /* PLUG/Core/Bitcoin/KeyDerivation.swift */; };
 		8B7FDF38B0964688BE97A4D3 /* PLUG/Views/PoolView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A884B446CE2440CB1907750 /* PLUG/Views/PoolView.swift */; };
 		LEARN001B0000000000000002 /* PLUG/Views/LearnView.swift in Sources */ = {isa = PBXBuildFile; fileRef = LEARN001A0000000000000001 /* PLUG/Views/LearnView.swift */; };
+		LEDGERVM0B000000000000001 /* PLUG/ViewModels/LedgerVM.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23BDB1B24B184A1B9E6A52DF /* PLUG/ViewModels/LedgerVM.swift */; };
 		KEYIDX01B000000000000002 /* PLUG/Views/KeyIndexPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = KEYIDX01A000000000000001 /* PLUG/Views/KeyIndexPicker.swift */; };
-		00000000AD0C000000000001 /* appa_whitepaper.adoc in Resources */ = {isa = PBXBuildFile; fileRef = 00000000AD0C000000000000 /* appa_whitepaper.adoc */; };
-		00000000AD0C000000000003 /* appb_errata.adoc in Resources */ = {isa = PBXBuildFile; fileRef = 00000000AD0C000000000002 /* appb_errata.adoc */; };
-		00000000AD0C000000000005 /* appc_bips.adoc in Resources */ = {isa = PBXBuildFile; fileRef = 00000000AD0C000000000004 /* appc_bips.adoc */; };
-		00000000AD0C000000000007 /* ch01_intro.adoc in Resources */ = {isa = PBXBuildFile; fileRef = 00000000AD0C000000000006 /* ch01_intro.adoc */; };
-		00000000AD0C000000000009 /* ch02_overview.adoc in Resources */ = {isa = PBXBuildFile; fileRef = 00000000AD0C000000000008 /* ch02_overview.adoc */; };
-		00000000AD0C00000000000B /* ch03_bitcoin-core.adoc in Resources */ = {isa = PBXBuildFile; fileRef = 00000000AD0C00000000000A /* ch03_bitcoin-core.adoc */; };
-		00000000AD0C00000000000D /* ch04_keys.adoc in Resources */ = {isa = PBXBuildFile; fileRef = 00000000AD0C00000000000C /* ch04_keys.adoc */; };
-		00000000AD0C00000000000F /* ch05_wallets.adoc in Resources */ = {isa = PBXBuildFile; fileRef = 00000000AD0C00000000000E /* ch05_wallets.adoc */; };
-		00000000AD0C000000000011 /* ch06_transactions.adoc in Resources */ = {isa = PBXBuildFile; fileRef = 00000000AD0C000000000010 /* ch06_transactions.adoc */; };
-		00000000AD0C000000000013 /* ch07_authorization-authentication.adoc in Resources */ = {isa = PBXBuildFile; fileRef = 00000000AD0C000000000012 /* ch07_authorization-authentication.adoc */; };
-		00000000AD0C000000000015 /* ch08_signatures.adoc in Resources */ = {isa = PBXBuildFile; fileRef = 00000000AD0C000000000014 /* ch08_signatures.adoc */; };
-		00000000AD0C000000000017 /* ch09_fees.adoc in Resources */ = {isa = PBXBuildFile; fileRef = 00000000AD0C000000000016 /* ch09_fees.adoc */; };
-		00000000AD0C000000000019 /* ch10_network.adoc in Resources */ = {isa = PBXBuildFile; fileRef = 00000000AD0C000000000018 /* ch10_network.adoc */; };
-		00000000AD0C00000000001B /* ch11_blockchain.adoc in Resources */ = {isa = PBXBuildFile; fileRef = 00000000AD0C00000000001A /* ch11_blockchain.adoc */; };
-		00000000AD0C00000000001D /* ch12_mining.adoc in Resources */ = {isa = PBXBuildFile; fileRef = 00000000AD0C00000000001C /* ch12_mining.adoc */; };
-		00000000AD0C00000000001F /* ch13_security.adoc in Resources */ = {isa = PBXBuildFile; fileRef = 00000000AD0C00000000001E /* ch13_security.adoc */; };
-		00000000AD0C000000000021 /* ch14_applications.adoc in Resources */ = {isa = PBXBuildFile; fileRef = 00000000AD0C000000000020 /* ch14_applications.adoc */; };
-		00000000AD0C000000000000 /* appa_whitepaper.adoc */ = {isa = PBXFileReference; lastKnownFileType = text; path = "PLUG/Resources/chapters/appa_whitepaper.adoc"; sourceTree = SOURCE_ROOT; };
-		00000000AD0C000000000002 /* appb_errata.adoc */ = {isa = PBXFileReference; lastKnownFileType = text; path = "PLUG/Resources/chapters/appb_errata.adoc"; sourceTree = SOURCE_ROOT; };
-		00000000AD0C000000000004 /* appc_bips.adoc */ = {isa = PBXFileReference; lastKnownFileType = text; path = "PLUG/Resources/chapters/appc_bips.adoc"; sourceTree = SOURCE_ROOT; };
-		00000000AD0C000000000006 /* ch01_intro.adoc */ = {isa = PBXFileReference; lastKnownFileType = text; path = "PLUG/Resources/chapters/ch01_intro.adoc"; sourceTree = SOURCE_ROOT; };
-		00000000AD0C000000000008 /* ch02_overview.adoc */ = {isa = PBXFileReference; lastKnownFileType = text; path = "PLUG/Resources/chapters/ch02_overview.adoc"; sourceTree = SOURCE_ROOT; };
-		00000000AD0C00000000000A /* ch03_bitcoin-core.adoc */ = {isa = PBXFileReference; lastKnownFileType = text; path = "PLUG/Resources/chapters/ch03_bitcoin-core.adoc"; sourceTree = SOURCE_ROOT; };
-		00000000AD0C00000000000C /* ch04_keys.adoc */ = {isa = PBXFileReference; lastKnownFileType = text; path = "PLUG/Resources/chapters/ch04_keys.adoc"; sourceTree = SOURCE_ROOT; };
-		00000000AD0C00000000000E /* ch05_wallets.adoc */ = {isa = PBXFileReference; lastKnownFileType = text; path = "PLUG/Resources/chapters/ch05_wallets.adoc"; sourceTree = SOURCE_ROOT; };
-		00000000AD0C000000000010 /* ch06_transactions.adoc */ = {isa = PBXFileReference; lastKnownFileType = text; path = "PLUG/Resources/chapters/ch06_transactions.adoc"; sourceTree = SOURCE_ROOT; };
-		00000000AD0C000000000012 /* ch07_authorization-authentication.adoc */ = {isa = PBXFileReference; lastKnownFileType = text; path = "PLUG/Resources/chapters/ch07_authorization-authentication.adoc"; sourceTree = SOURCE_ROOT; };
-		00000000AD0C000000000014 /* ch08_signatures.adoc */ = {isa = PBXFileReference; lastKnownFileType = text; path = "PLUG/Resources/chapters/ch08_signatures.adoc"; sourceTree = SOURCE_ROOT; };
-		00000000AD0C000000000016 /* ch09_fees.adoc */ = {isa = PBXFileReference; lastKnownFileType = text; path = "PLUG/Resources/chapters/ch09_fees.adoc"; sourceTree = SOURCE_ROOT; };
-		00000000AD0C000000000018 /* ch10_network.adoc */ = {isa = PBXFileReference; lastKnownFileType = text; path = "PLUG/Resources/chapters/ch10_network.adoc"; sourceTree = SOURCE_ROOT; };
-		00000000AD0C00000000001A /* ch11_blockchain.adoc */ = {isa = PBXFileReference; lastKnownFileType = text; path = "PLUG/Resources/chapters/ch11_blockchain.adoc"; sourceTree = SOURCE_ROOT; };
-		00000000AD0C00000000001C /* ch12_mining.adoc */ = {isa = PBXFileReference; lastKnownFileType = text; path = "PLUG/Resources/chapters/ch12_mining.adoc"; sourceTree = SOURCE_ROOT; };
-		00000000AD0C00000000001E /* ch13_security.adoc */ = {isa = PBXFileReference; lastKnownFileType = text; path = "PLUG/Resources/chapters/ch13_security.adoc"; sourceTree = SOURCE_ROOT; };
-		00000000AD0C000000000020 /* ch14_applications.adoc */ = {isa = PBXFileReference; lastKnownFileType = text; path = "PLUG/Resources/chapters/ch14_applications.adoc"; sourceTree = SOURCE_ROOT; };
 		918B15C8A430427CB0B32032 /* PLUG/Views/OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4EBADE241CD43C3899BBF2A /* PLUG/Views/OnboardingView.swift */; };
 		9265C6221BE14A73A788C1A6 /* PLUG/Views/InheritanceView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 076420C949DA47D0AD5D755B /* PLUG/Views/InheritanceView.swift */; };
 		93E29DCF1B3C4D3DA88A5D5B /* PLUG/ViewModels/OpReturnVM.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6FF7B4BC7F964333865FCE8D /* PLUG/ViewModels/OpReturnVM.swift */; };
@@ -114,7 +81,6 @@
 		E4D1E371898640F9B5914DA0 /* PLUG/Core/Storage/BIP329Labels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1818831F5C3E4F578B779D4A /* PLUG/Core/Storage/BIP329Labels.swift */; };
 		F21F025938B546BEB40DDC12 /* PLUG/Views/SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87D26F8A2AE4454AA4F9912C /* PLUG/Views/SettingsView.swift */; };
 		F24911BF850F44F7958E041D /* PLUG/Core/Bitcoin/BatchSend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33D2076012C748678790F1B3 /* PLUG/Core/Bitcoin/BatchSend.swift */; };
-		FDB7AD0C20DE4AB3BFD1EBDF /* PLUG/ViewModels/LedgerVM.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23BDB1B24B184A1B9E6A52DF /* PLUG/ViewModels/LedgerVM.swift */; };
 		FF2EA09FF4AB4429817ED849 /* PLUG/Core/Network/BlockFilterService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20FBB8C99E144C30837CCBBB /* PLUG/Core/Network/BlockFilterService.swift */; };
 /* End PBXBuildFile section */
 
@@ -276,23 +242,6 @@
 				1A884B446CE2440CB1907750 /* PLUG/Views/PoolView.swift */,
 				LEARN001A0000000000000001 /* PLUG/Views/LearnView.swift */,
 				KEYIDX01A000000000000001 /* PLUG/Views/KeyIndexPicker.swift */,
-				00000000AD0C000000000000 /* appa_whitepaper.adoc */,
-				00000000AD0C000000000002 /* appb_errata.adoc */,
-				00000000AD0C000000000004 /* appc_bips.adoc */,
-				00000000AD0C000000000006 /* ch01_intro.adoc */,
-				00000000AD0C000000000008 /* ch02_overview.adoc */,
-				00000000AD0C00000000000A /* ch03_bitcoin-core.adoc */,
-				00000000AD0C00000000000C /* ch04_keys.adoc */,
-				00000000AD0C00000000000E /* ch05_wallets.adoc */,
-				00000000AD0C000000000010 /* ch06_transactions.adoc */,
-				00000000AD0C000000000012 /* ch07_authorization-authentication.adoc */,
-				00000000AD0C000000000014 /* ch08_signatures.adoc */,
-				00000000AD0C000000000016 /* ch09_fees.adoc */,
-				00000000AD0C000000000018 /* ch10_network.adoc */,
-				00000000AD0C00000000001A /* ch11_blockchain.adoc */,
-				00000000AD0C00000000001C /* ch12_mining.adoc */,
-				00000000AD0C00000000001E /* ch13_security.adoc */,
-				00000000AD0C000000000020 /* ch14_applications.adoc */,
 				51795899F8E24918A9F82E1A /* PLUG/Views/ChannelView.swift */,
 				3D23BF30901F4A0999486DFB /* PLUG/Views/HTLCView.swift */,
 				076420C949DA47D0AD5D755B /* PLUG/Views/InheritanceView.swift */,
@@ -374,23 +323,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				7DFAFF013F134123951FB562 /* PLUG/Assets/Assets.xcassets in Resources */,
-							00000000AD0C000000000001 /* appa_whitepaper.adoc in Resources */,
-				00000000AD0C000000000003 /* appb_errata.adoc in Resources */,
-				00000000AD0C000000000005 /* appc_bips.adoc in Resources */,
-				00000000AD0C000000000007 /* ch01_intro.adoc in Resources */,
-				00000000AD0C000000000009 /* ch02_overview.adoc in Resources */,
-				00000000AD0C00000000000B /* ch03_bitcoin-core.adoc in Resources */,
-				00000000AD0C00000000000D /* ch04_keys.adoc in Resources */,
-				00000000AD0C00000000000F /* ch05_wallets.adoc in Resources */,
-				00000000AD0C000000000011 /* ch06_transactions.adoc in Resources */,
-				00000000AD0C000000000013 /* ch07_authorization-authentication.adoc in Resources */,
-				00000000AD0C000000000015 /* ch08_signatures.adoc in Resources */,
-				00000000AD0C000000000017 /* ch09_fees.adoc in Resources */,
-				00000000AD0C000000000019 /* ch10_network.adoc in Resources */,
-				00000000AD0C00000000001B /* ch11_blockchain.adoc in Resources */,
-				00000000AD0C00000000001D /* ch12_mining.adoc in Resources */,
-				00000000AD0C00000000001F /* ch13_security.adoc in Resources */,
-				00000000AD0C000000000021 /* ch14_applications.adoc in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -447,7 +379,6 @@
 				020A7B84E10843828A3B1762 /* PLUG/ViewModels/HTLCVM.swift in Sources */,
 				0D4845A5D34346A488323ECB /* PLUG/ViewModels/InheritanceVM.swift in Sources */,
 				5AEB3232E67243D9A5EE2791 /* PLUG/ViewModels/HomeVM.swift in Sources */,
-				FDB7AD0C20DE4AB3BFD1EBDF /* PLUG/ViewModels/LedgerVM.swift in Sources */,
 				93E29DCF1B3C4D3DA88A5D5B /* PLUG/ViewModels/OpReturnVM.swift in Sources */,
 				69AF41D335EA4CA1A5EE0F6A /* PLUG/ViewModels/ScriptVM.swift in Sources */,
 				4C3CEA6FC45E468BAF48902C /* PLUG/ViewModels/SettingsVM.swift in Sources */,
@@ -457,6 +388,7 @@
 				D1F5C73B647A4DA6A7220022 /* PLUG/Views/BackupView.swift in Sources */,
 				8B7FDF38B0964688BE97A4D3 /* PLUG/Views/PoolView.swift in Sources */,
 				LEARN001B0000000000000002 /* PLUG/Views/LearnView.swift in Sources */,
+				LEDGERVM0B000000000000001 /* PLUG/ViewModels/LedgerVM.swift in Sources */,
 				KEYIDX01B000000000000002 /* PLUG/Views/KeyIndexPicker.swift in Sources */,
 				16F63862FFE4499BA1B6567D /* PLUG/Views/ChannelView.swift in Sources */,
 				98F439E5AB71480D8E596A09 /* PLUG/Views/HTLCView.swift in Sources */,

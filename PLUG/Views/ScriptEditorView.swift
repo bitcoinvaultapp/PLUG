@@ -11,23 +11,25 @@ struct ScriptEditorView: View {
                 HStack {
                     PlugHeader(pageName: "Script")
                     Spacer()
-                    HStack(spacing: 8) {
+                    HStack(spacing: 10) {
                         Button { vm.reset() } label: {
-                            Image(systemName: "arrow.counterclockwise")
-                                .font(.system(size: 14, weight: .medium))
+                            Text("Reset")
+                                .font(.system(size: 13, weight: .medium))
                                 .foregroundStyle(.secondary)
-                                .padding(10)
-                                .background(Color(.systemGray5), in: RoundedRectangle(cornerRadius: 8))
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 8)
+                                .background(.ultraThinMaterial, in: Capsule())
                         }
                         Button { vm.execute() } label: {
-                            Image(systemName: "play.fill")
-                                .font(.system(size: 14))
-                                .foregroundStyle(.green)
-                                .padding(10)
-                                .background(Color.green.opacity(0.15), in: RoundedRectangle(cornerRadius: 8))
+                            Label("Run", systemImage: "play.fill")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 8)
+                                .background(Color.green, in: Capsule())
                         }
                     }
-                    .padding(.trailing, 12)
+                    .padding(.trailing, 4)
                 }
                 .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 12, trailing: 0))
                 .listRowBackground(Color.clear)

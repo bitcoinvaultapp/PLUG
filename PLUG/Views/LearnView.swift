@@ -281,7 +281,7 @@ struct ChapterView: View {
             // Skip metadata lines
             if line.hasPrefix("[[") || line.hasPrefix(":") || line.hasPrefix("ifdef::") ||
                line.hasPrefix("endif::") || line.hasPrefix("image::") || line.hasPrefix("include::") ||
-               line.hasPrefix("[role=") || line.hasPrefix("////") || line.hasPrefix(".") && line.count > 1 && line.dropFirst().first?.isUpperCase == true {
+               line.hasPrefix("[role=") || line.hasPrefix("////") || line.hasPrefix(".") && line.count > 1 && line.dropFirst().first?.isUppercase == true {
                 i += 1
                 continue
             }

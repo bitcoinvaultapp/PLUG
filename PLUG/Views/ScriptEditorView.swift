@@ -213,16 +213,17 @@ struct ScriptEditorView: View {
 
     private func scriptActionButton(icon: String, title: String, color: Color, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            HStack(spacing: 6) {
+            VStack(spacing: 6) {
                 Image(systemName: icon)
-                    .font(.system(size: 13))
+                    .font(.system(size: 20))
+                    .foregroundStyle(color)
                 Text(title)
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.primary)
             }
-            .foregroundStyle(color == .secondary ? .primary : color)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 12)
-            .background(Color(.systemGray5), in: RoundedRectangle(cornerRadius: 10))
+            .background(color.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
         }
         .buttonStyle(.plain)
     }

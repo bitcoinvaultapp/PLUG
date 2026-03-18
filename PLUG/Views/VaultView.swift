@@ -197,7 +197,7 @@ struct VaultView: View {
                     .buttonStyle(.plain)
 
                     Button {
-                        UIPasteboard.general.string = contract.witnessScript
+                        UIPasteboard.general.string = contract.script.isEmpty ? contract.witnessScript : contract.script
                         copiedId = "\(contract.id):script"
                         DispatchQueue.main.asyncAfter(deadline: .now() + 2) { copiedId = "" }
                     } label: {

@@ -58,12 +58,12 @@ struct ContractCreatedSheet: View {
                         Label("Witness Script", systemImage: "scroll")
                             .font(.subheadline.bold())
 
-                        Text(contract.witnessScript)
+                        Text(contract.script.isEmpty ? contract.witnessScript : contract.script)
                             .font(.system(.caption2, design: .monospaced))
                             .foregroundStyle(.secondary)
                             .lineLimit(3)
 
-                        copyButton(label: "Copy script", value: contract.witnessScript, tag: "script")
+                        copyButton(label: "Copy script", value: contract.script.isEmpty ? contract.witnessScript : contract.script, tag: "script")
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding()

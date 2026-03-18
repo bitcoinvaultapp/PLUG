@@ -24,15 +24,22 @@ struct HomeView: View {
                     // Custom header
                     headerBar
 
-                    // Existing cards — untouched
+                    // Existing cards
                     balanceCard
                     networkStatsCard
+
+                    // Bitcoin stats
+                    halvingCard
+                    supplyCard
 
                     if !vm.alerts.isEmpty {
                         alertsSection
                     }
 
-                    // New contracts summary
+                    // Daily tip
+                    dailyTipCard
+
+                    // Contracts summary
                     contractsSummary
                 }
                 .padding()
@@ -155,7 +162,201 @@ struct HomeView: View {
     }
 
     // =====================================================================
-    // MARK: - Contracts Summary (new — from screenshot design)
+    // MARK: - Halving Countdown
+    // =====================================================================
+
+    private var halvingCard: some View {
+        let currentBlock = vm.blockHeight
+        let halvingInterval = 210_000
+        let nextHalving = ((currentBlock / halvingInterval) + 1) * halvingInterval
+        let blocksRemaining = nextHalving - currentBlock
+        let progress = Double(currentBlock % halvingInterval) / Double(halvingInterval)
+        let currentReward = 3.125 // BTC (post-2024 halving)
+        let halvingNumber = (currentBlock / halvingInterval) + 1
+        let estimatedDays = blocksRemaining * 10 / 60 / 24 // ~10 min per block
+
+        return VStack(spacing: 14) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "clock.badge.exclamationmark")
+                            .font(.system(size: 16))
+                            .foregroundStyle(Color.btcOrange)
+                        Text("Halving #\(halvingNumber)")
+                            .font(.system(size: 15, weight: .bold))
+                    }
+                    Text("Block \(nextHalving)")
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text("\(blocksRemaining)")
+                        .font(.system(size: 22, weight: .bold, design: .monospaced))
+                        .foregroundStyle(Color.btcOrange)
+                    Text("blocks left")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.secondary)
+                }
+            }
+
+            // Progress bar
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Color.gray.opacity(0.2))
+                        .frame(height: 6)
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Color.btcOrange)
+                        .frame(width: geo.size.width * progress, height: 6)
+                }
+            }
+            .frame(height: 6)
+
+            HStack {
+                Label("\(currentReward) BTC/block", systemImage: "bitcoinsign.circle")
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                Spacer()
+                Text("~\(estimatedDays) days")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding()
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+    }
+
+    // =====================================================================
+    // MARK: - Supply Stats
+    // =====================================================================
+
+    private var supplyCard: some View {
+        let currentBlock = vm.blockHeight
+        // Approximate circulating supply calculation
+        let supply: Double = {
+            var total: Double = 0
+            var reward: Double = 50
+            var blocks = 0
+            while blocks < currentBlock {
+                let epochEnd = blocks + 210_000
+                let blocksInEpoch = min(currentBlock - blocks, 210_000)
+                total += Double(blocksInEpoch) * reward
+                blocks = epochEnd
+                reward /= 2
+            }
+            return total
+        }()
+        let maxSupply: Double = 21_000_000
+        let percentMined = supply / maxSupply * 100
+        let inflationRate = (3.125 * 6 * 24 * 365) / supply * 100
+
+        return VStack(spacing: 12) {
+            HStack {
+                HStack(spacing: 6) {
+                    Image(systemName: "chart.pie.fill")
+                        .font(.system(size: 16))
+                        .foregroundStyle(.cyan)
+                    Text("Supply")
+                        .font(.system(size: 15, weight: .bold))
+                }
+                Spacer()
+                Text(String(format: "%.1f%%", percentMined))
+                    .font(.system(size: 15, weight: .bold, design: .monospaced))
+                    .foregroundStyle(.cyan)
+            }
+
+            // Supply bar
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(Color.gray.opacity(0.2))
+                        .frame(height: 6)
+                    RoundedRectangle(cornerRadius: 4)
+                        .fill(.cyan)
+                        .frame(width: geo.size.width * (supply / maxSupply), height: 6)
+                }
+            }
+            .frame(height: 6)
+
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(String(format: "%.0f", supply))
+                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                    Text("circulating")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                VStack(alignment: .center, spacing: 2) {
+                    Text(String(format: "%.2f%%", inflationRate))
+                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                    Text("inflation/yr")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.secondary)
+                }
+                Spacer()
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text("21 000 000")
+                        .font(.system(size: 11, weight: .medium, design: .monospaced))
+                    Text("max supply")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .padding()
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+    }
+
+    // =====================================================================
+    // MARK: - Daily Bitcoin Tip (from Mastering Bitcoin ch13)
+    // =====================================================================
+
+    private var dailyTipCard: some View {
+        let tips = [
+            ("lock.shield.fill", "Never reuse a Bitcoin address. Each address should be used only once for receiving.", Color.green),
+            ("key.fill", "Your Ledger seed phrase is the master key. Store it offline, never digitally.", Color.btcOrange),
+            ("eye.slash.fill", "Use coin control to avoid mixing KYC and non-KYC UTXOs in the same transaction.", Color.purple),
+            ("checkmark.shield.fill", "Always verify the receive address on your Ledger screen before sending funds.", Color.blue),
+            ("clock.fill", "Wait for at least 6 confirmations before considering a large payment final.", Color.orange),
+            ("antenna.radiowaves.left.and.right", "Consider using Tor to hide your IP address when querying the blockchain.", Color.teal),
+            ("exclamationmark.triangle.fill", "Dust outputs (< 546 sats) cost more in fees to spend than they're worth.", Color.yellow),
+            ("arrow.triangle.2.circlepath", "CoinJoin combines multiple transactions for privacy. No trust required.", Color.purple),
+            ("bitcoinsign.circle.fill", "Bitcoin's supply is capped at 21 million. No government can inflate it.", Color.btcOrange),
+            ("doc.text.fill", "Label your transactions. Future you will thank present you.", Color.blue),
+            ("person.2.fill", "Multisig requires M-of-N signatures. No single point of failure.", Color.teal),
+            ("timer", "OP_CHECKLOCKTIMEVERIFY locks funds until a specific block height.", Color.orange),
+        ]
+
+        let dayIndex = Calendar.current.ordinality(of: .day, in: .year, for: Date()) ?? 0
+        let tip = tips[dayIndex % tips.count]
+
+        return HStack(spacing: 12) {
+            Image(systemName: tip.0)
+                .font(.system(size: 22))
+                .foregroundStyle(tip.2)
+                .frame(width: 44, height: 44)
+                .background(tip.2.opacity(0.15), in: RoundedRectangle(cornerRadius: 12))
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Daily Tip")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(.secondary)
+                Text(tip.1)
+                    .font(.system(size: 13))
+                    .foregroundStyle(.primary)
+                    .lineLimit(3)
+            }
+        }
+        .padding()
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+    }
+
+    // =====================================================================
+    // MARK: - Contracts Summary
+    // =====================================================================
     // =====================================================================
 
     private var contractsSummary: some View {

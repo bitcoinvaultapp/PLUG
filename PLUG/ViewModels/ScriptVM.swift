@@ -58,8 +58,8 @@ final class ScriptVM: ObservableObject {
 
     private func tokenize(_ script: String) -> [String] {
         script
-            .split(separator: " ")
-            .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+            .components(separatedBy: .whitespacesAndNewlines)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
     }
 

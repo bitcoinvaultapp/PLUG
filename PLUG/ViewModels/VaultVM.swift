@@ -247,11 +247,22 @@ final class VaultVM: ObservableObject {
             )
 
             let address = spendAddress.trimmingCharacters(in: .whitespacesAndNewlines)
-            let psbtData = try SpendManager.buildVaultSpendPSBT(
-                contract: contract, utxos: utxos,
-                destinationAddress: address,
-                feeRate: spendFeeRate, isTestnet: isTestnet
-            )
+            let psbtData: Data
+
+            if contract.isTaproot {
+                // Taproot key-path: build simple PSBT without witnessScript or locktime
+                psbtData = try SpendManager.buildTaprootKeyPathSpendPSBT(
+                    contract: contract, utxos: utxos,
+                    destinationAddress: address,
+                    feeRate: spendFeeRate, isTestnet: isTestnet
+                )
+            } else {
+                psbtData = try SpendManager.buildVaultSpendPSBT(
+                    contract: contract, utxos: utxos,
+                    destinationAddress: address,
+                    feeRate: spendFeeRate, isTestnet: isTestnet
+                )
+            }
 
             psbtForReview = SpendManager.exportPSBTBase64(psbtData)
 
@@ -290,13 +301,48 @@ final class VaultVM: ObservableObject {
             }
 
             // Sign + finalize but do NOT broadcast (2-stage review)
-            let (txHex, updatedContract) = try await ContractSpendCoordinator.signAndFinalize(
-                psbtData: psbtData, contract: contract,
-                spendPath: contract.isTaproot ? .taprootVaultSpend : .vaultSpend,
-                inputAddressInfos: inputInfos,
-                buildWitness: SpendManager.vaultWitness,
-                isTestnet: isTestnet
-            )
+            let txHex: String
+            let updatedContract: Contract
+
+            if contract.isTaproot {
+                // Taproot key-path spend: use default tr(@0/**) policy (no registration needed).
+                // Key-path bypasses all script conditions (timelock doesn't apply).
+                let result = try await LedgerSigningV2.signPSBT(
+                    psbt: psbtData,
+                    walletPolicy: "tr(@0/**)",
+                    keyOrigin: "84'/\(KeychainStore.shared.loadString(forKey: KeychainStore.KeychainKey.ledgerCoinType.rawValue) ?? "1")'/0'",
+                    xpub: KeychainStore.shared.loadString(forKey: KeychainStore.KeychainKey.ledgerOriginalXpub.rawValue)
+                        ?? KeychainStore.shared.loadXpub(isTestnet: isTestnet) ?? "",
+                    inputAddressInfos: inputInfos
+                )
+
+                let signatures = result.map { $0.signature }
+                // Taproot key-path witness: just the 64-byte Schnorr signature
+                let witnessStacks: [[Data]] = signatures.map { sig in
+                    SpendManager.taprootKeyPathWitness(signature: sig)
+                }
+
+                guard let finalTx = SpendManager.finalizePSBT(
+                    psbtData: psbtData,
+                    witnessStacks: witnessStacks
+                ) else {
+                    throw SpendManager.SpendError.signingFailed
+                }
+
+                txHex = SpendManager.extractTransactionHex(finalTx)
+                updatedContract = contract
+            } else {
+                // P2WSH script-path spend
+                let result = try await ContractSpendCoordinator.signAndFinalize(
+                    psbtData: psbtData, contract: contract,
+                    spendPath: .vaultSpend,
+                    inputAddressInfos: inputInfos,
+                    buildWitness: SpendManager.vaultWitness,
+                    isTestnet: isTestnet
+                )
+                txHex = result.txHex
+                updatedContract = result.updatedContract
+            }
 
             if updatedContract.walletPolicyHmac != contract.walletPolicyHmac {
                 selectedContract = updatedContract

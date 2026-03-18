@@ -13,7 +13,56 @@ final class ScriptVM: ObservableObject {
     @Published var error: String?
     @Published var isValid: Bool?
 
-    // MARK: - Execute
+    // Step-by-step execution
+    @Published var tokens: [String] = []
+    @Published var currentStep: Int = 0
+    @Published var isStepping: Bool = false
+    @Published var lastAction: String = ""  // "PUSH", "POP", etc.
+
+    // MARK: - Step-by-step
+
+    func startStepping() {
+        stack.removeAll()
+        altStack.removeAll()
+        log.removeAll()
+        error = nil
+        isValid = nil
+        tokens = tokenize(scriptText)
+        currentStep = 0
+        isStepping = true
+        lastAction = ""
+    }
+
+    func stepForward() {
+        guard isStepping, currentStep < tokens.count else {
+            if isStepping { finishStepping() }
+            return
+        }
+
+        let token = tokens[currentStep]
+        do {
+            try executeToken(token)
+            currentStep += 1
+        } catch {
+            self.error = error.localizedDescription
+            log.append("ERROR: \(error.localizedDescription)")
+            isValid = false
+            isStepping = false
+        }
+    }
+
+    func finishStepping() {
+        isStepping = false
+        if let top = stack.last {
+            isValid = !top.isEmpty && top != Data([0x00])
+            log.append(isValid! ? "VALID" : "INVALID (top of stack is false)")
+        } else {
+            isValid = false
+            log.append("INVALID (empty stack)")
+        }
+    }
+
+    // MARK: - Execute (run all)
 
     func execute() {
         stack.removeAll()
@@ -52,6 +101,10 @@ final class ScriptVM: ObservableObject {
         log.removeAll()
         error = nil
         isValid = nil
+        tokens.removeAll()
+        currentStep = 0
+        isStepping = false
+        lastAction = ""
     }
 
     // MARK: - Tokenizer

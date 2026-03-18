@@ -4,6 +4,8 @@ struct ScriptEditorView: View {
     @StateObject private var vm = ScriptVM()
     @State private var showTemplates = false
     @State private var showReference = false
+    @State private var showLessons = false
+    @State private var showDecoder = false
 
     var body: some View {
         NavigationStack {
@@ -11,19 +13,28 @@ struct ScriptEditorView: View {
                 HStack {
                     PlugHeader(pageName: "Script")
                     Spacer()
-                    HStack(spacing: 8) {
+                    HStack(spacing: 6) {
                         Button { vm.reset() } label: {
                             Image(systemName: "arrow.counterclockwise")
-                                .font(.system(size: 13, weight: .medium))
+                                .font(.system(size: 12, weight: .medium))
                                 .foregroundStyle(.secondary)
-                                .frame(width: 32, height: 32)
+                                .frame(width: 30, height: 30)
                                 .background(.ultraThinMaterial, in: Circle())
+                        }
+                        Button {
+                            if vm.isStepping { vm.stepForward() } else { vm.startStepping() }
+                        } label: {
+                            Image(systemName: vm.isStepping ? "forward.frame.fill" : "forward.frame")
+                                .font(.system(size: 12))
+                                .foregroundStyle(Color.btcOrange)
+                                .frame(width: 30, height: 30)
+                                .background(Color.btcOrange.opacity(0.15), in: Circle())
                         }
                         Button { vm.execute() } label: {
                             Image(systemName: "play.fill")
-                                .font(.system(size: 13))
+                                .font(.system(size: 12))
                                 .foregroundStyle(.white)
-                                .frame(width: 32, height: 32)
+                                .frame(width: 30, height: 30)
                                 .background(Color.green, in: Circle())
                         }
                     }
@@ -52,14 +63,65 @@ struct ScriptEditorView: View {
                     Text("Script")
                 }
 
-                // Templates & Opcodes
+                // Step-by-step indicator
+                if vm.isStepping {
+                    Section {
+                        VStack(spacing: 6) {
+                            HStack {
+                                Text("Step \(vm.currentStep)/\(vm.tokens.count)")
+                                    .font(.system(size: 13, weight: .bold, design: .monospaced))
+                                    .foregroundStyle(Color.btcOrange)
+                                Spacer()
+                                if vm.currentStep < vm.tokens.count {
+                                    Text(vm.tokens[vm.currentStep])
+                                        .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                                        .foregroundStyle(.green)
+                                } else {
+                                    Text("Done")
+                                        .font(.system(size: 13, weight: .semibold))
+                                        .foregroundStyle(.green)
+                                }
+                            }
+                            // Token highlight bar
+                            ScrollView(.horizontal, showsIndicators: false) {
+                                HStack(spacing: 4) {
+                                    ForEach(vm.tokens.indices, id: \.self) { i in
+                                        Text(vm.tokens[i])
+                                            .font(.system(size: 10, design: .monospaced))
+                                            .padding(.horizontal, 6)
+                                            .padding(.vertical, 3)
+                                            .background(
+                                                i < vm.currentStep ? Color.green.opacity(0.2) :
+                                                i == vm.currentStep ? Color.btcOrange.opacity(0.3) :
+                                                Color(.systemGray5),
+                                                in: RoundedRectangle(cornerRadius: 4)
+                                            )
+                                            .foregroundStyle(
+                                                i < vm.currentStep ? .green :
+                                                i == vm.currentStep ? Color.btcOrange :
+                                                .secondary
+                                            )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Tools
                 Section {
-                    HStack(spacing: 10) {
+                    HStack(spacing: 8) {
                         scriptActionButton(icon: "doc.text.fill", title: "Templates", color: Color.btcOrange) {
                             showTemplates = true
                         }
                         scriptActionButton(icon: "book.fill", title: "Opcodes", color: .blue) {
                             showReference = true
+                        }
+                        scriptActionButton(icon: "graduationcap.fill", title: "Lessons", color: .purple) {
+                            showLessons = true
+                        }
+                        scriptActionButton(icon: "doc.viewfinder", title: "Decode", color: .teal) {
+                            showDecoder = true
                         }
                     }
                 }
@@ -139,6 +201,12 @@ struct ScriptEditorView: View {
             }
             .sheet(isPresented: $showReference) {
                 OpcodeReferenceSheet()
+            }
+            .sheet(isPresented: $showLessons) {
+                ScriptLessonsSheet(scriptText: $vm.scriptText)
+            }
+            .sheet(isPresented: $showDecoder) {
+                ScriptDecoderSheet()
             }
         }
     }
@@ -339,5 +407,129 @@ struct OpcodeReferenceSheet: View {
                 }
             }
         }
+    }
+}
+
+// MARK: - Guided Lessons
+
+struct ScriptLessonsSheet: View {
+    @Binding var scriptText: String
+    @Environment(\.dismiss) private var dismiss
+    private let lessons: [(String, String, String, String)] = [
+        ("1. The Stack", "Push numbers, then add them", "Bitcoin Script uses a stack. Numbers are pushed on. OP_ADD pops two, adds them, pushes the result. Use Step to watch.", "3 5 OP_ADD"),
+        ("2. Verification", "Check if two values are equal", "OP_EQUAL pops two items, pushes TRUE if they match. A script is valid when TRUE is on top.", "2 3 OP_ADD 5 OP_EQUAL"),
+        ("3. P2PKH", "Pay-to-Public-Key-Hash", "OP_DUP duplicates the pubkey. OP_HASH160 hashes it. OP_EQUALVERIFY checks the hash. OP_CHECKSIG verifies the signature. Every legacy Bitcoin address uses this.", "OP_DUP OP_HASH160 <pubkey_hash> OP_EQUALVERIFY OP_CHECKSIG"),
+        ("4. Multisig", "M-of-N signatures", "Requires 2 of 3 signatures. Used for shared custody and escrow. PLUG's Pool contract uses this.", "2 <pk_A> <pk_B> <pk_C> 3 OP_CHECKMULTISIG"),
+        ("5. Timelocks", "Lock until block height", "OP_CHECKLOCKTIMEVERIFY fails if block height < N. Funds locked until then. PLUG's Vault uses this.", "<pk> OP_CHECKSIGVERIFY 800000 OP_CHECKLOCKTIMEVERIFY"),
+        ("6. CSV", "Relative timelock", "OP_CHECKSEQUENCEVERIFY enforces N blocks after confirmation. Used for inheritance.", "<heir> OP_CHECKSIGVERIFY 4320 OP_CHECKSEQUENCEVERIFY"),
+        ("7. Hash Locks", "Reveal a secret to spend", "OP_SHA256 hashes the input. Must match the expected hash. Basis of HTLCs and atomic swaps.", "OP_SHA256 <hash> OP_EQUAL"),
+        ("8. IF/ELSE", "Conditional branching", "OP_IF/OP_ELSE/OP_ENDIF enables complex conditions like 'Alice OR (Bob after timeout)'.", "<cond> OP_IF <path_A> OP_ELSE <path_B> OP_ENDIF"),
+    ]
+
+    var body: some View {
+        NavigationStack {
+            List {
+                ForEach(lessons, id: \.0) { title, desc, explanation, script in
+                    Button {
+                        scriptText = script
+                        dismiss()
+                    } label: {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(title).font(.subheadline.weight(.bold)).foregroundStyle(.primary)
+                            Text(desc).font(.caption).foregroundStyle(Color.btcOrange)
+                            Text(explanation).font(.caption).foregroundStyle(.secondary).lineLimit(3)
+                            Text(script)
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundStyle(.green)
+                                .padding(8)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .background(Color(.systemGray6), in: RoundedRectangle(cornerRadius: 6))
+                        }
+                        .padding(.vertical, 4)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .navigationTitle("Script Lessons")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } } }
+        }
+    }
+}
+
+// MARK: - Script Decoder
+
+struct ScriptDecoderSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var hexInput = ""
+    @State private var decoded: [(offset: Int, hex: String, meaning: String)] = []
+    @State private var decodeError: String?
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    TextField("Paste raw script hex...", text: $hexInput)
+                        .font(.system(.body, design: .monospaced))
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    Button("Decode") { decodeScript() }
+                        .disabled(hexInput.isEmpty)
+                } header: { Text("Raw Script (hex)") }
+                  footer: { Text("Paste a scriptPubKey or witnessScript to see its opcodes.") }
+
+                if let decodeError {
+                    Section { Text(decodeError).font(.caption).foregroundStyle(.red) }
+                }
+
+                if !decoded.isEmpty {
+                    Section("Decoded") {
+                        ForEach(decoded, id: \.offset) { item in
+                            HStack(alignment: .top, spacing: 10) {
+                                Text(String(format: "%02d", item.offset))
+                                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 20, alignment: .trailing)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(item.meaning)
+                                        .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                                        .foregroundStyle(item.meaning.hasPrefix("OP_") ? Color.btcOrange : .green)
+                                    Text(item.hex)
+                                        .font(.system(size: 10, design: .monospaced))
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                    }
+                    Section("Human-Readable") {
+                        Text(decoded.map { $0.meaning }.joined(separator: " "))
+                            .font(.system(size: 11, design: .monospaced))
+                            .textSelection(.enabled)
+                    }
+                }
+            }
+            .navigationTitle("Script Decoder")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } } }
+        }
+    }
+
+    private func decodeScript() {
+        decoded.removeAll(); decodeError = nil
+        let hex = hexInput.trimmingCharacters(in: .whitespacesAndNewlines).replacingOccurrences(of: "0x", with: "")
+        guard let data = Data(hex: hex) else { decodeError = "Invalid hex"; return }
+        var off = 0; var pos = 0
+        while off < data.count {
+            let b = data[off]
+            if b == 0x00 { decoded.append((pos, "00", "OP_0")); off += 1 }
+            else if b >= 0x01 && b <= 0x4b {
+                let n = Int(b); let end = min(off+1+n, data.count); let d = Data(data[(off+1)..<end])
+                decoded.append((pos, String(format: "%02x", b) + d.hex, "<\(n)B> \(d.hex)")); off += 1+n
+            } else if let op = OpCode(rawValue: b) {
+                decoded.append((pos, String(format: "%02x", b), op.name)); off += 1
+            } else { decoded.append((pos, String(format: "%02x", b), "UNKNOWN")); off += 1 }
+            pos += 1
+        }
+        if decoded.isEmpty { decodeError = "Empty script" }
     }
 }

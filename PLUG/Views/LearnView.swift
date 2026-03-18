@@ -231,31 +231,53 @@ struct ChapterView: View {
 
     private func cleanInline(_ text: String) -> String {
         var s = text
-        // Remove triple-paren index terms: ((("term", "sub"))) and ((("term")))
-        s = s.replacingOccurrences(of: "\\(\\(\\(.*?\\)\\)\\)", with: "", options: .regularExpression)
-        // Remove double-paren index terms: (("term"))
-        s = s.replacingOccurrences(of: "\\(\\(.*?\\)\\)", with: "", options: .regularExpression)
-        // Remove <<cross references>> — keep display text if present
+
+        // 1. Index terms — triple before double (greedy innermost first)
+        // ((("Bitcoin", "operational overview", id="xxx")))
+        s = s.replacingOccurrences(of: "\\(\\(\\([^)]*\\)\\)\\)", with: "", options: .regularExpression)
+        s = s.replacingOccurrences(of: "\\(\\([^)]*\\)\\)", with: "", options: .regularExpression)
+
+        // 2. Cross-references: <<anchor,Display Text>> → Display Text, <<anchor>> → ""
         s = s.replacingOccurrences(of: "<<[^,>]+,\\s*([^>]+)>>", with: "$1", options: .regularExpression)
-        s = s.replacingOccurrences(of: "<<.*?>>", with: "", options: .regularExpression)
-        // Remove pass-through markers
-        s = s.replacingOccurrences(of: "pass:\\[.*?\\]", with: "", options: .regularExpression)
-        s = s.replacingOccurrences(of: "++++", with: "")
-        // Remove footnote markers
-        s = s.replacingOccurrences(of: "footnote:\\[.*?\\]", with: "", options: .regularExpression)
-        // Remove inline formatting — keep the text inside
-        s = s.replacingOccurrences(of: "__", with: "")
-        s = s.replacingOccurrences(of: "**", with: "")
-        s = s.replacingOccurrences(of: "``", with: "")
+        s = s.replacingOccurrences(of: "<<[^>]*>>", with: "", options: .regularExpression)
+
+        // 3. AsciiDoc links: https://url[Label] → Label, link:url[Label] → Label
+        s = s.replacingOccurrences(of: "https?://[^\\[\\s]+\\[([^\\]]+)\\]", with: "$1", options: .regularExpression)
+        s = s.replacingOccurrences(of: "link:[^\\[]+\\[([^\\]]+)\\]", with: "$1", options: .regularExpression)
+
+        // 4. HTML tags: <a href="...">text</a> → text
+        s = s.replacingOccurrences(of: "<a[^>]*>([^<]*)</a>", with: "$1", options: .regularExpression)
+        s = s.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
+
+        // 5. Pass-through: pass:[content] → content
+        s = s.replacingOccurrences(of: "pass:\\[([^\\]]*)\\]", with: "$1", options: .regularExpression)
+        s = s.replacingOccurrences(of: "\\+\\+\\+\\+", with: "")
+
+        // 6. Footnotes: footnote:[text] → (text) or remove
+        s = s.replacingOccurrences(of: "footnote:\\[[^\\]]*\\]", with: "", options: .regularExpression)
+
+        // 7. Inline formatting — strip markers, keep text
+        s = s.replacingOccurrences(of: "\\*\\*([^*]+)\\*\\*", with: "$1", options: .regularExpression)
+        s = s.replacingOccurrences(of: "__([^_]+)__", with: "$1", options: .regularExpression)
+        s = s.replacingOccurrences(of: "``([^`]+)``", with: "$1", options: .regularExpression)
         s = s.replacingOccurrences(of: "`([^`]+)`", with: "$1", options: .regularExpression)
-        s = s.replacingOccurrences(of: "_([^_]+)_", with: "$1", options: .regularExpression)
-        // Remove id/startref attributes: id="...", startref="..."
-        s = s.replacingOccurrences(of: ",?\\s*id=\"[^\"]*\"", with: "", options: .regularExpression)
-        s = s.replacingOccurrences(of: ",?\\s*startref=\"[^\"]*\"", with: "", options: .regularExpression)
-        // Clean up orphan empty parens from stripped index terms
-        s = s.replacingOccurrences(of: "\\(\\)", with: "")
-        // Clean up double/triple spaces
-        s = s.replacingOccurrences(of: "  +", with: " ", options: .regularExpression)
+        s = s.replacingOccurrences(of: "(?<![a-zA-Z])_([^_]+)_(?![a-zA-Z])", with: "$1", options: .regularExpression)
+
+        // 8. Attribute refs: {attribute} → remove
+        s = s.replacingOccurrences(of: "\\{[a-zA-Z_][a-zA-Z0-9_]*\\}", with: "", options: .regularExpression)
+
+        // 9. Role/class markers: [.class]#text# → text
+        s = s.replacingOccurrences(of: "\\[[^\\]]*\\]#([^#]+)#", with: "$1", options: .regularExpression)
+        // Remove remaining [...] attribute blocks on their own
+        s = s.replacingOccurrences(of: "^\\[.*\\]$", with: "", options: .regularExpression)
+
+        // 10. Cleanup
+        s = s.replacingOccurrences(of: "\\(\\)", with: "")  // orphan empty parens
+        s = s.replacingOccurrences(of: "  +", with: " ", options: .regularExpression)  // double spaces
+        s = s.replacingOccurrences(of: " ,", with: ",")  // space before comma
+        s = s.replacingOccurrences(of: " \\.", with: ".", options: .regularExpression)  // space before period
+        s = s.replacingOccurrences(of: "\"\"", with: "\"")  // double quotes
+
         return s.trimmingCharacters(in: .whitespaces)
     }
 
@@ -288,13 +310,18 @@ struct ChapterView: View {
         while i < lines.count {
             let line = lines[i]
 
-            // Skip metadata / directive lines
-            if line.hasPrefix("[[") || line.hasPrefix(":") || line.hasPrefix("ifdef::") ||
-               line.hasPrefix("endif::") || line.hasPrefix("image::") || line.hasPrefix("include::") ||
-               line.hasPrefix("[role=") || line.hasPrefix("[source") || line.hasPrefix("[cols") ||
-               line.hasPrefix("[options") || line.hasPrefix("[%") || line.hasPrefix("[discrete") ||
-               line.hasPrefix("////") || line == "====" || line == "|===" ||
-               (line.hasPrefix(".") && line.count > 1 && !line.hasPrefix("..") && line.dropFirst().first?.isUppercase == true) {
+            // Skip metadata / directive / noise lines
+            let trimmedLine = line.trimmingCharacters(in: .whitespaces)
+            if trimmedLine.hasPrefix("[[") || trimmedLine.hasPrefix(":") ||
+               trimmedLine.hasPrefix("ifdef::") || trimmedLine.hasPrefix("endif::") ||
+               trimmedLine.hasPrefix("ifndef::") ||
+               trimmedLine.hasPrefix("image::") || trimmedLine.hasPrefix("include::") ||
+               trimmedLine.hasPrefix("//") ||  // comments
+               trimmedLine.hasPrefix("[") && trimmedLine.hasSuffix("]") ||  // [any attribute]
+               trimmedLine == "====" || trimmedLine == "|===" || trimmedLine == "+" ||
+               trimmedLine == "--" || trimmedLine == "****" ||
+               (trimmedLine.hasPrefix(".") && trimmedLine.count > 1 && !trimmedLine.hasPrefix("..") &&
+                trimmedLine.dropFirst().first?.isUppercase == true) {
                 i += 1
                 continue
             }

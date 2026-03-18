@@ -135,14 +135,24 @@ struct WalletView: View {
                         .font(.system(size: 12, design: .monospaced))
                     }
 
-                    HStack(spacing: 12) {
-                        Button("Send") { showSend = true }
-                            .buttonStyle(.borderedProminent)
-                        Button("Receive") { showReceive = true }
-                            .buttonStyle(.bordered)
-                        Button("CoinJoin") { showCoinJoin = true }
-                            .buttonStyle(.bordered)
-                            .tint(.purple)
+                    HStack(spacing: 14) {
+                        walletActionButton(
+                            title: "Send",
+                            icon: "arrow.up.circle.fill",
+                            color: Color.btcOrange
+                        ) { showSend = true }
+
+                        walletActionButton(
+                            title: "Receive",
+                            icon: "arrow.down.circle.fill",
+                            color: .green
+                        ) { showReceive = true }
+
+                        walletActionButton(
+                            title: "CoinJoin",
+                            icon: "arrow.triangle.2.circlepath.circle.fill",
+                            color: .purple
+                        ) { showCoinJoin = true }
                     }
                 }
                 .frame(maxWidth: .infinity)
@@ -315,6 +325,25 @@ struct WalletView: View {
     }
 
     // MARK: - Fee Chip
+
+    // MARK: - Wallet Action Button (Apple-style)
+
+    private func walletActionButton(title: String, icon: String, color: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.system(size: 24))
+                    .foregroundStyle(color)
+                Text(title)
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.primary)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 12)
+            .background(color.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
+        }
+        .buttonStyle(.plain)
+    }
 
     private func feeChip(_ label: String, rate: Int, color: Color) -> some View {
         VStack(spacing: 4) {

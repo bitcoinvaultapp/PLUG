@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-PLUG is a **Bitcoin programmability tool** — not a wallet. It lets users create complex smart contract transactions on the Bitcoin network ("code money"). The **Ledger hardware wallet is always the signer** — users keep custody of their funds.
+PLUG (**Programmable Locking UTXO Gateway**) is a Bitcoin programmability tool — not a wallet. It lets users create complex smart contract transactions on the Bitcoin network ("code money"). The **Ledger hardware wallet is always the signer** — users keep custody of their funds.
 
-It supports standard P2WPKH transactions and advanced Bitcoin smart contracts (P2WSH): time-locked vaults (Vault), inheritance (Inheritance), multisig pools (Pool), HTLCs, and payment channels.
+It supports standard P2WPKH transactions, advanced Bitcoin smart contracts (P2WSH): time-locked vaults (Vault), inheritance (Inheritance), multisig pools (Pool), HTLCs, payment channels — and **Taproot (P2TR)** contracts with Schnorr signatures and MAST.
 
 The repo also contains `app-bitcoin-new/`, the Ledger device-side Bitcoin application (C, for Nano X/S+/Stax/Flex/Apex P), and `bitcoinbook/`, a reference copy of "Mastering Bitcoin" (AsciiDoc).
 
@@ -61,28 +61,30 @@ print(f'Fingerprint: {fpr.hex()}, xpub: {xpub}')
 
 **MVVM + Swift Concurrency** with `@MainActor` ViewModels and `@Published` state.
 
-- **Entry point**: `PLUGApp.swift` — routes to onboarding or 5-tab main view (Home, Wallet, Contracts, Pools, Script Editor). Runs keychain migration on version bump (iOS keychain persists across app deletion).
-- **Branding**: All tabs use `PlugHeader(pageName:)` — displays "PLUG." with orange dot + page name + TESTNET badge + connect status + settings gear. No SwiftUI `.navigationTitle()` on main tabs.
+- **Entry point**: `PLUGApp.swift` — routes to onboarding or 6-tab main view (Home, Wallet, Contracts, Pool, Learn, Script). Runs keychain migration on version bump (iOS keychain persists across app deletion). Current migration: v3 (full keychain wipe for demo mode removal).
+- **Branding**: All tabs use `PlugHeader(pageName:)` — displays "PLUG." with orange dot + page name. No SwiftUI `.navigationTitle()` on main tabs.
 - **Language**: English only. All user-facing strings are in English.
-- **Models/Models.swift** — UTXO, Transaction, Contract (with V2 wallet policy fields: `walletPolicyHmac`, `walletPolicyDescriptor`, external xpubs), BlockchainInfo, FeeEstimate, etc.
+- **No demo mode**: Removed. App requires a real Ledger connection. Testnet is the dev environment.
+- **Models/Models.swift** — UTXO, Transaction, Contract (with V2 wallet policy fields, Taproot fields: `isTaproot`, `taprootInternalKey`, `taprootMerkleRoot`, `taprootScripts`, `scriptPubKey`), WalletAddress (with `.Status` enum: fresh/funded/used), BlockchainInfo, FeeEstimate, etc.
 - **Core/Bitcoin/** — Bitcoin protocol logic:
-  - `PSBTBuilder` — BIP174 PSBT construction with witness UTXOs and BIP32 derivation maps
-  - `SpendManager` — All contract spend paths (P2WPKH, CLTV, CSV, multisig, HTLC, channels) with correct sequence/locktime/witness stacks
+  - `PSBTBuilder` — BIP174/BIP371 PSBT construction with witness UTXOs, BIP32 derivation maps, and Taproot input keys (tapInternalKey, tapMerkleRoot, tapLeafScript, tapBip32Derivation)
+  - `SpendManager` — All contract spend paths (P2WPKH, CLTV, CSV, multisig, HTLC, channels, P2TR key-path, P2TR script-path) with correct sequence/locktime/witness stacks
   - `CoinSelection` — Largest-first, smallest-first, exact-match strategies; 68 vbyte P2WPKH inputs, 546-sat dust threshold
   - `ScriptBuilder` — **All scripts use Ledger-compatible miniscript format**. Template scripts for each contract type match the Ledger's miniscript compiler output byte-for-byte.
-  - `KeyDerivation` — BIP32 non-hardened derivation from xpub, gap limit 20, P2WPKH address generation
-  - `Secp256k1` — Thin wrapper around **libsecp256k1** (Bitcoin Core's C library, via `GigaBitcoin/secp256k1.swift` SPM package). All EC operations (pubkey parse/serialize, point add, scalar multiply, BIP32 tweak_add) use the battle-tested, constant-time, audited C implementation. `UInt256`/`BInt` are kept for Base58 encoding only — no hand-rolled EC arithmetic.
+  - `KeyDerivation` — BIP32 non-hardened derivation from xpub, BIP44 gap limit scan (20 consecutive empty addresses), P2WPKH and P2TR (BIP86) address generation
+  - `Secp256k1` — Thin wrapper around **libsecp256k1** (Bitcoin Core's C library, via `GigaBitcoin/secp256k1.swift` SPM package). All EC operations use the battle-tested, constant-time, audited C implementation. Includes x-only key support (BIP340): `xOnly()`, `liftXOnly()`, `hasEvenY()`, `tweakAdd()`.
+  - `TaprootBuilder` — BIP340/341/342: tagged hashes, MAST construction (tapLeafHash, tapBranchHash, computeMerkleRoot), key tweaking with parity tracking, control block construction, Merkle proof generation, P2TR scriptPubKey and address generation
+  - `MuSig2` — Key aggregation, coefficient calculation, session management (signing deferred to Ledger)
 - **Core/Ledger/** — Hardware wallet integration:
   - `LedgerManager` — CoreBluetooth BLE transport, APDU framing (tag=0x05, MTU=156), xpub retrieval with coin_type detection, master fingerprint via INS=0x05
   - `LedgerProtocol` (V1, CLA=0xE0) and `LedgerProtocolV2` (CLA=0xE1) — V2 uses merkleized PSBT signing with client command flow
-  - `LedgerSigningV2` — V2 SIGN_PSBT + REGISTER_WALLET implementation: PSBTv2 map construction, Merkle trees, CommandInterpreter, wallet policy serialization, multi-key support for P2WSH
-  - `ContractSigner` — High-level orchestrator: builds wallet policy from contract, registers if needed (stores HMAC), signs via V2 merkleized PSBT. All contract signing goes through this.
-  - `WalletPolicyBuilder` — Generates Ledger V2 wallet policy descriptors (miniscript) for each contract type
-  - `DemoMode` — Simulated signing for testing without physical Ledger
-- **Core/Network/** — `MempoolAPI` (mempool.space REST + TLS pinning), `NetworkConfig` (testnet/mainnet runtime switching), `WebSocketManager` (real-time blocks/price)
-- **Core/Storage/** — `KeychainStore` (xpubs, master fingerprint, coin_type — all keys in `KeychainKey` enum), `ContractStore`, `FrozenUTXOStore`, `TxLabelStore`, `AddressBook`, `BIP329Labels`, `BackupManager`
-- **Views/** — Shared components: `PlugHeader` (branded "PLUG. PageName" header with testnet badge, connect status, settings), `BlockDurationPicker` (human-friendly duration with calendar dates), `ContractCreatedSheet` (post-creation QR + next steps + export)
-- **ViewModels/** — One per feature: `WalletVM` (send flow: build->sign->broadcast, xpub cache validation), `HomeVM` (dashboard aggregation), `VaultVM`, `InheritanceVM`, `PoolVM`, `HTLCVM`, `ChannelVM`, etc.
+  - `LedgerSigningV2` — V2 SIGN_PSBT + REGISTER_WALLET implementation: PSBTv2 map construction, Merkle trees, CommandInterpreter, wallet policy serialization, multi-key support for P2WSH and P2TR
+  - `ContractSigner` — High-level orchestrator: builds wallet policy from contract, registers if needed (stores HMAC), signs via V2 merkleized PSBT. Supports P2WSH and Taproot spend paths.
+  - `WalletPolicyBuilder` — Generates Ledger V2 wallet policy descriptors: `wsh(...)` for P2WSH, `tr(...)` for Taproot (key-path, vault, inheritance, HTLC)
+- **Core/Network/** — `MempoolAPI` (mempool.space REST + TLS pinning + Tor SOCKS5 proxy routing via TorConfig), `NetworkConfig` (testnet/mainnet runtime switching), `WebSocketManager` (real-time blocks/price), `TorConfig` (SOCKS5 proxy to mempool.space .onion address)
+- **Core/Storage/** — `KeychainStore` (xpubs, master fingerprint, coin_type — all keys in `KeychainKey` enum), `ContractStore`, `FrozenUTXOStore`, `TxLabelStore`, `AddressBook`, `BIP329Labels`, `BackupManager`, `BiometricStore`
+- **Views/** — Shared components: `PlugHeader`, `BlockDurationPicker`, `ContractCreatedSheet`, `LearnView` (fetches Mastering Bitcoin chapters from GitHub API as rendered HTML, displayed in WKWebView with dark theme CSS), `KeyIndexPicker`
+- **ViewModels/** — One per feature: `WalletVM` (gap limit scan, address rotation, coin control, change address rotation, xpub change detection via `.ledgerXpubChanged` notification), `HomeVM`, `VaultVM` (P2WSH + Taproot toggle), `InheritanceVM` (P2WSH + Taproot toggle), `PoolVM`, `HTLCVM`, `ChannelVM`, `BackupVM` (AES-256-GCM + PBKDF2 encrypted backups), etc.
 
 ### Ledger App (app-bitcoin-new/)
 
@@ -101,55 +103,80 @@ Protocol specification: `doc/bitcoin.md` (commands), `doc/wallet.md` (wallet pol
 ## Key Design Decisions
 
 - **Testnet-first safety**: Forces testnet on first launch; mainnet broadcast is disabled during development
-- **Ledger-only signing**: Private keys never leave the hardware device; the app only holds xpubs
-- **All signing via V2 protocol**: Every signing path (P2WPKH sends AND P2WSH contracts) uses CLA=0xE1 merkleized PSBT protocol. No V1 legacy signing.
-- **Wallet policy registration**: P2WSH contracts require REGISTER_WALLET (INS=0x02) on first spend. HMAC is stored in `Contract.walletPolicyHmac` for future spends.
+- **Ledger-only signing**: Private keys never leave the hardware device; the app only holds xpubs. No demo mode — real Ledger required.
+- **All signing via V2 protocol**: Every signing path (P2WPKH sends, P2WSH contracts, P2TR Taproot) uses CLA=0xE1 merkleized PSBT protocol. No V1 legacy signing.
+- **Wallet policy registration**: P2WSH/P2TR contracts require REGISTER_WALLET (INS=0x02) on first spend. HMAC is stored in `Contract.walletPolicyHmac` for future spends.
 - **Miniscript-aligned scripts**: All contract scripts match the Ledger's miniscript compiler output byte-for-byte. This is critical — even semantically equivalent scripts with different byte order will cause 0x6A80.
 - **External keys must be xpubs**: The Ledger V2 protocol requires xpub/tpub for ALL keys (no raw hex pubkeys). Multi-party contracts store counterparty xpubs in `Contract.heirXpub`, `Contract.receiverXpub`, `Contract.multisigXpubs`.
 - **Coin_type auto-detection**: Detects whether "Bitcoin" (coin_type=0) or "Bitcoin Test" (coin_type=1) app is running. Saves coin_type to keychain (`KeychainStore.KeychainKey.ledgerCoinType`). All BIP32 paths, key origins, and PSBT derivations use this value.
 - **Master fingerprint from device**: Always fetched via GET_MASTER_FINGERPRINT (INS=0x05), never derived from xpub parent fingerprint (which is different from the master fingerprint)
-- **Keychain persistence**: iOS keychain survives app deletion. `PLUGApp.init()` runs versioned migration (`keychain_version`) to clear stale data when the Ledger integration changes.
-- **xpub cache validation**: `WalletVM.loadWallet()` compares stored xpub string with keychain to detect changes (no EC derivation needed for the check)
+- **Keychain persistence**: iOS keychain survives app deletion. `PLUGApp.init()` runs versioned migration (`keychain_version`, currently v3) to clear stale data.
+- **xpub change detection**: `LedgerVM.fetchAndSaveXpub()` posts `.ledgerXpubChanged` notification. `WalletVM` listens and does a full reset (addresses, UTXOs, transactions, statuses) then rescans.
+- **Address rotation**: Never reuse addresses. Addresses tracked as Fresh/Funded/Used. Change addresses always use `nextFreshChangeAddress()`. Spent-from addresses marked as "PUBKEY EXPOSED".
+- **Gap limit scan**: Wallet scans from index 0 until 20 consecutive empty addresses found (BIP44 standard). Finds all funds regardless of index.
+- **Coin control**: Users can manually select which UTXOs to spend in the send flow.
 - **Safety features**: Dust output warnings (< 546 sats), absurd fee alerts (> 100 sat/vB), fee sniping defense (nLockTime), duplicate key check (Pool), transaction pinning warning, HTLC preimage keychain backup, delete confirmation with balance warning
 - **RBF**: Standard sends use sequence 0xFFFFFFFD (BIP125 RBF); timelock spends use 0xFFFFFFFE to enforce nLockTime
-- **Network**: All blockchain data comes from mempool.space API with certificate pinning
+- **Network privacy**: Optional Tor routing via SOCKS5 proxy to mempool.space .onion address. Requires Orbot on device.
+- **Encrypted backups**: AES-256-GCM with PBKDF2-HMAC-SHA256 key derivation (600,000 rounds). Random 32-byte salt per backup. Versioned format.
 
 ## Contract Script Formats (Miniscript-aligned)
 
 **CRITICAL**: All scripts must match the Ledger's miniscript compiler output exactly. Different byte order = different P2WSH address = 0x6A80 signing failure.
 
 ### Vault (CLTV time-lock vault)
-- **Descriptor**: `wsh(and_v(v:pk(@0/**),after(N)))`
+- **P2WSH**: `wsh(and_v(v:pk(@0/**),after(N)))`
+- **P2TR**: `tr(@0/**,and_v(v:pk(@0/**),after(N)))`
 - **Script**: `<KEY> OP_CHECKSIGVERIFY <N> OP_CHECKLOCKTIMEVERIFY`
 - **Keys**: 1 (internal only)
-- **Witness**: `[signature, witnessScript]`
 
 ### Inheritance (CSV inheritance)
-- **Descriptor**: `wsh(or_d(pk(@0/**),and_v(v:pk(@1/**),older(N))))`
+- **P2WSH**: `wsh(or_d(pk(@0/**),and_v(v:pk(@1/**),older(N))))`
+- **P2TR**: `tr(@0/**,{pk(@0/**),and_v(v:pk(@1/**),older(N))})`
 - **Script**: `<OWNER> OP_CHECKSIG OP_IFDUP OP_NOTIF <HEIR> OP_CHECKSIGVERIFY <N> OP_CSV OP_ENDIF`
 - **Keys**: 2 (@0=owner internal, @1=heir external xpub)
-- **Owner witness**: `[signature, witnessScript]`
-- **Heir witness**: `[signature, <empty>, witnessScript]`
 
 ### HTLC (Hash Time-Lock)
 - **Descriptor**: `wsh(andor(pk(@0/**),sha256(H),and_v(v:pk(@1/**),after(N))))`
 - **Script**: `<RECEIVER> OP_CHECKSIG OP_NOTIF <SENDER> OP_CHECKSIGVERIFY <N> OP_CLTV OP_ELSE OP_SIZE <32> OP_EQUALVERIFY OP_SHA256 <H> OP_EQUAL OP_ENDIF`
 - **Keys**: 2 (@0=receiver for claim, @1=sender; swapped for refund)
-- **Claim witness**: `[preimage, signature, witnessScript]`
-- **Refund witness**: `[signature, <empty>, witnessScript]`
 
 ### Pool (M-of-N multisig)
 - **Descriptor**: `wsh(sortedmulti(M,@0/**,@1/**,...,@(N-1)/**))`
 - **Script**: `<M> <K1> ... <KN> <N> OP_CHECKMULTISIG` (keys BIP67 sorted)
 - **Keys**: N (one internal with origin, rest external xpubs)
-- **Witness**: `[<empty>, sig1, ..., sigM, witnessScript]`
 
 ### Channel (2-of-2 + CLTV refund)
 - **Descriptor**: `wsh(or_d(multi(2,@0/**,@1/**),and_v(v:pk(@0/**),after(N))))`
 - **Script**: `<2> <SENDER> <RECEIVER> <2> OP_CHECKMULTISIG OP_IFDUP OP_NOTIF <SENDER> OP_CHECKSIGVERIFY <N> OP_CLTV OP_ENDIF`
 - **Keys**: 2 (@0=sender internal, @1=receiver external xpub)
-- **Cooperative close witness**: `[<empty>, senderSig, receiverSig, witnessScript]`
-- **Refund witness**: `[senderSig, <empty>, witnessScript]`
+
+## Taproot (P2TR) — BIP340/341/342
+
+### Key Operations (Secp256k1.swift)
+- `xOnly(compressedKey)` — extract 32-byte x-only from 33-byte compressed key
+- `liftXOnly(xOnlyKey)` — lift to full compressed key with even Y (0x02 prefix)
+- `hasEvenY(compressedKey)` — check Y parity
+- `tweakAdd(pubkey, tweak)` — constant-time key tweaking via secp256k1_ec_pubkey_tweak_add
+
+### MAST Construction (TaprootBuilder.swift)
+- `taggedHash(tag, data)` — BIP340 tagged hash: SHA256(SHA256(tag) || SHA256(tag) || data)
+- `tapLeafHash(script)` — TapLeaf = TaggedHash("TapLeaf", leafVersion || compactSize(script) || script)
+- `tapBranchHash(left, right)` — lexicographically sorted children
+- `computeMerkleRoot(scripts)` — balanced binary Merkle tree
+- `tweakPublicKeyFull(internalKey, merkleRoot)` — returns TweakResult with xOnly + full + parityBit
+- `controlBlock(internalKey, scripts, scriptIndex)` — for script-path spending
+
+### Taproot Wallet Policies
+- Key-path only: `tr(@0/**)`
+- Vault: `tr(@0/**,and_v(v:pk(@0/**),after(N)))`
+- Inheritance: `tr(@0/**,{pk(@0/**),and_v(v:pk(@1/**),older(N))})`
+- HTLC: `tr(@0/**,andor(pk(@0/**),sha256(H),and_v(v:pk(@1/**),after(N))))`
+
+### BIP86 Derivation
+- Path: `m/86'/coin_type'/0'/change/index`
+- `ExtendedPublicKey.taprootAddress(isTestnet:)` — P2TR address from key
+- `AddressDerivation.deriveTaprootAddresses()` — batch derivation
 
 ## Ledger V2 Signing Protocol
 
@@ -163,51 +190,14 @@ Reference: `app-bitcoin-new/doc/bitcoin.md`, `app-bitcoin-new/doc/wallet.md`
 5. Collect signatures from YIELD commands
 6. Build witness stacks and finalize transaction
 
-### Standard P2WPKH Sends
-- Uses default policy `wpkh(@0/**)` with 32-byte zero HMAC (no registration needed)
-- Handled by `LedgerSigningV2.signPSBT()`
-
-### P2WSH Contract Signing
-- Uses registered policy with stored HMAC
-- Handled by `ContractSigner.signContractSpend()` → `LedgerSigningV2.signPSBTWithPolicy()`
-- PSBTv2 input maps include WITNESS_SCRIPT (key 0x05) in addition to standard fields
-
 ### Client Commands
 | Code | Command | Response Format |
 |------|---------|-----------------|
 | 0x10 | YIELD | Empty (collect yielded data) |
-| 0x40 | GET_PREIMAGE | varint(len) + byte(partial_len) + data. Remainder queued as **single-byte** elements |
-| 0x41 | GET_MERKLE_LEAF_PROOF | 32-byte leaf_hash + proof_size + n_in_response + 32*n proof hashes. Remainder queued as **32-byte** elements |
+| 0x40 | GET_PREIMAGE | varint(len) + byte(partial_len) + data |
+| 0x41 | GET_MERKLE_LEAF_PROOF | 32-byte leaf_hash + proof_size + n_in_response + 32*n proof hashes |
 | 0x42 | GET_MERKLE_LEAF_INDEX | 1-byte found + varint(index) |
-| 0xA0 | GET_MORE_ELEMENTS | n_elements + element_size + data. All elements must be same size. |
-
-### Wallet Policy Serialization
-```
-version(0x02) + name_len + name + varint(desc_len) + SHA256(descriptor) + varint(n_keys) + keys_merkle_root
-```
-
-### Key Info Format
-- **Internal key** (from Ledger): `[fingerprint/84'/coin_type'/0']xpub_or_tpub`
-- **External key** (counterparty): `xpub_or_tpub` (no origin info, no raw hex pubkeys)
-
-### PSBTv2 Global Map Keys
-| Key | Value |
-|-----|-------|
-| 0x02 | TX_VERSION (uint32 LE) |
-| 0x03 | FALLBACK_LOCKTIME (uint32 LE) |
-| 0x04 | INPUT_COUNT (varint) |
-| 0x05 | OUTPUT_COUNT (varint) |
-| 0xFB | PSBT_GLOBAL_VERSION = 2 (uint32 LE per BIP-370) |
-
-### PSBTv2 Input Map Keys
-| Key | Value |
-|-----|-------|
-| 0x01 | WITNESS_UTXO: value(8 LE) + varint(spk_len) + scriptPubKey |
-| 0x05 | WITNESS_SCRIPT: raw witness script bytes (P2WSH only) |
-| 0x06+pubkey | BIP32_DERIVATION: fingerprint(4) + path_elements(uint32 LE each) |
-| 0x0E | PREVIOUS_TXID (32 bytes, internal byte order) |
-| 0x0F | OUTPUT_INDEX (uint32 LE) |
-| 0x10 | SEQUENCE (uint32 LE) |
+| 0xA0 | GET_MORE_ELEMENTS | n_elements + element_size + data |
 
 ### Common Error Codes
 | SW | Meaning | Common Cause |
@@ -224,13 +214,23 @@ version(0x02) + name_len + name + varint(desc_len) + SHA256(descriptor) + varint
 - Write type: `.withResponse` (Nano X requirement)
 - Max payload per frame: ~59 bytes (first) / ~61 bytes (subsequent)
 
-## Safety Features (from Mastering Bitcoin)
+## Security
 
-- **Dust output warning**: Blocks transactions where output < 546 sats
-- **Absurd fee warning**: Orange alert when fee rate > 100 sat/vB
-- **Fee sniping defense**: nLockTime = currentBlockHeight on standard sends
-- **Duplicate key check**: Pool rejects same pubkey used twice
-- **Transaction pinning warning**: Warns/blocks when > 5/20 unconfirmed UTXOs
-- **HTLC preimage backup**: Auto-saved to keychain, recoverable with "Reveal" button
-- **Delete confirmation**: Warns about funded balance before contract deletion
-- **Confirmation depth**: Shows "N/6 confirmations" on funded contracts
+- **Zero keys on device**: Only xpubs. Private keys exist exclusively on the Ledger hardware.
+- **Testnet-first**: Forces testnet on first launch. Mainnet is a conscious choice.
+- **Address rotation**: Never reuse spent-from addresses. Fresh change address per transaction.
+- **Coin control**: Manual UTXO selection to prevent mixing KYC/non-KYC funds.
+- **Fee sniping defense**: nLockTime = currentBlockHeight on standard sends.
+- **Dust protection**: Blocks outputs < 546 sats. Pinning warnings at 5+ unconfirmed UTXOs.
+- **Encrypted backups**: AES-256-GCM + PBKDF2 (600K rounds). No more XOR.
+- **Tor support**: Optional SOCKS5 proxy routing to mempool.space .onion address.
+- **Wallet policy verification**: Ledger registers each P2WSH/P2TR policy with HMAC.
+- **HTLC preimage backup**: Auto-saved to iOS Keychain (hardware-encrypted).
+- **Keychain migration**: Versioned wipe on app update to clear stale data from previous sessions.
+
+## Website & Deployment
+
+- **Domain**: bitcoin-plug.com
+- **Hosted**: VPS via Cloudflare Tunnel (same tunnel as planopti projects)
+- **Static files**: `docs/index.html` + `docs/style.css`
+- **Deploy**: `rsync -avz -e "ssh -p PORT -i ~/.ssh/id_ed25519" docs/ zak@IP:/home/zak/sites/plug/`

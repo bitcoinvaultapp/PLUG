@@ -8,10 +8,26 @@ struct ScriptEditorView: View {
     var body: some View {
         NavigationStack {
             List {
-                PlugHeader(pageName: "Script")
-                    .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 12, trailing: 0))
-                    .listRowBackground(Color.clear)
-                    .listRowSeparator(.hidden)
+                HStack {
+                    PlugHeader(pageName: "Script")
+                    Spacer()
+                    HStack(spacing: 12) {
+                        Button { vm.reset() } label: {
+                            Image(systemName: "arrow.counterclockwise")
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundStyle(.secondary)
+                        }
+                        Button { vm.execute() } label: {
+                            Image(systemName: "play.fill")
+                                .font(.system(size: 14))
+                                .foregroundStyle(.green)
+                        }
+                    }
+                    .padding(.trailing, 12)
+                }
+                .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 12, trailing: 0))
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
 
                 // Script input
                 Section {
@@ -33,15 +49,9 @@ struct ScriptEditorView: View {
                     Text("Script")
                 }
 
-                // Action buttons
+                // Templates & Opcodes
                 Section {
                     HStack(spacing: 10) {
-                        scriptActionButton(icon: "play.fill", title: "Run", color: .green) {
-                            vm.execute()
-                        }
-                        scriptActionButton(icon: "arrow.counterclockwise", title: "Reset", color: .secondary) {
-                            vm.reset()
-                        }
                         scriptActionButton(icon: "doc.text.fill", title: "Templates", color: Color.btcOrange) {
                             showTemplates = true
                         }

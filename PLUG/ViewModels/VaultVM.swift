@@ -127,8 +127,10 @@ final class VaultVM: ObservableObject {
             isTestnet: isTestnet
         )
 
-        ContractStore.shared.add(contract)
-        createdContract = contract
+        var finalContract = contract
+        finalContract.keyIndex = keyIndex
+        ContractStore.shared.add(finalContract)
+        createdContract = finalContract
         contracts = vaults
 
         // Reset form

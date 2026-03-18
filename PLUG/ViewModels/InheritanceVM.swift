@@ -175,6 +175,7 @@ final class InheritanceVM: ObservableObject {
             contract.heirXpub = heirInput
         }
 
+        contract.keyIndex = keyIndex
         ContractStore.shared.add(contract)
         createdContract = contract
         contracts = inheritances

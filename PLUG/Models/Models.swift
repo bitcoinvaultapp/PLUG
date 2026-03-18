@@ -116,6 +116,7 @@ struct Contract: Identifiable, Codable {
     var isUnlocked: Bool = false
     var lastKeptAlive: Date?
     var txid: String?             // Funding txid
+    var keyIndex: UInt32?         // BIP32 derivation index used to create this contract (m/84'/ct'/0'/0/keyIndex)
 
     // V2 wallet policy registration (for Ledger signing via SIGN_PSBT)
     var walletPolicyHmac: String?     // 32-byte HMAC hex from REGISTER_WALLET

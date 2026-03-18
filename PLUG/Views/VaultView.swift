@@ -155,6 +155,22 @@ struct VaultView: View {
                 .foregroundStyle(.secondary)
                 .textSelection(.enabled)
 
+            if let idx = contract.keyIndex {
+                HStack(spacing: 4) {
+                    Image(systemName: "key.fill")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.secondary)
+                    Text("Key index: \(idx)")
+                        .font(.system(size: 10, weight: .medium, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                    if contract.isTaproot {
+                        Text("P2TR")
+                            .font(.system(size: 8, weight: .bold, design: .monospaced))
+                            .foregroundStyle(.orange)
+                    }
+                }
+            }
+
             VStack(spacing: 8) {
                 // Primary: Spend (only when unlocked)
                 if vm.isUnlocked(contract) {

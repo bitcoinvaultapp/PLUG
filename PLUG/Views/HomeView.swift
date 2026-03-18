@@ -28,11 +28,14 @@ struct HomeView: View {
                     balanceCard
                     networkStatsCard
 
-                    // Bitcoin stats (side by side)
+                    // Wallet insights (side by side)
                     HStack(spacing: 12) {
-                        halvingCard
-                        supplyCard
+                        privacyScoreCard
+                        utxoHealthCard
                     }
+
+                    // Pending confirmations
+                    confirmationTracker
 
                     if !vm.alerts.isEmpty {
                         alertsSection
@@ -164,41 +167,47 @@ struct HomeView: View {
     }
 
     // =====================================================================
-    // MARK: - Halving Countdown
+    // MARK: - Privacy Score
     // =====================================================================
 
-    private var halvingCard: some View {
-        let currentBlock = vm.blockHeight
-        let halvingInterval = 210_000
-        let nextHalving = ((currentBlock / halvingInterval) + 1) * halvingInterval
-        let blocksRemaining = nextHalving - currentBlock
-        let progress = Double(currentBlock % halvingInterval) / Double(halvingInterval)
-        let estimatedDays = blocksRemaining * 10 / 60 / 24
+    private var privacyScoreCard: some View {
+        let reusedCount = walletVM.addresses.filter { !$0.isChange && walletVM.addressStatus(for: $0.address) == .used }.count
+        let exposedKeys = walletVM.addresses.filter { walletVM.addressStatus(for: $0.address) == .used }.count
+        let dustCount = walletVM.dustUtxos.count
+        let utxoCount = walletVM.utxos.count
+
+        // Score: start at 100, deduct for bad practices
+        var score = 100
+        score -= reusedCount * 15  // -15 per reused address
+        score -= dustCount * 5     // -5 per dust UTXO
+        if utxoCount > 20 { score -= 10 } // too many UTXOs = linkability
+        score = max(0, min(100, score))
+
+        let color: Color = score >= 80 ? .green : score >= 50 ? .orange : .red
+        let label = score >= 80 ? "Good" : score >= 50 ? "Fair" : "Poor"
 
         return VStack(alignment: .leading, spacing: 8) {
-            Image(systemName: "clock.badge.exclamationmark")
+            Image(systemName: "shield.checkered")
                 .font(.system(size: 18))
-                .foregroundStyle(Color.btcOrange)
+                .foregroundStyle(color)
 
-            Text("\(blocksRemaining)")
-                .font(.system(size: 20, weight: .bold, design: .monospaced))
-                .foregroundStyle(Color.btcOrange)
+            Text("\(score)")
+                .font(.system(size: 24, weight: .bold, design: .rounded))
+                .foregroundStyle(color)
 
-            Text("blocks to halving")
-                .font(.system(size: 10))
+            Text("Privacy · \(label)")
+                .font(.system(size: 10, weight: .medium))
                 .foregroundStyle(.secondary)
 
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 3).fill(Color.gray.opacity(0.2)).frame(height: 4)
-                    RoundedRectangle(cornerRadius: 3).fill(Color.btcOrange).frame(width: geo.size.width * progress, height: 4)
-                }
+            if reusedCount > 0 {
+                Text("\(reusedCount) addr reused")
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(.red)
+            } else if exposedKeys == 0 {
+                Text("No keys exposed")
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(.green)
             }
-            .frame(height: 4)
-
-            Text("~\(estimatedDays)d")
-                .font(.system(size: 10, design: .monospaced))
-                .foregroundStyle(.secondary)
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -206,49 +215,105 @@ struct HomeView: View {
     }
 
     // =====================================================================
-    // MARK: - Supply Stats
+    // MARK: - UTXO Health
     // =====================================================================
 
-    private var supplyCard: some View {
-        let currentBlock = vm.blockHeight
-        let supply: Double = {
-            var total: Double = 0; var reward: Double = 50; var blocks = 0
-            while blocks < currentBlock {
-                let n = min(currentBlock - blocks, 210_000)
-                total += Double(n) * reward; blocks += 210_000; reward /= 2
-            }
-            return total
-        }()
-        let pct = supply / 21_000_000 * 100
+    private var utxoHealthCard: some View {
+        let count = walletVM.utxos.count
+        let total = walletVM.totalBalance
+        let avg = count > 0 ? total / UInt64(count) : 0
+        let dustCount = walletVM.dustUtxos.count
+        let color: Color = dustCount > 0 ? .orange : count > 20 ? .yellow : .green
+        let label = dustCount > 0 ? "Dust!" : count > 20 ? "Consolidate" : "Healthy"
 
         return VStack(alignment: .leading, spacing: 8) {
-            Image(systemName: "chart.pie.fill")
+            Image(systemName: "cube.fill")
                 .font(.system(size: 18))
-                .foregroundStyle(.cyan)
+                .foregroundStyle(color)
 
-            Text(String(format: "%.1f%%", pct))
-                .font(.system(size: 20, weight: .bold, design: .monospaced))
-                .foregroundStyle(.cyan)
+            Text("\(count)")
+                .font(.system(size: 24, weight: .bold, design: .rounded))
+                .foregroundStyle(color)
 
-            Text("of 21M mined")
-                .font(.system(size: 10))
+            Text("UTXOs · \(label)")
+                .font(.system(size: 10, weight: .medium))
                 .foregroundStyle(.secondary)
 
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 3).fill(Color.gray.opacity(0.2)).frame(height: 4)
-                    RoundedRectangle(cornerRadius: 3).fill(.cyan).frame(width: geo.size.width * (supply / 21_000_000), height: 4)
-                }
+            if count > 0 {
+                Text("avg \(avg) sats")
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(.secondary)
             }
-            .frame(height: 4)
-
-            Text(String(format: "%.0f", supply / 1_000_000) + "M")
-                .font(.system(size: 10, design: .monospaced))
-                .foregroundStyle(.secondary)
+            if dustCount > 0 {
+                Text("\(dustCount) dust")
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(.orange)
+            }
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
+    }
+
+    // =====================================================================
+    // MARK: - Confirmation Tracker
+    // =====================================================================
+
+    private var confirmationTracker: some View {
+        let pending = walletVM.transactions.filter { !$0.status.confirmed }
+
+        return Group {
+            if !pending.isEmpty {
+                VStack(spacing: 10) {
+                    HStack {
+                        Image(systemName: "clock.arrow.circlepath")
+                            .font(.system(size: 14))
+                            .foregroundStyle(.orange)
+                        Text("Pending")
+                            .font(.system(size: 13, weight: .bold))
+                        Spacer()
+                        Text("\(pending.count) tx")
+                            .font(.system(size: 12, weight: .medium, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                    }
+
+                    ForEach(pending.prefix(3)) { tx in
+                        HStack(spacing: 10) {
+                            // Progress ring
+                            ZStack {
+                                Circle()
+                                    .stroke(Color.gray.opacity(0.2), lineWidth: 3)
+                                    .frame(width: 28, height: 28)
+                                Circle()
+                                    .trim(from: 0, to: 0)
+                                    .stroke(Color.orange, style: StrokeStyle(lineWidth: 3, lineCap: .round))
+                                    .frame(width: 28, height: 28)
+                                    .rotationEffect(.degrees(-90))
+                                Text("0")
+                                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                    .foregroundStyle(.orange)
+                            }
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(String(tx.txid.prefix(12)) + "...")
+                                    .font(.system(size: 11, design: .monospaced))
+                                Text("Unconfirmed")
+                                    .font(.system(size: 9))
+                                    .foregroundStyle(.orange)
+                            }
+
+                            Spacer()
+
+                            Text("\(tx.fee) sats fee")
+                                .font(.system(size: 10, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                .padding()
+                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+            }
+        }
     }
 
     // =====================================================================

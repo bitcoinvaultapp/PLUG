@@ -172,6 +172,8 @@ final class WalletVM: ObservableObject {
 
     /// Fee estimation (fetched on refresh)
     @Published var feeEstimate: FeeEstimate?
+    /// BTC/USD price (fetched on refresh)
+    @Published var btcPrice: Double = 0
 
     // MARK: - Load wallet data
 
@@ -388,6 +390,9 @@ final class WalletVM: ObservableObject {
         // Fetch fee estimates
         if let fees = try? await MempoolAPI.shared.getRecommendedFees() {
             feeEstimate = fees
+        }
+        if let price = try? await MempoolAPI.shared.getBTCPrice() {
+            btcPrice = price
         }
 
         // Track address lifecycle

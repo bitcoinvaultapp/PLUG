@@ -6,6 +6,37 @@ struct WalletView: View {
     @State private var showSend = false
     @State private var showReceive = false
     @State private var showCoinJoin = false
+
+    enum BalanceDisplay: CaseIterable { case sats, btc, usd
+        var next: BalanceDisplay {
+            let all = Self.allCases
+            let idx = all.firstIndex(of: self)!
+            return all[(idx + 1) % all.count]
+        }
+    }
+    @State private var balanceDisplayMode: BalanceDisplay = .sats
+
+    private var formattedBalance: String {
+        switch balanceDisplayMode {
+        case .sats:
+            return "\(vm.totalBalance)"
+        case .btc:
+            let btc = Double(vm.totalBalance) / 100_000_000
+            return String(format: "%.8f", btc)
+        case .usd:
+            let btc = Double(vm.totalBalance) / 100_000_000
+            let usd = btc * vm.btcPrice
+            return vm.btcPrice > 0 ? String(format: "$%.2f", usd) : "--"
+        }
+    }
+
+    private var balanceUnitLabel: String {
+        switch balanceDisplayMode {
+        case .sats: return "sats"
+        case .btc: return "BTC"
+        case .usd: return "USD"
+        }
+    }
     @State private var selectedTx: Transaction?
     @State private var labelText: String = ""
 
@@ -122,8 +153,19 @@ struct WalletView: View {
             // Balance
             Section {
                 VStack(spacing: 8) {
-                    Text("\(vm.totalBalance) sats")
-                        .font(.system(size: 28, weight: .bold, design: .monospaced))
+                    Button {
+                        balanceDisplayMode = balanceDisplayMode.next
+                    } label: {
+                        VStack(spacing: 4) {
+                            Text(formattedBalance)
+                                .font(.system(size: 28, weight: .bold, design: .monospaced))
+                                .foregroundStyle(.primary)
+                            Text(balanceUnitLabel)
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .buttonStyle(.plain)
 
                     if vm.unconfirmedBalance > 0 {
                         HStack(spacing: 12) {
@@ -133,6 +175,21 @@ struct WalletView: View {
                                 .foregroundStyle(.orange)
                         }
                         .font(.system(size: 12, design: .monospaced))
+                    }
+
+                    // Current receive address
+                    if !vm.currentReceiveAddress.isEmpty {
+                        HStack(spacing: 6) {
+                            Circle()
+                                .fill(Color.green)
+                                .frame(width: 6, height: 6)
+                            Text("#\(vm.currentReceiveIndex)")
+                                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                                .foregroundStyle(Color.btcOrange)
+                            Text(String(vm.currentReceiveAddress.prefix(10)) + "..." + String(vm.currentReceiveAddress.suffix(6)))
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                        }
                     }
 
                     HStack(spacing: 14) {
@@ -159,16 +216,7 @@ struct WalletView: View {
                 .padding(.vertical)
             }
 
-            // Fee environment
-            if let fees = vm.feeEstimate {
-                Section("Network Fees") {
-                    HStack {
-                        feeChip("Fast", rate: fees.fastestFee, color: .red)
-                        feeChip("Normal", rate: fees.halfHourFee, color: .orange)
-                        feeChip("Economy", rate: fees.economyFee, color: .green)
-                    }
-                }
-            }
+            // Network fees removed — available in Home tab
 
             // UTXO health alerts
             if !vm.dustUtxos.isEmpty || vm.unconfirmedCount > 5 {

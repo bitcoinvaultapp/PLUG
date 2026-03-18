@@ -223,6 +223,9 @@ final class WalletVM: ObservableObject {
             return
         }
 
+        // Prevent re-entrant calls (Home + Wallet loading simultaneously)
+        guard !isLoading else { return }
+
         isLoading = true
         error = nil
 

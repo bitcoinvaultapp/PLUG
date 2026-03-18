@@ -246,14 +246,9 @@ struct VaultView: View {
                     TextField("My Vault", text: $vm.name)
                 }
 
-                Section {
-                    Toggle("Use Taproot (P2TR)", isOn: $vm.useTaproot)
-                    if vm.useTaproot {
-                        Text("Smaller witness, lower fees, better privacy. Address starts with tb1p (testnet) or bc1p (mainnet).")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
+                // Taproot disabled for single-key vaults — Ledger V2 requires
+                // unique keys in the policy, but a vault uses only one key.
+                // P2WSH vaults work correctly with the Ledger.
 
                 BlockDurationPicker(
                     value: $vm.lockBlockHeight,

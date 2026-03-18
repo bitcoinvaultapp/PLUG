@@ -54,8 +54,6 @@ struct HomeView: View {
             .toolbar(.hidden, for: .navigationBar)
             .refreshable {
                 await vm.refresh()
-                // Never call loadWallet from Home — Wallet tab handles that.
-                // Only refresh UTXOs if wallet is already loaded.
                 if !walletVM.addresses.isEmpty {
                     await walletVM.refreshUTXOs()
                 }
@@ -63,6 +61,10 @@ struct HomeView: View {
             }
             .task {
                 await vm.refresh()
+                // Initial load only — if wallet has no data yet, load it once
+                if walletVM.addresses.isEmpty && walletVM.hasWallet {
+                    await walletVM.loadWallet()
+                }
                 vm.updateBalance(walletVM.totalBalance)
                 vm.connectWebSocket()
             }

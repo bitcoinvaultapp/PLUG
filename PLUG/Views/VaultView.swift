@@ -232,10 +232,6 @@ struct VaultView: View {
               let xpub = ExtendedPublicKey.fromBase58(xpubStr),
               let derivedKey = xpub.derivePath([0, vm.keyIndex]) else { return nil }
         let script = ScriptBuilder.vaultScript(locktime: Int64(lockHeight), pubkey: derivedKey.key)
-        if vm.useTaproot {
-            let internalKey = Secp256k1.xOnly(derivedKey.key)
-            return TaprootBuilder.taprootAddress(internalKey: internalKey, scripts: [script.script], isTestnet: vm.isTestnet)
-        }
         return script.p2wshAddress(isTestnet: vm.isTestnet)
     }
 
@@ -273,7 +269,7 @@ struct VaultView: View {
                 }
 
                 if let address = vaultPreviewAddress {
-                    Section(vm.useTaproot ? "P2TR Address (preview)" : "P2WSH Address (preview)") {
+                    Section("P2WSH Address (preview)") {
                         Text(address)
                             .font(.system(.caption2, design: .monospaced))
                             .textSelection(.enabled)

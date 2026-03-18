@@ -5,6 +5,7 @@ struct WalletView: View {
     @EnvironmentObject var vm: WalletVM
     @State private var showSend = false
     @State private var showReceive = false
+    @State private var showCoinJoin = false
     @State private var selectedTx: Transaction?
     @State private var labelText: String = ""
 
@@ -23,6 +24,7 @@ struct WalletView: View {
             .task { await vm.loadWallet() }
             .sheet(isPresented: $showSend) { sendSheet }
             .sheet(isPresented: $showReceive) { receiveSheet }
+            .sheet(isPresented: $showCoinJoin) { CoinJoinView().environmentObject(vm) }
         }
     }
 
@@ -133,11 +135,14 @@ struct WalletView: View {
                         .font(.system(size: 12, design: .monospaced))
                     }
 
-                    HStack(spacing: 16) {
+                    HStack(spacing: 12) {
                         Button("Send") { showSend = true }
                             .buttonStyle(.borderedProminent)
                         Button("Receive") { showReceive = true }
                             .buttonStyle(.bordered)
+                        Button("CoinJoin") { showCoinJoin = true }
+                            .buttonStyle(.bordered)
+                            .tint(.purple)
                     }
                 }
                 .frame(maxWidth: .infinity)

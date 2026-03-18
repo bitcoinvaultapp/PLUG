@@ -51,6 +51,9 @@
 		862E1EFF48F74F14B0315B0B /* PLUG/Core/Bitcoin/KeyDerivation.swift in Sources */ = {isa = PBXBuildFile; fileRef = F9105F5B315443E1B2A3D108 /* PLUG/Core/Bitcoin/KeyDerivation.swift */; };
 		8B7FDF38B0964688BE97A4D3 /* PLUG/Views/PoolView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1A884B446CE2440CB1907750 /* PLUG/Views/PoolView.swift */; };
 		LEARN001B0000000000000002 /* PLUG/Views/LearnView.swift in Sources */ = {isa = PBXBuildFile; fileRef = LEARN001A0000000000000001 /* PLUG/Views/LearnView.swift */; };
+		COINJN03B000000000000002 /* PLUG/Views/CoinJoinView.swift in Sources */ = {isa = PBXBuildFile; fileRef = COINJN03A000000000000001 /* PLUG/Views/CoinJoinView.swift */; };
+		COINJN02B000000000000002 /* PLUG/ViewModels/CoinJoinVM.swift in Sources */ = {isa = PBXBuildFile; fileRef = COINJN02A000000000000001 /* PLUG/ViewModels/CoinJoinVM.swift */; };
+		COINJN01B000000000000002 /* PLUG/Core/Bitcoin/CoinJoin.swift in Sources */ = {isa = PBXBuildFile; fileRef = COINJN01A000000000000001 /* PLUG/Core/Bitcoin/CoinJoin.swift */; };
 		LEDGERVM0B000000000000001 /* PLUG/ViewModels/LedgerVM.swift in Sources */ = {isa = PBXBuildFile; fileRef = 23BDB1B24B184A1B9E6A52DF /* PLUG/ViewModels/LedgerVM.swift */; };
 		KEYIDX01B000000000000002 /* PLUG/Views/KeyIndexPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = KEYIDX01A000000000000001 /* PLUG/Views/KeyIndexPicker.swift */; };
 		918B15C8A430427CB0B32032 /* PLUG/Views/OnboardingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4EBADE241CD43C3899BBF2A /* PLUG/Views/OnboardingView.swift */; };
@@ -93,6 +96,9 @@
 		1818831F5C3E4F578B779D4A /* PLUG/Core/Storage/BIP329Labels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/Core/Storage/BIP329Labels.swift; sourceTree = SOURCE_ROOT; };
 		1A884B446CE2440CB1907750 /* PLUG/Views/PoolView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/Views/PoolView.swift; sourceTree = SOURCE_ROOT; };
 		LEARN001A0000000000000001 /* PLUG/Views/LearnView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/Views/LearnView.swift; sourceTree = SOURCE_ROOT; };
+		COINJN03A000000000000001 /* PLUG/Views/CoinJoinView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/Views/CoinJoinView.swift; sourceTree = SOURCE_ROOT; };
+		COINJN02A000000000000001 /* PLUG/ViewModels/CoinJoinVM.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/ViewModels/CoinJoinVM.swift; sourceTree = SOURCE_ROOT; };
+		COINJN01A000000000000001 /* PLUG/Core/Bitcoin/CoinJoin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/Core/Bitcoin/CoinJoin.swift; sourceTree = SOURCE_ROOT; };
 		KEYIDX01A000000000000001 /* PLUG/Views/KeyIndexPicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/Views/KeyIndexPicker.swift; sourceTree = SOURCE_ROOT; };
 		1C400DA3806B4A1083E905D4 /* PLUG/Views/ScriptEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/Views/ScriptEditorView.swift; sourceTree = SOURCE_ROOT; };
 		1C9C5C31F3974738BA667A84 /* PLUG/Core/Storage/BalanceCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/Core/Storage/BalanceCache.swift; sourceTree = SOURCE_ROOT; };
@@ -241,6 +247,9 @@
 				785505D4169E4E659C5E19E5 /* PLUG/Views/BackupView.swift */,
 				1A884B446CE2440CB1907750 /* PLUG/Views/PoolView.swift */,
 				LEARN001A0000000000000001 /* PLUG/Views/LearnView.swift */,
+				COINJN03A000000000000001 /* PLUG/Views/CoinJoinView.swift */,
+				COINJN02A000000000000001 /* PLUG/ViewModels/CoinJoinVM.swift */,
+				COINJN01A000000000000001 /* PLUG/Core/Bitcoin/CoinJoin.swift */,
 				KEYIDX01A000000000000001 /* PLUG/Views/KeyIndexPicker.swift */,
 				51795899F8E24918A9F82E1A /* PLUG/Views/ChannelView.swift */,
 				3D23BF30901F4A0999486DFB /* PLUG/Views/HTLCView.swift */,
@@ -388,6 +397,9 @@
 				D1F5C73B647A4DA6A7220022 /* PLUG/Views/BackupView.swift in Sources */,
 				8B7FDF38B0964688BE97A4D3 /* PLUG/Views/PoolView.swift in Sources */,
 				LEARN001B0000000000000002 /* PLUG/Views/LearnView.swift in Sources */,
+				COINJN03B000000000000002 /* PLUG/Views/CoinJoinView.swift in Sources */,
+				COINJN02B000000000000002 /* PLUG/ViewModels/CoinJoinVM.swift in Sources */,
+				COINJN01B000000000000002 /* PLUG/Core/Bitcoin/CoinJoin.swift in Sources */,
 				LEDGERVM0B000000000000001 /* PLUG/ViewModels/LedgerVM.swift in Sources */,
 				KEYIDX01B000000000000002 /* PLUG/Views/KeyIndexPicker.swift in Sources */,
 				16F63862FFE4499BA1B6567D /* PLUG/Views/ChannelView.swift in Sources */,

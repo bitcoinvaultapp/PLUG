@@ -1036,7 +1036,7 @@ struct SpendManager {
 
     // MARK: - Private helpers
 
-    private static func txidToInternalOrder(_ txid: String) -> Data {
+    static func txidToInternalOrder(_ txid: String) -> Data {
         guard let data = Data(hex: txid) else { return Data(count: 32) }
         return Data(data.reversed())
     }

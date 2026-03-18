@@ -232,51 +232,72 @@ struct ChapterView: View {
     private func cleanInline(_ text: String) -> String {
         var s = text
 
-        // 1. Index terms — triple before double (greedy innermost first)
-        // ((("Bitcoin", "operational overview", id="xxx")))
-        s = s.replacingOccurrences(of: "\\(\\(\\([^)]*\\)\\)\\)", with: "", options: .regularExpression)
-        s = s.replacingOccurrences(of: "\\(\\([^)]*\\)\\)", with: "", options: .regularExpression)
+        // 1. Passthrough delimiters
+        s = s.replacingOccurrences(of: "\\+\\+\\+\\+", with: "")
+        s = s.replacingOccurrences(of: "\\*\\*\\*\\*", with: "")
+        s = s.replacingOccurrences(of: "////", with: "")
 
-        // 2. Cross-references: <<anchor,Display Text>> → Display Text, <<anchor>> → ""
+        // 2. Index terms — handle nested parens with content
+        // ((("term", "sub", id="xxx"))) → remove entirely
+        while s.contains("(((") {
+            s = s.replacingOccurrences(of: "\\(\\(\\([^)]*\\)\\)\\)", with: "", options: .regularExpression)
+        }
+        while s.contains("((") {
+            s = s.replacingOccurrences(of: "\\(\\([^)]*\\)\\)", with: "", options: .regularExpression)
+        }
+
+        // 3. Cross-references: <<anchor,Display Text>> → Display Text
         s = s.replacingOccurrences(of: "<<[^,>]+,\\s*([^>]+)>>", with: "$1", options: .regularExpression)
         s = s.replacingOccurrences(of: "<<[^>]*>>", with: "", options: .regularExpression)
 
-        // 3. AsciiDoc links: https://url[Label] → Label, link:url[Label] → Label
+        // 4. AsciiDoc links: https://url[Label] → Label
         s = s.replacingOccurrences(of: "https?://[^\\[\\s]+\\[([^\\]]+)\\]", with: "$1", options: .regularExpression)
         s = s.replacingOccurrences(of: "link:[^\\[]+\\[([^\\]]+)\\]", with: "$1", options: .regularExpression)
+        // Bare URLs without label — keep as-is (they're readable)
 
-        // 4. HTML tags: <a href="...">text</a> → text
+        // 5. HTML: tags, entities
         s = s.replacingOccurrences(of: "<a[^>]*>([^<]*)</a>", with: "$1", options: .regularExpression)
         s = s.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
+        s = s.replacingOccurrences(of: "&amp;", with: "&")
+        s = s.replacingOccurrences(of: "&lt;", with: "<")
+        s = s.replacingOccurrences(of: "&gt;", with: ">")
+        s = s.replacingOccurrences(of: "&nbsp;", with: " ")
+        s = s.replacingOccurrences(of: "&#8217;", with: "'")
+        s = s.replacingOccurrences(of: "&#8220;", with: "\"")
+        s = s.replacingOccurrences(of: "&#8221;", with: "\"")
 
-        // 5. Pass-through: pass:[content] → content
+        // 6. Pass-through: pass:[content] → content
         s = s.replacingOccurrences(of: "pass:\\[([^\\]]*)\\]", with: "$1", options: .regularExpression)
-        s = s.replacingOccurrences(of: "\\+\\+\\+\\+", with: "")
 
-        // 6. Footnotes: footnote:[text] → (text) or remove
+        // 7. LaTeX math: \begin{...} \end{...}, \times, =\!\!\!=
+        s = s.replacingOccurrences(of: "\\\\begin\\s*\\{([^}]*)\\}", with: "$1", options: .regularExpression)
+        s = s.replacingOccurrences(of: "\\\\end\\s*\\{?[^}]*\\}?", with: "", options: .regularExpression)
+        s = s.replacingOccurrences(of: "\\\\times", with: "x")
+        s = s.replacingOccurrences(of: "=\\\\!\\\\!\\\\!=", with: "==", options: .regularExpression)
+        s = s.replacingOccurrences(of: "\\\\!", with: "", options: .regularExpression)
+
+        // 8. Footnotes
         s = s.replacingOccurrences(of: "footnote:\\[[^\\]]*\\]", with: "", options: .regularExpression)
 
-        // 7. Inline formatting — strip markers, keep text
+        // 9. Inline formatting — strip markers, keep text
         s = s.replacingOccurrences(of: "\\*\\*([^*]+)\\*\\*", with: "$1", options: .regularExpression)
         s = s.replacingOccurrences(of: "__([^_]+)__", with: "$1", options: .regularExpression)
         s = s.replacingOccurrences(of: "``([^`]+)``", with: "$1", options: .regularExpression)
         s = s.replacingOccurrences(of: "`([^`]+)`", with: "$1", options: .regularExpression)
         s = s.replacingOccurrences(of: "(?<![a-zA-Z])_([^_]+)_(?![a-zA-Z])", with: "$1", options: .regularExpression)
 
-        // 8. Attribute refs: {attribute} → remove
+        // 10. Attribute refs: {attribute} → remove
         s = s.replacingOccurrences(of: "\\{[a-zA-Z_][a-zA-Z0-9_]*\\}", with: "", options: .regularExpression)
 
-        // 9. Role/class markers: [.class]#text# → text
+        // 11. Role/class markers: [.class]#text# → text
         s = s.replacingOccurrences(of: "\\[[^\\]]*\\]#([^#]+)#", with: "$1", options: .regularExpression)
-        // Remove remaining [...] attribute blocks on their own
-        s = s.replacingOccurrences(of: "^\\[.*\\]$", with: "", options: .regularExpression)
 
-        // 10. Cleanup
-        s = s.replacingOccurrences(of: "\\(\\)", with: "")  // orphan empty parens
-        s = s.replacingOccurrences(of: "  +", with: " ", options: .regularExpression)  // double spaces
-        s = s.replacingOccurrences(of: " ,", with: ",")  // space before comma
-        s = s.replacingOccurrences(of: " \\.", with: ".", options: .regularExpression)  // space before period
-        s = s.replacingOccurrences(of: "\"\"", with: "\"")  // double quotes
+        // 12. Cleanup
+        s = s.replacingOccurrences(of: "\\(\\)", with: "")
+        s = s.replacingOccurrences(of: "  +", with: " ", options: .regularExpression)
+        s = s.replacingOccurrences(of: " ,", with: ",")
+        s = s.replacingOccurrences(of: " \\.", with: ".", options: .regularExpression)
+        s = s.replacingOccurrences(of: "\"\"", with: "\"")
 
         return s.trimmingCharacters(in: .whitespaces)
     }
@@ -442,10 +463,13 @@ struct ChapterView: View {
             var para: [String] = [line]
             i += 1
             while i < lines.count {
-                let next = lines[i]
-                if next.trimmingCharacters(in: .whitespaces).isEmpty || next.hasPrefix("==") ||
-                   next.hasPrefix("----") || next.hasPrefix("* ") || next.hasPrefix("[") ||
-                   next.hasPrefix("[[") || next.hasPrefix("image::") || next.hasPrefix("include::") {
+                let next = lines[i].trimmingCharacters(in: .whitespaces)
+                if next.isEmpty || next.hasPrefix("==") ||
+                   next.hasPrefix("----") || next == "++++" || next == "****" || next == "////" ||
+                   next.hasPrefix("* ") || next.hasPrefix(". ") ||
+                   next.hasPrefix("[") || next.hasPrefix("[[") ||
+                   next.hasPrefix("image::") || next.hasPrefix("include::") ||
+                   next.hasPrefix("//") || next == "|===" || next == "====" {
                     break
                 }
                 para.append(next)

@@ -310,7 +310,7 @@ struct LedgerSigningV2 {
 
         // Multi-round client command loop (same as signPSBT)
         var rounds = 0
-        while rounds < 200 {
+        while rounds < 500 {
             rounds += 1
             if response.isEmpty { break }
 
@@ -408,12 +408,22 @@ struct LedgerSigningV2 {
 
         // Build PSBTv2 maps
         let globalMap = buildPSBTv2GlobalMap(txInfo: txInfo)
-        let inputMaps = buildPSBTv2InputMapsForP2WSH(
-            txInfo: txInfo, psbt: psbt, masterFP: masterFP,
-            keyOrigin: keyOrigin, keysInfo: walletPolicy.keysInfo,
-            witnessScript: witnessScript,
-            inputAddressInfos: inputAddressInfos
-        )
+        let isTaproot = walletPolicy.descriptorTemplate.hasPrefix("tr(")
+        let inputMaps: [MerkleMap]
+        if isTaproot {
+            inputMaps = buildPSBTv2InputMapsForP2TR(
+                txInfo: txInfo, psbt: psbt, masterFP: masterFP,
+                keyOrigin: keyOrigin, keysInfo: walletPolicy.keysInfo,
+                inputAddressInfos: inputAddressInfos
+            )
+        } else {
+            inputMaps = buildPSBTv2InputMapsForP2WSH(
+                txInfo: txInfo, psbt: psbt, masterFP: masterFP,
+                keyOrigin: keyOrigin, keysInfo: walletPolicy.keysInfo,
+                witnessScript: witnessScript,
+                inputAddressInfos: inputAddressInfos
+            )
+        }
         let outputMaps = buildPSBTv2OutputMaps(txInfo: txInfo)
 
         // Register all maps
@@ -453,11 +463,11 @@ struct LedgerSigningV2 {
             data: apduData
         )
 
-        print("[LedgerSign] Signing P2WSH with policy: \(walletPolicy.descriptorTemplate)")
+        print("[LedgerSign] Signing \(isTaproot ? "P2TR" : "P2WSH") with policy: \(walletPolicy.descriptorTemplate)")
         var response = try await LedgerManager.shared.sendAPDU(apdu, timeout: 120)
 
         var rounds = 0
-        while rounds < 200 {
+        while rounds < 500 {
             rounds += 1
             if response.isEmpty { break }
 
@@ -533,6 +543,81 @@ struct LedgerSigningV2 {
                         bip32Value.append(Data(bytes: &le, count: 4))
                     }
                     values.append(bip32Value)
+                }
+            }
+
+            // PREVIOUS_TXID (0x0E)
+            keys.append(Data([0x0E]))
+            values.append(input.txid)
+
+            // OUTPUT_INDEX (0x0F)
+            keys.append(Data([0x0F]))
+            values.append(uint32LEData(input.vout))
+
+            // SEQUENCE (0x10)
+            keys.append(Data([0x10]))
+            values.append(uint32LEData(input.sequence))
+
+            return MerkleMap(keys: keys, values: values)
+        }
+    }
+
+    // MARK: - PSBTv2 Input Maps for Taproot (P2TR)
+
+    private static func buildPSBTv2InputMapsForP2TR(
+        txInfo: TxInfo, psbt: Data, masterFP: Data,
+        keyOrigin: String, keysInfo: [String],
+        inputAddressInfos: [InputAddressInfo] = []
+    ) -> [MerkleMap] {
+        let originParts = keyOrigin.split(separator: "/")
+        let purpose: UInt32 = originParts.count >= 1 ? (UInt32(originParts[0].replacingOccurrences(of: "'", with: "")) ?? 84) : 84
+        let coinType: UInt32 = originParts.count >= 2 ? (UInt32(originParts[1].replacingOccurrences(of: "'", with: "")) ?? 0) : 0
+
+        return txInfo.inputs.enumerated().map { (i, input) in
+            var keys: [Data] = []
+            var values: [Data] = []
+
+            // WITNESS_UTXO (0x01)
+            if i < inputAddressInfos.count && !inputAddressInfos[i].scriptPubKey.isEmpty {
+                let info = inputAddressInfos[i]
+                var witnessUtxo = Data()
+                witnessUtxo.append(uint64LEData(info.value))
+                witnessUtxo.append(encodeVarint(UInt64(info.scriptPubKey.count)))
+                witnessUtxo.append(info.scriptPubKey)
+                keys.append(Data([0x01]))
+                values.append(witnessUtxo)
+            }
+
+            // NO WITNESS_SCRIPT (0x05) for Taproot — the Ledger derives the script from the wallet policy
+
+            // TAP_BIP32_DERIVATION (0x16) — x-only pubkey (32 bytes)
+            if i < inputAddressInfos.count {
+                let info = inputAddressInfos[i]
+                if info.publicKey.count >= 33 {
+                    // x-only key = last 32 bytes of compressed pubkey
+                    let xOnlyKey = info.publicKey.suffix(32)
+
+                    var tapBip32Key = Data([0x16])
+                    tapBip32Key.append(xOnlyKey)
+                    keys.append(tapBip32Key)
+
+                    // Value: num_leaf_hashes (varint 0 for key-path) + fingerprint + path
+                    var tapBip32Value = Data()
+                    tapBip32Value.append(0x00) // 0 leaf hashes (key-path spend)
+
+                    tapBip32Value.append(masterFP)
+                    let pathComponents: [UInt32] = [
+                        purpose | 0x80000000,
+                        coinType | 0x80000000,
+                        0 | 0x80000000,
+                        info.change,
+                        info.index
+                    ]
+                    for component in pathComponents {
+                        var le = component.littleEndian
+                        tapBip32Value.append(Data(bytes: &le, count: 4))
+                    }
+                    values.append(tapBip32Value)
                 }
             }
 
@@ -723,7 +808,7 @@ struct LedgerSigningV2 {
 
         // Multi-round client command loop
         var rounds = 0
-        let maxRounds = 200
+        let maxRounds = 500
 
         while rounds < maxRounds {
             rounds += 1

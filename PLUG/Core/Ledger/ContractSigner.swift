@@ -204,6 +204,41 @@ struct ContractSigner {
             throw SigningError.missingXpub
         }
 
+        // Auto-build inputAddressInfos if not provided
+        var resolvedInputInfos = inputAddressInfos
+        if resolvedInputInfos.isEmpty {
+            // Derive pubkey from xpub
+            if let xpubParsed = ExtendedPublicKey.fromBase58(xpub),
+               let derived = xpubParsed.derivePath([0, 0]) {
+                // Get scriptPubKey from contract address
+                let spk = PSBTBuilder.scriptPubKeyFromAddress(contract.address, isTestnet: isTestnet) ?? Data()
+
+                // Get UTXOs to know input count and values
+                let utxos = (try? await MempoolAPI.shared.getAddressUTXOs(address: contract.address)) ?? []
+                resolvedInputInfos = utxos.map { utxo in
+                    LedgerSigningV2.InputAddressInfo(
+                        change: 0, index: 0,
+                        publicKey: derived.key,
+                        value: utxo.value,
+                        scriptPubKey: spk
+                    )
+                }
+                // Fallback if no UTXOs found but PSBT has inputs
+                if resolvedInputInfos.isEmpty, let parsed = PSBTBuilder.parsePSBT(psbtData),
+                   let tx = parsed.unsignedTx {
+                    let inputCount = LedgerSigningV2.parseTxDetails(tx).inputs.count
+                    resolvedInputInfos = (0..<inputCount).map { _ in
+                        LedgerSigningV2.InputAddressInfo(
+                            change: 0, index: 0,
+                            publicKey: derived.key,
+                            value: 0,
+                            scriptPubKey: spk
+                        )
+                    }
+                }
+            }
+        }
+
         // Build the wallet policy for this contract + spend path
         let policy = buildPolicy(contract: contract, spendPath: spendPath, masterFP: masterFP, keyOrigin: keyOrigin, xpub: xpub)
 
@@ -239,7 +274,7 @@ struct ContractSigner {
             witnessScript: witnessScript,
             masterFP: Data(hex: masterFP) ?? Data(),
             keyOrigin: keyOrigin,
-            inputAddressInfos: inputAddressInfos,
+            inputAddressInfos: resolvedInputInfos,
             isTestnet: isTestnet
         )
 

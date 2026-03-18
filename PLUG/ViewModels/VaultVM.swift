@@ -267,7 +267,19 @@ final class VaultVM: ObservableObject {
                 pubkey = Data()
             }
 
-            let spk = PSBTBuilder.p2wshScriptPubKey(scriptHash: Crypto.sha256(witnessScriptData))
+            let spk: Data
+            if contract.isTaproot,
+               let scriptPubKeyHex = contract.scriptPubKey,
+               let scriptPubKeyData = Data(hex: scriptPubKeyHex) {
+                // P2TR: use the actual scriptPubKey from the contract (OP_1 <tweaked-key>)
+                spk = scriptPubKeyData
+            } else if contract.isTaproot {
+                // Fallback: derive P2TR scriptPubKey from address
+                spk = PSBTBuilder.scriptPubKeyFromAddress(contract.address, isTestnet: isTestnet) ?? Data()
+            } else {
+                // P2WSH: OP_0 <SHA256(witnessScript)>
+                spk = PSBTBuilder.p2wshScriptPubKey(scriptHash: Crypto.sha256(witnessScriptData))
+            }
             let inputInfos = utxos.map { utxo in
                 LedgerSigningV2.InputAddressInfo(
                     change: 0, index: 0,

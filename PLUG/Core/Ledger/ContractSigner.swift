@@ -101,37 +101,44 @@ struct WalletPolicyBuilder {
         )
     }
 
-    /// Taproot vault: tr(@0/**,and_v(v:pk(@0/**),after(N)))
-    /// Key-path (always available) + script-path (CLTV enforced).
+    /// Taproot vault: tr(@0/**,and_v(v:pk(@1/**),after(N)))
+    /// Key-path (@0) + script-path (@1, same key as external ref).
+    /// Ledger requires distinct key indices for internal vs script keys.
     static func taprootVaultPolicy(lockBlockHeight: Int, masterFP: String, keyOrigin: String, xpub: String) -> Policy {
         Policy(
             name: "TR Vault",
-            descriptorTemplate: "tr(@0/**,and_v(v:pk(@0/**),after(\(lockBlockHeight))))",
-            keysInfo: ["[\(masterFP)/\(keyOrigin)]\(xpub)"]
-        )
-    }
-
-    /// Taproot inheritance: tr(@0/**,{pk(@0/**),and_v(v:pk(@1/**),older(N))})
-    /// Key-path = owner (fast, private). Script tree: owner branch + heir branch.
-    static func taprootInheritancePolicy(csvBlocks: Int, masterFP: String, keyOrigin: String, ownerXpub: String, heirXpub: String) -> Policy {
-        Policy(
-            name: "TR Inheritance",
-            descriptorTemplate: "tr(@0/**,{pk(@0/**),and_v(v:pk(@1/**),older(\(csvBlocks)))})",
+            descriptorTemplate: "tr(@0/**,and_v(v:pk(@1/**),after(\(lockBlockHeight))))",
             keysInfo: [
-                "[\(masterFP)/\(keyOrigin)]\(ownerXpub)",
-                heirXpub
+                "[\(masterFP)/\(keyOrigin)]\(xpub)",  // @0 = internal key (with origin)
+                xpub                                     // @1 = same xpub as external (for script)
             ]
         )
     }
 
-    /// Taproot HTLC: tr(@0/**,{andor(pk(@0/**),sha256(H),and_v(v:pk(@1/**),after(N)))})
+    /// Taproot inheritance: tr(@0/**,{pk(@1/**),and_v(v:pk(@2/**),older(N))})
+    /// Key-path = owner (@0). Script tree: owner branch (@1) + heir branch (@2).
+    static func taprootInheritancePolicy(csvBlocks: Int, masterFP: String, keyOrigin: String, ownerXpub: String, heirXpub: String) -> Policy {
+        Policy(
+            name: "TR Inheritance",
+            descriptorTemplate: "tr(@0/**,{pk(@1/**),and_v(v:pk(@2/**),older(\(csvBlocks)))})",
+            keysInfo: [
+                "[\(masterFP)/\(keyOrigin)]\(ownerXpub)",  // @0 = internal key
+                ownerXpub,                                   // @1 = owner in script (external ref)
+                heirXpub                                     // @2 = heir (external)
+            ]
+        )
+    }
+
+    /// Taproot HTLC: tr(@0/**,andor(pk(@1/**),sha256(H),and_v(v:pk(@2/**),after(N))))
+    /// Key-path = receiver (@0). Script: receiver claim (@1) + sender refund (@2).
     static func taprootHTLCPolicy(hashLock: String, timeoutBlocks: Int, masterFP: String, keyOrigin: String, receiverXpub: String, senderXpub: String) -> Policy {
         Policy(
             name: "TR HTLC",
-            descriptorTemplate: "tr(@0/**,andor(pk(@0/**),sha256(\(hashLock)),and_v(v:pk(@1/**),after(\(timeoutBlocks)))))",
+            descriptorTemplate: "tr(@0/**,andor(pk(@1/**),sha256(\(hashLock)),and_v(v:pk(@2/**),after(\(timeoutBlocks)))))",
             keysInfo: [
-                "[\(masterFP)/\(keyOrigin)]\(receiverXpub)",
-                senderXpub
+                "[\(masterFP)/\(keyOrigin)]\(receiverXpub)",  // @0 = internal key
+                receiverXpub,                                   // @1 = receiver in script (external ref)
+                senderXpub                                      // @2 = sender (external)
             ]
         )
     }

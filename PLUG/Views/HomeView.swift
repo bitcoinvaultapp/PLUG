@@ -28,9 +28,11 @@ struct HomeView: View {
                     balanceCard
                     networkStatsCard
 
-                    // Bitcoin stats
-                    halvingCard
-                    supplyCard
+                    // Bitcoin stats (side by side)
+                    HStack(spacing: 12) {
+                        halvingCard
+                        supplyCard
+                    }
 
                     if !vm.alerts.isEmpty {
                         alertsSection
@@ -171,60 +173,36 @@ struct HomeView: View {
         let nextHalving = ((currentBlock / halvingInterval) + 1) * halvingInterval
         let blocksRemaining = nextHalving - currentBlock
         let progress = Double(currentBlock % halvingInterval) / Double(halvingInterval)
-        let currentReward = 3.125 // BTC (post-2024 halving)
-        let halvingNumber = (currentBlock / halvingInterval) + 1
-        let estimatedDays = blocksRemaining * 10 / 60 / 24 // ~10 min per block
+        let estimatedDays = blocksRemaining * 10 / 60 / 24
 
-        return VStack(spacing: 14) {
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "clock.badge.exclamationmark")
-                            .font(.system(size: 16))
-                            .foregroundStyle(Color.btcOrange)
-                        Text("Halving #\(halvingNumber)")
-                            .font(.system(size: 15, weight: .bold))
-                    }
-                    Text("Block \(nextHalving)")
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text("\(blocksRemaining)")
-                        .font(.system(size: 22, weight: .bold, design: .monospaced))
-                        .foregroundStyle(Color.btcOrange)
-                    Text("blocks left")
-                        .font(.system(size: 10))
-                        .foregroundStyle(.secondary)
-                }
-            }
+        return VStack(alignment: .leading, spacing: 8) {
+            Image(systemName: "clock.badge.exclamationmark")
+                .font(.system(size: 18))
+                .foregroundStyle(Color.btcOrange)
 
-            // Progress bar
+            Text("\(blocksRemaining)")
+                .font(.system(size: 20, weight: .bold, design: .monospaced))
+                .foregroundStyle(Color.btcOrange)
+
+            Text("blocks to halving")
+                .font(.system(size: 10))
+                .foregroundStyle(.secondary)
+
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(Color.gray.opacity(0.2))
-                        .frame(height: 6)
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(Color.btcOrange)
-                        .frame(width: geo.size.width * progress, height: 6)
+                    RoundedRectangle(cornerRadius: 3).fill(Color.gray.opacity(0.2)).frame(height: 4)
+                    RoundedRectangle(cornerRadius: 3).fill(Color.btcOrange).frame(width: geo.size.width * progress, height: 4)
                 }
             }
-            .frame(height: 6)
+            .frame(height: 4)
 
-            HStack {
-                Label("\(currentReward) BTC/block", systemImage: "bitcoinsign.circle")
-                    .font(.system(size: 11, design: .monospaced))
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Text("~\(estimatedDays) days")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-            }
+            Text("~\(estimatedDays)d")
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundStyle(.secondary)
         }
-        .padding()
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
     }
 
     // =====================================================================
@@ -233,80 +211,44 @@ struct HomeView: View {
 
     private var supplyCard: some View {
         let currentBlock = vm.blockHeight
-        // Approximate circulating supply calculation
         let supply: Double = {
-            var total: Double = 0
-            var reward: Double = 50
-            var blocks = 0
+            var total: Double = 0; var reward: Double = 50; var blocks = 0
             while blocks < currentBlock {
-                let epochEnd = blocks + 210_000
-                let blocksInEpoch = min(currentBlock - blocks, 210_000)
-                total += Double(blocksInEpoch) * reward
-                blocks = epochEnd
-                reward /= 2
+                let n = min(currentBlock - blocks, 210_000)
+                total += Double(n) * reward; blocks += 210_000; reward /= 2
             }
             return total
         }()
-        let maxSupply: Double = 21_000_000
-        let percentMined = supply / maxSupply * 100
-        let inflationRate = (3.125 * 6 * 24 * 365) / supply * 100
+        let pct = supply / 21_000_000 * 100
 
-        return VStack(spacing: 12) {
-            HStack {
-                HStack(spacing: 6) {
-                    Image(systemName: "chart.pie.fill")
-                        .font(.system(size: 16))
-                        .foregroundStyle(.cyan)
-                    Text("Supply")
-                        .font(.system(size: 15, weight: .bold))
-                }
-                Spacer()
-                Text(String(format: "%.1f%%", percentMined))
-                    .font(.system(size: 15, weight: .bold, design: .monospaced))
-                    .foregroundStyle(.cyan)
-            }
+        return VStack(alignment: .leading, spacing: 8) {
+            Image(systemName: "chart.pie.fill")
+                .font(.system(size: 18))
+                .foregroundStyle(.cyan)
 
-            // Supply bar
+            Text(String(format: "%.1f%%", pct))
+                .font(.system(size: 20, weight: .bold, design: .monospaced))
+                .foregroundStyle(.cyan)
+
+            Text("of 21M mined")
+                .font(.system(size: 10))
+                .foregroundStyle(.secondary)
+
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(Color.gray.opacity(0.2))
-                        .frame(height: 6)
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(.cyan)
-                        .frame(width: geo.size.width * (supply / maxSupply), height: 6)
+                    RoundedRectangle(cornerRadius: 3).fill(Color.gray.opacity(0.2)).frame(height: 4)
+                    RoundedRectangle(cornerRadius: 3).fill(.cyan).frame(width: geo.size.width * (supply / 21_000_000), height: 4)
                 }
             }
-            .frame(height: 6)
+            .frame(height: 4)
 
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(String(format: "%.0f", supply))
-                        .font(.system(size: 11, weight: .medium, design: .monospaced))
-                    Text("circulating")
-                        .font(.system(size: 9))
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                VStack(alignment: .center, spacing: 2) {
-                    Text(String(format: "%.2f%%", inflationRate))
-                        .font(.system(size: 11, weight: .medium, design: .monospaced))
-                    Text("inflation/yr")
-                        .font(.system(size: 9))
-                        .foregroundStyle(.secondary)
-                }
-                Spacer()
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text("21 000 000")
-                        .font(.system(size: 11, weight: .medium, design: .monospaced))
-                    Text("max supply")
-                        .font(.system(size: 9))
-                        .foregroundStyle(.secondary)
-                }
-            }
+            Text(String(format: "%.0f", supply / 1_000_000) + "M")
+                .font(.system(size: 10, design: .monospaced))
+                .foregroundStyle(.secondary)
         }
-        .padding()
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
     }
 
     // =====================================================================

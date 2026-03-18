@@ -8,22 +8,10 @@ struct ScriptEditorView: View {
     var body: some View {
         NavigationStack {
             List {
-                HStack {
-                    PlugHeader(pageName: "Script")
-                    Spacer()
-                    HStack(spacing: 12) {
-                        Button("Reset") { vm.reset() }
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(.secondary)
-                        Button("Run") { vm.execute() }
-                            .font(.system(size: 13, weight: .bold))
-                            .foregroundStyle(Color.btcOrange)
-                    }
-                    .padding(.trailing, 12)
-                }
-                .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 12, trailing: 0))
-                .listRowBackground(Color.clear)
-                .listRowSeparator(.hidden)
+                PlugHeader(pageName: "Script")
+                    .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 12, trailing: 0))
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
 
                 // Script input
                 Section {
@@ -45,6 +33,24 @@ struct ScriptEditorView: View {
                     Text("Script")
                 }
 
+                // Action buttons
+                Section {
+                    HStack(spacing: 10) {
+                        scriptActionButton(icon: "play.fill", title: "Run", color: .green) {
+                            vm.execute()
+                        }
+                        scriptActionButton(icon: "arrow.counterclockwise", title: "Reset", color: .secondary) {
+                            vm.reset()
+                        }
+                        scriptActionButton(icon: "doc.text.fill", title: "Templates", color: Color.btcOrange) {
+                            showTemplates = true
+                        }
+                        scriptActionButton(icon: "book.fill", title: "Opcodes", color: .blue) {
+                            showReference = true
+                        }
+                    }
+                }
+
                 // Quick opcodes
                 Section {
                     ScrollView(.horizontal, showsIndicators: false) {
@@ -64,43 +70,6 @@ struct ScriptEditorView: View {
                         }
                     }
                     .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
-                }
-
-                // Templates & Reference buttons
-                Section {
-                    HStack(spacing: 12) {
-                        Button {
-                            showTemplates = true
-                        } label: {
-                            VStack(spacing: 4) {
-                                Image(systemName: "doc.text.fill")
-                                    .font(.system(size: 18))
-                                Text("Templates")
-                                    .font(.system(size: 11, weight: .medium))
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 10)
-                            .background(Color.btcOrange.opacity(0.1), in: RoundedRectangle(cornerRadius: 10))
-                            .foregroundStyle(Color.btcOrange)
-                        }
-                        .buttonStyle(.plain)
-
-                        Button {
-                            showReference = true
-                        } label: {
-                            VStack(spacing: 4) {
-                                Image(systemName: "book.fill")
-                                    .font(.system(size: 18))
-                                Text("Opcodes")
-                                    .font(.system(size: 11, weight: .medium))
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 10)
-                            .background(Color.blue.opacity(0.1), in: RoundedRectangle(cornerRadius: 10))
-                            .foregroundStyle(.blue)
-                        }
-                        .buttonStyle(.plain)
-                    }
                 }
 
                 // Output
@@ -159,6 +128,22 @@ struct ScriptEditorView: View {
                 OpcodeReferenceSheet()
             }
         }
+    }
+
+    private func scriptActionButton(icon: String, title: String, color: Color, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Image(systemName: icon)
+                    .font(.system(size: 13))
+                Text(title)
+                    .font(.system(size: 13, weight: .medium))
+            }
+            .foregroundStyle(color == .secondary ? .primary : color)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 12)
+            .background(Color(.systemGray5), in: RoundedRectangle(cornerRadius: 10))
+        }
+        .buttonStyle(.plain)
     }
 }
 

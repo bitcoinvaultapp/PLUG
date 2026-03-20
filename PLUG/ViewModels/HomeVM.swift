@@ -20,6 +20,10 @@ final class HomeVM: ObservableObject {
     @Published var syncError: String?
     @Published var wsConnected = false
 
+    // Scan progress (0.0 → 1.0)
+    @Published var scanProgress: Double = 0
+    @Published var scanStatus: String?
+
     var dustUtxos: [UTXO] { utxos.filter { $0.value < 546 } }
     var pendingTransactions: [Transaction] { transactions.filter { !$0.status.confirmed } }
 
@@ -225,8 +229,27 @@ final class HomeVM: ObservableObject {
         #if DEBUG
         print("[HomeVM] Fetching UTXOs for \(walletAddrs.count) addresses...")
         #endif
+        scanProgress = 0
+        scanStatus = "Scanning addresses..."
         let addrStrings = walletAddrs.map { $0.address }
-        let result = await UTXOFetchService.fetchUTXOsAndTransactions(for: addrStrings)
+        let result = await UTXOFetchService.fetchUTXOsAndTransactions(
+            for: addrStrings,
+            onProgress: { [weak self] completed, total, phase in
+                guard let self else { return }
+                if phase == "utxos" {
+                    self.scanProgress = Double(completed) / Double(total)
+                    self.scanStatus = "Scanning addresses… \(completed)/\(total)"
+                    // Update balance live as UTXOs arrive
+                    self.totalBalance = self.utxos.reduce(0) { $0 + $1.value }
+                } else {
+                    self.scanStatus = "Loading transactions…"
+                }
+            }
+        )
+
+        // Scan complete
+        scanProgress = 1
+        scanStatus = nil
 
         // Merge new transactions with existing (preserves history for spent addresses)
         let activeAddrSet = Set(result.activeAddresses)

@@ -46,6 +46,8 @@ struct HomeView: View {
                             totalBalance: vm.totalBalance,
                             btcPrice: vm.btcPrice,
                             syncError: vm.syncError,
+                            scanProgress: vm.scanProgress,
+                            scanStatus: vm.scanStatus,
                             balanceUnit: $balanceUnit,
                             onRetry: { Task { await vm.refreshBalance() } }
                         )
@@ -184,6 +186,8 @@ private struct HomeBalanceCard: View {
     let totalBalance: UInt64
     let btcPrice: Double
     let syncError: String?
+    let scanProgress: Double
+    let scanStatus: String?
     @Binding var balanceUnit: String
     var onRetry: () -> Void
 
@@ -228,6 +232,22 @@ private struct HomeBalanceCard: View {
                 }
             }
             .buttonStyle(.plain)
+
+            // Scan progress bar
+            if let status = scanStatus, scanProgress > 0 && scanProgress < 1 {
+                VStack(spacing: 6) {
+                    ProgressView(value: scanProgress)
+                        .tint(.orange)
+                        .scaleEffect(y: 0.6, anchor: .center)
+                        .padding(.horizontal, 40)
+
+                    Text(status)
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                }
+                .transition(.opacity)
+                .animation(.easeInOut(duration: 0.3), value: scanProgress)
+            }
 
             if let syncErr = syncError {
                 HStack(spacing: 4) {

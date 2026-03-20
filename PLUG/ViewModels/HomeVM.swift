@@ -180,101 +180,31 @@ final class HomeVM: ObservableObject {
         isLoading = false
     }
 
-    /// Wallet fetch — uses cached addresses from WalletVM gap scan when available,
-    /// falls back to deriving first 20+20 from xpub. Ensures same address set = same balance.
+    /// Reads balance from WalletVM's cached UTXOs (no independent scan).
+    /// WalletVM is the only scanner — HomeVM just reads its results.
     func refreshBalance() async {
-        let isTest = NetworkConfig.shared.isTestnet
-
-        // Skip if refreshed less than 30s ago
-        if let last = lastBalanceRefresh, Date().timeIntervalSince(last) < 30 {
+        // Read cached UTXOs from Keychain (saved by WalletVM after scan)
+        if let cached: [UTXO] = KeychainStore.shared.loadCodable(
+            forKey: KeychainStore.KeychainKey.cachedUTXOs.rawValue,
+            type: [UTXO].self
+        ), !cached.isEmpty {
+            utxos = cached
+            totalBalance = cached.reduce(0) { $0 + $1.value }
             #if DEBUG
-            print("[HomeVM] Skipping — last refresh \(Int(Date().timeIntervalSince(last)))s ago")
+            print("[HomeVM] Loaded cached balance: \(totalBalance) sats, \(cached.count) UTXOs")
             #endif
-            return
         }
 
-        // Try cached addresses from WalletVM gap scan (ensures same address set)
-        var walletAddrs: [WalletAddress] = []
-        if let cached: [WalletAddress] = KeychainStore.shared.loadCodable(
+        // Read cached addresses
+        if let cachedAddrs: [WalletAddress] = KeychainStore.shared.loadCodable(
             forKey: KeychainStore.KeychainKey.walletAddresses.rawValue,
             type: [WalletAddress].self
-        ), !cached.isEmpty {
-            walletAddrs = cached
-            #if DEBUG
-            print("[HomeVM] Using \(cached.count) cached addresses from WalletVM gap scan")
-            #endif
-        } else {
-            // Fallback: derive first 20+20 from xpub
-            guard let xpubStr = KeychainStore.shared.loadXpub(isTestnet: isTest),
-                  let xpub = ExtendedPublicKey.fromBase58(xpubStr) else {
-                #if DEBUG
-                print("[HomeVM] No xpub in keychain — skipping balance refresh")
-                #endif
-                return
-            }
-
-            #if DEBUG
-            print("[HomeVM] No cached addresses — deriving 20+20 from xpub")
-            #endif
-            let receiving = AddressDerivation.deriveAddresses(xpub: xpub, change: 0, startIndex: 0, count: 20, isTestnet: isTest)
-            let change = AddressDerivation.deriveAddresses(xpub: xpub, change: 1, startIndex: 0, count: 20, isTestnet: isTest)
-
-            walletAddrs = receiving.map { WalletAddress(index: $0.index, address: $0.address, publicKey: $0.publicKey.hex, isChange: false) }
-                + change.map { WalletAddress(index: $0.index, address: $0.address, publicKey: $0.publicKey.hex, isChange: true) }
+        ), !cachedAddrs.isEmpty {
+            walletAddresses = cachedAddrs
         }
 
-        guard !walletAddrs.isEmpty else { return }
-
-        // Fetch UTXOs and transactions via shared service
-        #if DEBUG
-        print("[HomeVM] Fetching UTXOs for \(walletAddrs.count) addresses...")
-        #endif
-        scanProgress = 0
-        scanStatus = "Scanning addresses..."
-        let addrStrings = walletAddrs.map { $0.address }
-        let result = await UTXOFetchService.fetchUTXOsAndTransactions(
-            for: addrStrings,
-            onProgress: { [weak self] completed, total, phase in
-                guard let self else { return }
-                if phase == "utxos" {
-                    self.scanProgress = Double(completed) / Double(total)
-                    self.scanStatus = "Scanning addresses… \(completed)/\(total)"
-                } else {
-                    self.scanStatus = "Loading transactions…"
-                }
-            }
-        )
-
-        // Balance + UTXOs first (instant display)
-        utxos = result.utxos
-        totalBalance = result.utxos.reduce(0) { $0 + $1.value }
-        walletAddresses = walletAddrs
-        scanProgress = 1
-        scanStatus = nil
         lastBalanceRefresh = Date()
-
-        // Then merge transactions (heavier, can take a moment)
-        let activeAddrSet = Set(result.activeAddresses)
-        var mergedTxs = transactions.filter { tx in
-            !tx.vout.contains { activeAddrSet.contains($0.scriptpubkeyAddress ?? "") }
-            && !tx.vin.contains { activeAddrSet.contains($0.prevout?.scriptpubkeyAddress ?? "") }
-        }
-        mergedTxs.append(contentsOf: result.transactions)
-
-        var seen = Set<String>()
-        let dedupedTxs = mergedTxs.filter { seen.insert($0.txid).inserted }
-        transactions = dedupedTxs.sorted { ($0.status.blockTime ?? Int.max) > ($1.status.blockTime ?? Int.max) }
-
-        // Track sync errors — warn user if all fetches failed
-        if result.fetchErrorCount > 0 && result.fetchSuccessCount == 0 {
-            syncError = "Network error — balance may be outdated"
-        } else {
-            syncError = nil
-        }
-
-        #if DEBUG
-        print("[HomeVM] Balance: \(totalBalance) sats, \(result.utxos.count) UTXOs, \(dedupedTxs.count) txs, errors: \(result.fetchErrorCount)/\(result.fetchErrorCount + result.fetchSuccessCount)")
-        #endif
+        syncError = nil
     }
 
     private func updateAlerts() {

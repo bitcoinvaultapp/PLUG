@@ -17,6 +17,8 @@ final class KeychainStore {
         case xpubTestnet = "xpub_testnet"
         case contracts = "contracts_data"
         case walletAddresses = "wallet_addresses"
+        case cachedUTXOs = "cached_utxos"
+        case cachedBalance = "cached_balance_sats"
         case ledgerMasterFingerprint = "ledger_master_fingerprint"
         case ledgerOriginalXpub = "ledger_original_xpub"
         case ledgerCoinType = "ledger_coin_type"

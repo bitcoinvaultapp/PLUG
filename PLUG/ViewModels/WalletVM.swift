@@ -495,6 +495,10 @@ final class WalletVM: ObservableObject {
         totalBalance = cleanUTXOs.reduce(0) { $0 + $1.value }
         scanProgress = 1
         scanStatus = nil
+
+        // Cache UTXOs + balance for HomeVM (shared data, single scan)
+        KeychainStore.shared.saveCodable(cleanUTXOs, forKey: KeychainStore.KeychainKey.cachedUTXOs.rawValue)
+        UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: "last_utxo_scan_time")
         #if DEBUG
         print("[WalletVM] Balance: \(totalBalance) sats, \(cleanUTXOs.count) UTXOs, errors: \(result.fetchErrorCount)")
         #endif

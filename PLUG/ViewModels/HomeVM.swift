@@ -222,7 +222,7 @@ final class HomeVM: ObservableObject {
             + change.map { WalletAddress(index: $0.index, address: $0.address, publicKey: $0.publicKey.hex, isChange: true) }
 
         // Fetch UTXOs first, then only fetch transactions for addresses that have UTXOs.
-        // Larger batches + no delay for Tor .onion; smaller batches + delay for clearnet.
+        // Shuffle address order to prevent timing-based correlation by the API server.
         #if DEBUG
         print("[HomeVM] Fetching UTXOs for \(allAddrs.count) addresses...")
         #endif
@@ -232,11 +232,13 @@ final class HomeVM: ObservableObject {
         let batchSize = usingTor ? 10 : 5
 
         // Phase 1: Fetch UTXOs only (lightweight)
+        // Shuffle to break sequential query pattern (anti-correlation)
+        let shuffledAddrs = allAddrs.shuffled()
         var addressesWithActivity: [String] = []
-        for (i, batchStart) in stride(from: 0, to: allAddrs.count, by: batchSize).enumerated() {
+        for (i, batchStart) in stride(from: 0, to: shuffledAddrs.count, by: batchSize).enumerated() {
             if !usingTor && i > 0 { try? await Task.sleep(nanoseconds: 200_000_000) }
-            let batchEnd = min(batchStart + batchSize, allAddrs.count)
-            let batch = Array(allAddrs[batchStart..<batchEnd])
+            let batchEnd = min(batchStart + batchSize, shuffledAddrs.count)
+            let batch = Array(shuffledAddrs[batchStart..<batchEnd])
 
             await withTaskGroup(of: (String, [UTXO]).self) { group in
                 for addr in batch {

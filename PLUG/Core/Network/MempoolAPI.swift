@@ -1,7 +1,8 @@
 import Foundation
+import CommonCrypto
 
 // MARK: - Mempool.space REST API client
-// TLS certificate pinning via URLSessionDelegate
+// TLS certificate pinning (SPKI SHA-256) via URLSessionDelegate
 
 final class MempoolAPI: NSObject, URLSessionDelegate {
 
@@ -24,7 +25,14 @@ final class MempoolAPI: NSObject, URLSessionDelegate {
         NetworkConfig.shared.mempoolBaseURL
     }
 
-    // MARK: - TLS Certificate Pinning
+    // MARK: - TLS Certificate Pinning (SPKI SHA-256)
+
+    /// Pinned SPKI hashes for mempool.space — leaf + intermediate CA.
+    /// Rotate when mempool.space renews their certificate.
+    private static let pinnedHashes: Set<String> = [
+        "wV7micOM/PJtIxPpaZBTdQF0JnfIHXSGzrvsu7fzDdQ=", // leaf
+        "KqkYYX5LYAYP7XGemqzbtPPIA8x7BS/BbOIcAXf3j2k=", // intermediate CA
+    ]
 
     func urlSession(
         _ session: URLSession,
@@ -38,9 +46,28 @@ final class MempoolAPI: NSObject, URLSessionDelegate {
             return
         }
 
-        // Accept valid certificates for mempool.space
-        let credential = URLCredential(trust: serverTrust)
-        completionHandler(.useCredential, credential)
+        // Verify at least one certificate in the chain matches a pinned SPKI hash
+        guard let chain = SecTrustCopyCertificateChain(serverTrust) as? [SecCertificate] else {
+            completionHandler(.cancelAuthenticationChallenge, nil)
+            return
+        }
+        for cert in chain {
+            guard let pubKey = SecCertificateCopyKey(cert),
+                  let pubKeyData = SecKeyCopyExternalRepresentation(pubKey, nil) as Data? else { continue }
+            var hash = [UInt8](repeating: 0, count: Int(CC_SHA256_DIGEST_LENGTH))
+            pubKeyData.withUnsafeBytes { _ = CC_SHA256($0.baseAddress, CC_LONG(pubKeyData.count), &hash) }
+            let pin = Data(hash).base64EncodedString()
+            if Self.pinnedHashes.contains(pin) {
+                completionHandler(.useCredential, URLCredential(trust: serverTrust))
+                return
+            }
+        }
+
+        // No pin matched — reject connection
+        #if DEBUG
+        print("[PLUG] TLS pin verification FAILED for \(challenge.protectionSpace.host)")
+        #endif
+        completionHandler(.cancelAuthenticationChallenge, nil)
     }
 
     // MARK: - Generic request

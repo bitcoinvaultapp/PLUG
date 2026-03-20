@@ -388,7 +388,8 @@ final class WalletVM: ObservableObject {
         guard !addresses.isEmpty else { return }
         isLoading = true
 
-        let addrList = addresses
+        // Shuffle to break sequential query pattern (anti-correlation)
+        let shuffledAddrs = addresses.shuffled()
         var allUTXOs: [UTXO] = []
         var allTxs: [Transaction] = []
         let usingTor = plug_tor_is_running()
@@ -396,10 +397,10 @@ final class WalletVM: ObservableObject {
 
         // Phase 1: Fetch UTXOs only
         var addressesWithActivity: [String] = []
-        for (i, batchStart) in stride(from: 0, to: addrList.count, by: batchSize).enumerated() {
+        for (i, batchStart) in stride(from: 0, to: shuffledAddrs.count, by: batchSize).enumerated() {
             if !usingTor && i > 0 { try? await Task.sleep(nanoseconds: 200_000_000) }
-            let batchEnd = min(batchStart + batchSize, addrList.count)
-            let batch = Array(addrList[batchStart..<batchEnd])
+            let batchEnd = min(batchStart + batchSize, shuffledAddrs.count)
+            let batch = Array(shuffledAddrs[batchStart..<batchEnd])
 
             await withTaskGroup(of: (String, [UTXO]).self) { group in
                 for addr in batch {

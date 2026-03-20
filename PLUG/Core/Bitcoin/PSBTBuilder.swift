@@ -293,15 +293,6 @@ struct PSBTBuilder {
 
     // MARK: - Script pubkey builders for outputs
 
-    /// P2WPKH output script: OP_0 <20-byte-hash>
-    static func p2wpkhScriptPubKey(pubkeyHash: Data) -> Data {
-        var script = Data()
-        script.append(0x00) // OP_0
-        script.append(0x14) // push 20 bytes
-        script.append(pubkeyHash)
-        return script
-    }
-
     /// P2WSH output script: OP_0 <32-byte-hash>
     static func p2wshScriptPubKey(scriptHash: Data) -> Data {
         var script = Data()

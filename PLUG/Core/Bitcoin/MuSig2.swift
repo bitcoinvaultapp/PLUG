@@ -109,69 +109,6 @@ struct MuSig2 {
         return compressedKey[0] == 0x02
     }
 
-    // MARK: - Create P2TR address from aggregated key
-
-    /// Aggregate keys and create a P2TR (Taproot) address
-    /// The aggregated key becomes the internal key, optionally with script tree
-    static func musigTaprootAddress(
-        pubkeys: [Data],
-        scripts: [Data]? = nil,
-        isTestnet: Bool
-    ) -> (address: String, aggregatedKey: Data)? {
-        guard let aggKey = aggregateKeys(pubkeys) else { return nil }
-
-        // For P2TR, we need the x-only key
-        guard let xOnly = toXOnly(aggKey) else { return nil }
-
-        // Build Taproot address with optional script tree
-        let merkleRoot: Data?
-        if let scripts = scripts, !scripts.isEmpty {
-            merkleRoot = TaprootBuilder.computeMerkleRoot(scripts: scripts)
-        } else {
-            merkleRoot = nil
-        }
-
-        guard let address = TaprootBuilder.taprootAddress(
-            internalKey: aggKey,
-            scripts: scripts ?? [],
-            isTestnet: isTestnet
-        ) else { return nil }
-
-        return (address, aggKey)
-    }
-
-    // MARK: - MuSig2 session context (for future signing)
-
-    /// Session context for MuSig2 signing
-    /// In our architecture, actual signing happens on the Ledger device
-    /// This struct tracks the key aggregation state
-    struct SessionContext {
-        let pubkeys: [Data]         // all participant keys (sorted)
-        let aggregatedKey: Data     // combined key
-        let coefficients: [UInt256] // aggregation coefficients
-        let message: Data?          // message to sign (set later)
-    }
-
-    /// Create a signing session context
-    static func createSession(pubkeys: [Data]) -> SessionContext? {
-        let sorted = sortKeys(pubkeys)
-
-        guard let aggKey = aggregateKeys(sorted) else { return nil }
-
-        var coeffs: [UInt256] = []
-        for i in 0..<sorted.count {
-            guard let c = keyAggCoefficient(pubkeys: sorted, index: i) else { return nil }
-            coeffs.append(c)
-        }
-
-        return SessionContext(
-            pubkeys: sorted,
-            aggregatedKey: aggKey,
-            coefficients: coeffs,
-            message: nil
-        )
-    }
-
     // MARK: - Descriptor
 
     /// Generate a musig() descriptor string

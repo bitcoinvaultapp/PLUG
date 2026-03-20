@@ -13,10 +13,22 @@ extension Color {
     static let dimText = Color(red: 0.45, green: 0.45, blue: 0.52)
 }
 
+// MARK: - HomeView
+
 struct HomeView: View {
     @StateObject private var vm = HomeVM()
     @ObservedObject private var ledgerState = LedgerManager.shared
     @AppStorage("balance_unit") private var balanceUnit: String = BalanceUnit.btc.rawValue
+
+    @State private var showLedgerFromCard = false
+    @State private var tipIndex = Int.random(in: 0..<42)
+    @State private var showReceiveFromHome = false
+    @State private var showBackupFromHome = false
+    @State private var copiedAddress = ""
+    @State private var showBatchSend = false
+    @State private var showBumpFee = false
+    @State private var showConsolidate = false
+    @State private var showCrowdfund = false
 
     private var hasWallet: Bool {
         KeychainStore.shared.loadXpub(isTestnet: NetworkConfig.shared.isTestnet) != nil
@@ -30,19 +42,59 @@ struct HomeView: View {
 
                     if hasWallet {
                         // Full dashboard
-                        balanceCard
-                        networkStatsCard
-                        statusSection
-                        dailyTipCard
-                        quickActionsSection
-                        remindersSection
-                        recentAddressesSection
+                        HomeBalanceCard(
+                            totalBalance: vm.totalBalance,
+                            btcPrice: vm.btcPrice,
+                            syncError: vm.syncError,
+                            balanceUnit: $balanceUnit,
+                            onRetry: { Task { await vm.refreshBalance() } }
+                        )
+                        HomeNetworkStatsCard(
+                            blockHeight: vm.blockHeight,
+                            lastBlockTime: vm.lastBlockTime,
+                            feeEstimate: vm.feeEstimate,
+                            btcPrice: vm.btcPrice,
+                            activeContracts: vm.activeContracts,
+                            utxos: vm.utxos,
+                            dustUtxos: vm.dustUtxos
+                        )
+                        HomeStatusSection(
+                            pendingTransactions: vm.pendingTransactions,
+                            alerts: vm.alerts,
+                            walletAddresses: vm.walletAddresses,
+                            transactions: vm.transactions,
+                            utxos: vm.utxos
+                        )
+                        HomeDailyTipCard(tipIndex: tipIndex)
+                        HomeQuickActionsSection(
+                            utxos: vm.utxos,
+                            walletAddresses: vm.walletAddresses,
+                            transactions: vm.transactions,
+                            showBatchSend: $showBatchSend,
+                            showBumpFee: $showBumpFee,
+                            showConsolidate: $showConsolidate,
+                            showCrowdfund: $showCrowdfund
+                        )
+                        HomeRemindersSection(utxos: vm.utxos)
+                        HomeRecentAddressesSection(
+                            walletAddresses: vm.walletAddresses,
+                            transactions: vm.transactions,
+                            copiedAddress: $copiedAddress
+                        )
 
                     } else {
                         // No wallet — need to connect Ledger first
-                        connectLedgerCard
-                        networkStatsCard
-                        dailyTipCard
+                        HomeConnectLedgerCard(showLedgerFromCard: $showLedgerFromCard)
+                        HomeNetworkStatsCard(
+                            blockHeight: vm.blockHeight,
+                            lastBlockTime: vm.lastBlockTime,
+                            feeEstimate: vm.feeEstimate,
+                            btcPrice: vm.btcPrice,
+                            activeContracts: vm.activeContracts,
+                            utxos: vm.utxos,
+                            dustUtxos: vm.dustUtxos
+                        )
+                        HomeDailyTipCard(tipIndex: tipIndex)
                     }
                 }
                 .padding()
@@ -65,17 +117,21 @@ struct HomeView: View {
         }
     }
 
-    // =====================================================================
-    // MARK: - Connect Ledger Card
-    // =====================================================================
+    // MARK: - Header
 
-    @State private var showLedgerFromCard = false
-    @State private var tipIndex = Int.random(in: 0..<42)
-    @State private var showReceiveFromHome = false
-    @State private var showBackupFromHome = false
-    @State private var copiedAddress = ""
+    private var headerBar: some View {
+        PlugHeader(pageName: "Home")
+    }
+}
 
-    private var connectLedgerCard: some View {
+// =====================================================================
+// MARK: - Connect Ledger Card
+// =====================================================================
+
+private struct HomeConnectLedgerCard: View {
+    @Binding var showLedgerFromCard: Bool
+
+    var body: some View {
         VStack(spacing: 16) {
             Image(systemName: "wave.3.right")
                 .font(.system(size: 36))
@@ -118,18 +174,18 @@ struct HomeView: View {
             }
         }
     }
+}
 
-    // =====================================================================
-    // MARK: - Header (replicated from screenshot)
-    // =====================================================================
+// =====================================================================
+// MARK: - Balance Card
+// =====================================================================
 
-    private var headerBar: some View {
-        PlugHeader(pageName: "Home")
-    }
-
-    // =====================================================================
-    // MARK: - Balance Card (untouched)
-    // =====================================================================
+private struct HomeBalanceCard: View {
+    let totalBalance: UInt64
+    let btcPrice: Double
+    let syncError: String?
+    @Binding var balanceUnit: String
+    var onRetry: () -> Void
 
     private var currentUnit: BalanceUnit {
         BalanceUnit(rawValue: balanceUnit) ?? .btc
@@ -144,15 +200,15 @@ struct HomeView: View {
             return (HomeVM.formatSats(sats), "sats")
         case .usd:
             let btc = Double(sats) / 100_000_000
-            let usd = btc * vm.btcPrice
-            return (vm.btcPrice > 0 ? String(format: "%.2f", usd) : "--", "USD")
+            let usd = btc * btcPrice
+            return (btcPrice > 0 ? String(format: "%.2f", usd) : "--", "USD")
         }
     }
 
-    private var balanceCard: some View {
-        let display = formatBalance(vm.totalBalance)
+    var body: some View {
+        let display = formatBalance(totalBalance)
 
-        return VStack(spacing: 8) {
+        VStack(spacing: 8) {
             Text("Total Balance")
                 .font(.subheadline)
                 .foregroundStyle(.tertiary)
@@ -173,7 +229,7 @@ struct HomeView: View {
             }
             .buttonStyle(.plain)
 
-            if let syncErr = vm.syncError {
+            if let syncErr = syncError {
                 HStack(spacing: 4) {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .font(.system(size: 10))
@@ -183,7 +239,7 @@ struct HomeView: View {
                         .foregroundStyle(.red.opacity(0.8))
                     Spacer()
                     Button {
-                        Task { await vm.refreshBalance() }
+                        onRetry()
                     } label: {
                         Text("Retry")
                             .font(.system(size: 11, weight: .medium))
@@ -197,18 +253,28 @@ struct HomeView: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 16)
     }
+}
 
-    // =====================================================================
-    // MARK: - Network Stats (untouched)
-    // =====================================================================
+// =====================================================================
+// MARK: - Network Stats Card
+// =====================================================================
 
-    private var networkStatsCard: some View {
+private struct HomeNetworkStatsCard: View {
+    let blockHeight: Int
+    let lastBlockTime: Int
+    let feeEstimate: FeeEstimate?
+    let btcPrice: Double
+    let activeContracts: [Contract]
+    let utxos: [UTXO]
+    let dustUtxos: [UTXO]
+
+    var body: some View {
         VStack(spacing: 10) {
             // Block height + live timer
-            BlockTimerRow(blockHeight: vm.blockHeight, lastBlockTime: vm.lastBlockTime)
+            BlockTimerRow(blockHeight: blockHeight, lastBlockTime: lastBlockTime)
 
             // Fees — 3 tiers in one line
-            if let fee = vm.feeEstimate {
+            if let fee = feeEstimate {
                 HStack(spacing: 8) {
                     Image(systemName: "gauge.with.dots.needle.33percent")
                         .font(.system(size: 10))
@@ -235,7 +301,7 @@ struct HomeView: View {
             }
 
             // BTC price
-            if vm.btcPrice > 0 {
+            if btcPrice > 0 {
                 HStack(spacing: 8) {
                     Image(systemName: "dollarsign.circle")
                         .font(.system(size: 10))
@@ -244,15 +310,15 @@ struct HomeView: View {
                         .font(.system(size: 11))
                         .foregroundStyle(.tertiary)
                     Spacer()
-                    Text(String(format: "$%,.0f", vm.btcPrice))
+                    Text(String(format: "$%,.0f", btcPrice))
                         .font(.system(size: 13, weight: .medium, design: .monospaced))
                 }
             }
 
             // Next halving
-            if vm.blockHeight > 0 {
-                let nextHalving = ((vm.blockHeight / 210_000) + 1) * 210_000
-                let remaining = nextHalving - vm.blockHeight
+            if blockHeight > 0 {
+                let nextHalving = ((blockHeight / 210_000) + 1) * 210_000
+                let remaining = nextHalving - blockHeight
                 let estimatedDays = remaining * 10 / 60 / 24
                 let years = estimatedDays / 365
                 let months = (estimatedDays % 365) / 30
@@ -275,7 +341,7 @@ struct HomeView: View {
             }
 
             // Fee insight
-            if let fee = vm.feeEstimate {
+            if let fee = feeEstimate {
                 let level = fee.fastestFee
                 HStack(spacing: 8) {
                     Circle()
@@ -289,7 +355,7 @@ struct HomeView: View {
             }
 
             // Contract activity
-            if !vm.activeContracts.isEmpty {
+            if !activeContracts.isEmpty {
                 let counts = contractCounts
                 HStack(spacing: 8) {
                     Image(systemName: "doc.text.fill")
@@ -303,13 +369,13 @@ struct HomeView: View {
             }
 
             // UTXO health
-            if !vm.utxos.isEmpty {
-                let dustCount = vm.dustUtxos.count
+            if !utxos.isEmpty {
+                let dustCount = dustUtxos.count
                 HStack(spacing: 8) {
                     Image(systemName: "circle.grid.3x3.fill")
                         .font(.system(size: 10))
                         .foregroundStyle(.tertiary)
-                    Text("\(vm.utxos.count) UTXOs")
+                    Text("\(utxos.count) UTXOs")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                     if dustCount > 0 {
@@ -323,14 +389,15 @@ struct HomeView: View {
         }
     }
 
+    // MARK: Helpers
+
     private var contractCounts: String {
-        let contracts = vm.activeContracts
         var parts: [String] = []
-        let vaults = contracts.filter { $0.type == .vault }.count
-        let inherits = contracts.filter { $0.type == .inheritance }.count
-        let htlcs = contracts.filter { $0.type == .htlc }.count
-        let channels = contracts.filter { $0.type == .channel }.count
-        let pools = contracts.filter { $0.type == .pool }.count
+        let vaults = activeContracts.filter { $0.type == .vault }.count
+        let inherits = activeContracts.filter { $0.type == .inheritance }.count
+        let htlcs = activeContracts.filter { $0.type == .htlc }.count
+        let channels = activeContracts.filter { $0.type == .channel }.count
+        let pools = activeContracts.filter { $0.type == .pool }.count
         if vaults > 0 { parts.append("\(vaults) CLTV") }
         if inherits > 0 { parts.append("\(inherits) CSV") }
         if htlcs > 0 { parts.append("\(htlcs) HTLC") }
@@ -344,23 +411,31 @@ struct HomeView: View {
             .font(.system(size: 11, weight: .semibold, design: .monospaced))
             .foregroundStyle(color)
     }
+}
 
-    // =====================================================================
-    // MARK: - Unified Status Section
-    // =====================================================================
+// =====================================================================
+// MARK: - Status Section
+// =====================================================================
 
-    private var statusSection: some View {
-        let pendingCount = vm.pendingTransactions.count
+private struct HomeStatusSection: View {
+    let pendingTransactions: [Transaction]
+    let alerts: [DashboardAlert]
+    let walletAddresses: [WalletAddress]
+    let transactions: [Transaction]
+    let utxos: [UTXO]
+
+    var body: some View {
+        let pendingCount = pendingTransactions.count
         let exposed = exposedAddressFunds
 
-        let unlockedVaults = vm.alerts.filter {
+        let unlockedVaults = alerts.filter {
             if case .vaultUnlocked = $0 { return true }; return false
         }
-        let inheritanceAlerts = vm.alerts.filter {
+        let inheritanceAlerts = alerts.filter {
             if case .inheritanceApproaching = $0 { return true }; return false
         }
 
-        return VStack(spacing: 0) {
+        VStack(spacing: 0) {
             // Exposed addresses
             if exposed.count > 0 {
                 if exposed.count == 1 {
@@ -423,11 +498,11 @@ struct HomeView: View {
                           title: "\(pendingCount) tx pending", subtitle: "Waiting for confirmation")
                 Divider().padding(.leading, 40).opacity(0.2)
             }
-
         }
     }
 
-    /// Expandable status group with DisclosureGroup
+    // MARK: Status Helpers
+
     private func statusGroup(icon: String, iconColor: Color, title: String, subtitle: String, details: [String]) -> some View {
         DisclosureGroup {
             VStack(alignment: .leading, spacing: 6) {
@@ -465,11 +540,10 @@ struct HomeView: View {
         .padding(.vertical, 6)
     }
 
-    /// Detail strings for exposed addresses
     private var exposedAddressDetails: [String] {
-        let knownAddresses = Set(vm.walletAddresses.map { $0.address })
+        let knownAddresses = Set(walletAddresses.map { $0.address })
         var spentFrom = Set<String>()
-        for tx in vm.transactions {
+        for tx in transactions {
             for input in tx.vin {
                 if let addr = input.prevout?.scriptpubkeyAddress, knownAddresses.contains(addr) {
                     spentFrom.insert(addr)
@@ -477,19 +551,17 @@ struct HomeView: View {
             }
         }
         return spentFrom.compactMap { addr in
-            let bal = vm.utxos.filter { $0.address == addr }.reduce(UInt64(0)) { $0 + $1.value }
+            let bal = utxos.filter { $0.address == addr }.reduce(UInt64(0)) { $0 + $1.value }
             guard bal > 0 else { return nil }
             return String(addr.prefix(10)) + "..." + String(addr.suffix(4))
         }
     }
 
-    /// Addresses that have been spent from (pubkey on-chain) but still hold funds
     private var exposedAddressFunds: (count: Int, totalSats: UInt64) {
-        let knownAddresses = Set(vm.walletAddresses.map { $0.address })
+        let knownAddresses = Set(walletAddresses.map { $0.address })
 
-        // Find addresses that appear in tx inputs (spent from = pubkey exposed)
         var spentFrom = Set<String>()
-        for tx in vm.transactions {
+        for tx in transactions {
             for input in tx.vin {
                 if let addr = input.prevout?.scriptpubkeyAddress, knownAddresses.contains(addr) {
                     spentFrom.insert(addr)
@@ -497,11 +569,10 @@ struct HomeView: View {
             }
         }
 
-        // Check which spent-from addresses still hold funds
         var count = 0
         var total: UInt64 = 0
         for addr in spentFrom {
-            let balance = vm.utxos.filter { $0.address == addr }.reduce(UInt64(0)) { $0 + $1.value }
+            let balance = utxos.filter { $0.address == addr }.reduce(UInt64(0)) { $0 + $1.value }
             if balance > 0 {
                 count += 1
                 total += balance
@@ -539,61 +610,64 @@ struct HomeView: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
     }
+}
 
+// =====================================================================
+// MARK: - Daily Bitcoin Tip
+// =====================================================================
 
-    // =====================================================================
-    // MARK: - Daily Bitcoin Tip (from Mastering Bitcoin ch13)
-    // =====================================================================
+private struct HomeDailyTipCard: View {
+    let tipIndex: Int
 
-    private var dailyTipCard: some View {
-        let tips: [(String, String, Color)] = [
-            ("lock.fill", "Never reuse a Bitcoin address. Each should be used only once for privacy.", .green),
-            ("key.fill", "Your seed phrase is the master key. Store it offline in physical form, never digitally.", .orange),
-            ("eye.slash.fill", "Use coin control to avoid mixing KYC and non-KYC UTXOs in the same transaction.", .purple),
-            ("checkmark.shield.fill", "Always verify the receive address on your Ledger screen before sending.", .blue),
-            ("clock.fill", "Wait for 6 confirmations before considering a large payment final.", .orange),
-            ("antenna.radiowaves.left.and.right", "Use Tor to hide your IP when querying the blockchain.", .teal),
-            ("exclamationmark.triangle.fill", "Dust outputs (< 546 sats) cost more in fees to spend than they're worth.", .yellow),
-            ("arrow.triangle.2.circlepath", "CoinJoin mixes your transaction with others. No trust required.", .purple),
-            ("bitcoinsign.circle.fill", "Bitcoin's supply is capped at 21 million. No one can inflate it.", .orange),
-            ("doc.text.fill", "Label your transactions. Future you will thank present you.", .blue),
-            ("person.2.fill", "Multisig requires M-of-N signatures. No single point of failure.", .teal),
-            ("timer", "OP_CHECKLOCKTIMEVERIFY locks funds until a specific block height.", .orange),
-            ("wallet.pass", "A wallet holds keys, not coins. Your bitcoins live on the blockchain.", .cyan),
-            ("arrow.left.arrow.right", "HD wallets generate unlimited addresses from a single seed phrase.", .blue),
-            ("sum", "Fees = Inputs - Outputs. Forgot change? You tipped the miner the difference.", .red),
-            ("arrow.merge", "Consolidate small UTXOs when fees are low to save on future costs.", .green),
-            ("hourglass", "Locktime schedules transactions and protects against fee-sniping attacks.", .teal),
-            ("curlybraces", "Bitcoin Script has no loops by design. This prevents denial-of-service attacks.", .purple),
-            ("seal.fill", "Taproot combines key-path and script-path spending for better privacy.", .mint),
-            ("signature", "Digital signatures prove authorization without revealing your private key.", .blue),
-            ("checkmark.rectangle", "Schnorr signatures are smaller and faster than legacy ECDSA.", .green),
-            ("shield.lefthalf.filled", "Hardware wallets isolate signing from online threats like malware.", .red),
-            ("arrow.triangle.swap", "RBF (Replace-by-Fee) lets you bump fees on stuck transactions.", .purple),
-            ("chart.line.uptrend.xyaxis", "Miners prioritize transactions with the best fee-per-vbyte ratio.", .orange),
-            ("timer", "Low fees? Send on weekends or early mornings for cheaper transactions.", .teal),
-            ("exclamationmark.circle", "Overpaying fees is permanent. Always check the fee rate before sending.", .red),
-            ("arrow.up.arrow.down", "CPFP lets receivers fee-bump unconfirmed transactions they receive.", .green),
-            ("network", "Bitcoin is peer-to-peer. No servers, no central authority, no single point of failure.", .blue),
-            ("globe", "Nodes connect to random peers to resist censorship and sybil attacks.", .cyan),
-            ("lock.shield", "Tor SOCKS5 proxy hides your IP from the API for better privacy.", .purple),
-            ("cube.fill", "6+ confirmations make transaction reversals astronomically expensive.", .blue),
-            ("square.stack.3d.up.fill", "Testnet is for testing. Always verify on testnet before using mainnet.", .orange),
-            ("lock.fill", "Cold storage (offline signing) is the safest technique for large holdings.", .red),
-            ("gear", "Block rewards halve every 210,000 blocks. Eventually only fees incentivize miners.", .orange),
-            ("key.horizontal", "Store multisig keys in separate locations controlled by different people.", .purple),
-            ("dollarsign.circle.fill", "Your keys, your coins. No seed phrase = no recovery. Unlike banks.", .red),
-            ("person.2", "Share recovery details with a trusted person for inheritance planning.", .mint),
-            ("exclamationmark.shield.fill", "Keys on always-online devices can be stolen. Use hardware wallets.", .red),
-            ("lock.square.stack.fill", "Keep < 5% as mobile pocket change. The rest in cold storage.", .orange),
-            ("arrow.turn.up.left", "Back up scripts too, not just keys. Complex contracts need witness data to spend.", .orange),
-            ("checkmark.diamond", "Test your backups. If you secure too well, you might lock yourself out.", .yellow),
-            ("person.3.fill", "For large amounts, use multisig held by different people in different locations.", .green),
-        ]
+    private static let tips: [(String, String, Color)] = [
+        ("lock.fill", "Never reuse a Bitcoin address. Each should be used only once for privacy.", .green),
+        ("key.fill", "Your seed phrase is the master key. Store it offline in physical form, never digitally.", .orange),
+        ("eye.slash.fill", "Use coin control to avoid mixing KYC and non-KYC UTXOs in the same transaction.", .purple),
+        ("checkmark.shield.fill", "Always verify the receive address on your Ledger screen before sending.", .blue),
+        ("clock.fill", "Wait for 6 confirmations before considering a large payment final.", .orange),
+        ("antenna.radiowaves.left.and.right", "Use Tor to hide your IP when querying the blockchain.", .teal),
+        ("exclamationmark.triangle.fill", "Dust outputs (< 546 sats) cost more in fees to spend than they're worth.", .yellow),
+        ("arrow.triangle.2.circlepath", "CoinJoin mixes your transaction with others. No trust required.", .purple),
+        ("bitcoinsign.circle.fill", "Bitcoin's supply is capped at 21 million. No one can inflate it.", .orange),
+        ("doc.text.fill", "Label your transactions. Future you will thank present you.", .blue),
+        ("person.2.fill", "Multisig requires M-of-N signatures. No single point of failure.", .teal),
+        ("timer", "OP_CHECKLOCKTIMEVERIFY locks funds until a specific block height.", .orange),
+        ("wallet.pass", "A wallet holds keys, not coins. Your bitcoins live on the blockchain.", .cyan),
+        ("arrow.left.arrow.right", "HD wallets generate unlimited addresses from a single seed phrase.", .blue),
+        ("sum", "Fees = Inputs - Outputs. Forgot change? You tipped the miner the difference.", .red),
+        ("arrow.merge", "Consolidate small UTXOs when fees are low to save on future costs.", .green),
+        ("hourglass", "Locktime schedules transactions and protects against fee-sniping attacks.", .teal),
+        ("curlybraces", "Bitcoin Script has no loops by design. This prevents denial-of-service attacks.", .purple),
+        ("seal.fill", "Taproot combines key-path and script-path spending for better privacy.", .mint),
+        ("signature", "Digital signatures prove authorization without revealing your private key.", .blue),
+        ("checkmark.rectangle", "Schnorr signatures are smaller and faster than legacy ECDSA.", .green),
+        ("shield.lefthalf.filled", "Hardware wallets isolate signing from online threats like malware.", .red),
+        ("arrow.triangle.swap", "RBF (Replace-by-Fee) lets you bump fees on stuck transactions.", .purple),
+        ("chart.line.uptrend.xyaxis", "Miners prioritize transactions with the best fee-per-vbyte ratio.", .orange),
+        ("timer", "Low fees? Send on weekends or early mornings for cheaper transactions.", .teal),
+        ("exclamationmark.circle", "Overpaying fees is permanent. Always check the fee rate before sending.", .red),
+        ("arrow.up.arrow.down", "CPFP lets receivers fee-bump unconfirmed transactions they receive.", .green),
+        ("network", "Bitcoin is peer-to-peer. No servers, no central authority, no single point of failure.", .blue),
+        ("globe", "Nodes connect to random peers to resist censorship and sybil attacks.", .cyan),
+        ("lock.shield", "Tor SOCKS5 proxy hides your IP from the API for better privacy.", .purple),
+        ("cube.fill", "6+ confirmations make transaction reversals astronomically expensive.", .blue),
+        ("square.stack.3d.up.fill", "Testnet is for testing. Always verify on testnet before using mainnet.", .orange),
+        ("lock.fill", "Cold storage (offline signing) is the safest technique for large holdings.", .red),
+        ("gear", "Block rewards halve every 210,000 blocks. Eventually only fees incentivize miners.", .orange),
+        ("key.horizontal", "Store multisig keys in separate locations controlled by different people.", .purple),
+        ("dollarsign.circle.fill", "Your keys, your coins. No seed phrase = no recovery. Unlike banks.", .red),
+        ("person.2", "Share recovery details with a trusted person for inheritance planning.", .mint),
+        ("exclamationmark.shield.fill", "Keys on always-online devices can be stolen. Use hardware wallets.", .red),
+        ("lock.square.stack.fill", "Keep < 5% as mobile pocket change. The rest in cold storage.", .orange),
+        ("arrow.turn.up.left", "Back up scripts too, not just keys. Complex contracts need witness data to spend.", .orange),
+        ("checkmark.diamond", "Test your backups. If you secure too well, you might lock yourself out.", .yellow),
+        ("person.3.fill", "For large amounts, use multisig held by different people in different locations.", .green),
+    ]
 
-        let tip = tips[tipIndex % tips.count]
+    var body: some View {
+        let tip = Self.tips[tipIndex % Self.tips.count]
 
-        return VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 8) {
             Text("TIP")
                 .font(.system(size: 8, weight: .bold, design: .monospaced))
                 .foregroundStyle(.quaternary)
@@ -610,24 +684,29 @@ struct HomeView: View {
             }
         }
     }
+}
 
-    // =====================================================================
-    // MARK: - Quick Actions
-    // =====================================================================
+// =====================================================================
+// MARK: - Quick Actions Section
+// =====================================================================
 
-    @State private var showBatchSend = false
-    @State private var showBumpFee = false
-    @State private var showConsolidate = false
-    @State private var showCrowdfund = false
+private struct HomeQuickActionsSection: View {
+    let utxos: [UTXO]
+    let walletAddresses: [WalletAddress]
+    let transactions: [Transaction]
+    @Binding var showBatchSend: Bool
+    @Binding var showBumpFee: Bool
+    @Binding var showConsolidate: Bool
+    @Binding var showCrowdfund: Bool
 
-    private var quickActionsSection: some View {
+    var body: some View {
         let columns = [
             GridItem(.flexible(), spacing: 10),
             GridItem(.flexible(), spacing: 10),
             GridItem(.flexible(), spacing: 10),
         ]
 
-        return VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 10) {
             Divider().opacity(0.15)
 
             Text("TOOLS")
@@ -644,7 +723,7 @@ struct HomeView: View {
                 }
 
                 NavigationLink {
-                    utxoManagerView
+                    UTXOManagerPage(utxos: utxos, walletAddresses: walletAddresses, transactions: transactions)
                 } label: {
                     toolCardLabel(icon: "square.grid.2x2.fill", iconColor: .purple, title: "UTXOs", subtitle: "Freeze & manage")
                 }
@@ -669,6 +748,8 @@ struct HomeView: View {
         .sheet(isPresented: $showConsolidate) { comingSoonSheet("Consolidate") }
         .sheet(isPresented: $showCrowdfund) { comingSoonSheet("Crowdfund") }
     }
+
+    // MARK: Quick Action Helpers
 
     private func toolCard(icon: String, iconColor: Color, title: String, subtitle: String, action: @escaping () -> Void) -> some View {
         Button {
@@ -722,141 +803,24 @@ struct HomeView: View {
         }
         .presentationDetents([.medium])
     }
+}
 
-    // MARK: - UTXO Manager
+// =====================================================================
+// MARK: - Reminders Section
+// =====================================================================
 
-    @State private var utxoFilter: UTXOFilter = .all
-    @State private var utxoSort: UTXOSort = .amountHigh
-    @State private var copiedTxid = ""
+private struct HomeRemindersSection: View {
+    let utxos: [UTXO]
 
-    enum UTXOFilter: String, CaseIterable {
-        case all = "All"
-        case frozen = "Frozen"
-        case dust = "Dust"
-        case exposed = "Exposed"
-        case unconfirmed = "Pending"
-    }
-
-    enum UTXOSort: String, CaseIterable {
-        case amountHigh = "Amount ↓"
-        case amountLow = "Amount ↑"
-        case newest = "Newest"
-        case oldest = "Oldest"
-    }
-
-    private func filteredUtxosForManager() -> [UTXO] {
-        var list = vm.utxos
-        switch utxoFilter {
-        case .all: break
-        case .frozen: list = list.filter { FrozenUTXOStore.shared.isFrozen(outpoint: $0.outpoint) }
-        case .dust: list = list.filter { $0.value < 546 }
-        case .exposed:
-            let known = Set(vm.walletAddresses.map(\.address))
-            var spent = Set<String>()
-            for tx in vm.transactions {
-                for input in tx.vin {
-                    if let a = input.prevout?.scriptpubkeyAddress, known.contains(a) { spent.insert(a) }
-                }
-            }
-            list = list.filter { spent.contains($0.address) }
-        case .unconfirmed: list = list.filter { !$0.status.confirmed }
-        }
-        switch utxoSort {
-        case .amountHigh: list.sort { $0.value > $1.value }
-        case .amountLow: list.sort { $0.value < $1.value }
-        case .newest: list.sort { ($0.status.blockHeight ?? Int.max) > ($1.status.blockHeight ?? Int.max) }
-        case .oldest: list.sort { ($0.status.blockHeight ?? 0) < ($1.status.blockHeight ?? 0) }
-        }
-        return list
-    }
-
-    private var utxoManagerView: some View {
-        UTXOManagerPage(utxos: vm.utxos, walletAddresses: vm.walletAddresses, transactions: vm.transactions)
-    }
-
-    private func utxoManagerRow(_ utxo: UTXO) -> some View {
-        let frozen = FrozenUTXOStore.shared.isFrozen(outpoint: utxo.outpoint)
-        let addr = vm.walletAddresses.first { $0.address == utxo.address }
-        let isChange = addr?.isChange ?? false
-        let index = addr?.index
-
-        return HStack(spacing: 10) {
-            // Confirmation dot
-            Circle()
-                .fill(utxo.status.confirmed ? Color.green : Color.orange)
-                .frame(width: 6, height: 6)
-
-            // Index badge
-            if let idx = index {
-                Text(isChange ? "C#\(idx)" : "#\(idx)")
-                    .font(.system(size: 8, weight: .bold, design: .monospaced))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 4)
-                    .padding(.vertical, 2)
-                    .background(
-                        isChange ? Color.gray : Color.purple.opacity(0.8),
-                        in: RoundedRectangle(cornerRadius: 3)
-                    )
-            }
-
-            // Txid + address
-            VStack(alignment: .leading, spacing: 2) {
-                Text(String(utxo.txid.prefix(10)) + ":\(utxo.vout)")
-                    .font(.system(size: 11, design: .monospaced))
-                Text(String(utxo.address.prefix(10)) + "..." + String(utxo.address.suffix(4)))
-                    .font(.system(size: 9, design: .monospaced))
-                    .foregroundStyle(.tertiary)
-            }
-
-            Spacer()
-
-            // Status icons
-            HStack(spacing: 4) {
-                if frozen {
-                    Image(systemName: "snowflake")
-                        .font(.system(size: 9))
-                        .foregroundStyle(.cyan)
-                }
-                if utxo.value < 546 {
-                    Text("DUST")
-                        .font(.system(size: 7, weight: .bold, design: .monospaced))
-                        .foregroundStyle(.yellow)
-                }
-            }
-
-            // Amount
-            Text(BalanceUnit.format(utxo.value))
-                .font(.system(size: 11, weight: .medium, design: .monospaced))
-                .foregroundStyle(frozen ? .secondary : .primary)
-        }
-        .padding(.vertical, 3)
-        .opacity(frozen ? 0.5 : 1)
-    }
-
-    private func utxoStat(_ value: String, label: String) -> some View {
-        VStack(spacing: 2) {
-            Text(value)
-                .font(.system(size: 13, weight: .bold, design: .monospaced))
-            Text(label)
-                .font(.system(size: 9))
-                .foregroundStyle(.tertiary)
-        }
-        .frame(maxWidth: .infinity)
-    }
-
-    // =====================================================================
-    // MARK: - Reminders
-    // =====================================================================
-
-    private var remindersSection: some View {
-        let frozenUtxos = vm.utxos.filter { FrozenUTXOStore.shared.isFrozen(outpoint: $0.outpoint) }
+    var body: some View {
+        let frozenUtxos = utxos.filter { FrozenUTXOStore.shared.isFrozen(outpoint: $0.outpoint) }
         let frozenCount = frozenUtxos.count
         let frozenSats = frozenUtxos.reduce(UInt64(0)) { $0 + $1.value }
         let contracts = ContractStore.shared.contractsForNetwork(isTestnet: NetworkConfig.shared.isTestnet)
         let lastBackup = UserDefaults.standard.object(forKey: "last_backup_date") as? Date
         let needsBackup = !contracts.isEmpty && (lastBackup == nil || Date().timeIntervalSince(lastBackup!) > 7 * 24 * 3600)
 
-        return Group {
+        Group {
             if needsBackup || frozenCount > 0 || UserDefaults.standard.string(forKey: "last_read_chapter") != nil {
                 VStack(spacing: 0) {
                     // Backup alert
@@ -920,15 +884,21 @@ struct HomeView: View {
             }
         }
     }
+}
 
-    // =====================================================================
-    // MARK: - Recent Addresses
-    // =====================================================================
+// =====================================================================
+// MARK: - Recent Addresses Section
+// =====================================================================
 
-    private var recentAddressesSection: some View {
+private struct HomeRecentAddressesSection: View {
+    let walletAddresses: [WalletAddress]
+    let transactions: [Transaction]
+    @Binding var copiedAddress: String
+
+    var body: some View {
         let recent = recentSentAddresses
 
-        return Group {
+        Group {
             if !recent.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("RECENT")
@@ -964,21 +934,20 @@ struct HomeView: View {
         }
     }
 
-    /// Extract recent destination addresses from sent transactions
+    // MARK: Helpers
+
     private var recentSentAddresses: [(address: String, date: Date)] {
-        let knownAddresses = Set(vm.walletAddresses.map { $0.address })
+        let knownAddresses = Set(walletAddresses.map { $0.address })
         var seen = Set<String>()
         var results: [(address: String, date: Date)] = []
 
-        for tx in vm.transactions {
-            // Check if we sent this tx
+        for tx in transactions {
             let fromUs = tx.vin.contains { input in
                 if let addr = input.prevout?.scriptpubkeyAddress { return knownAddresses.contains(addr) }
                 return false
             }
             guard fromUs else { continue }
 
-            // Find destination addresses (not ours = not change)
             for output in tx.vout {
                 if let addr = output.scriptpubkeyAddress, !knownAddresses.contains(addr), !seen.contains(addr) {
                     seen.insert(addr)
@@ -992,11 +961,11 @@ struct HomeView: View {
 
         return results
     }
-
-    // =====================================================================
 }
 
+// =====================================================================
 // MARK: - Receive Sheet (from Home quick action)
+// =====================================================================
 
 struct ReceiveSheetFromHome: View {
     @State private var address: String = ""
@@ -1078,7 +1047,9 @@ struct ReceiveSheetFromHome: View {
     }
 }
 
+// =====================================================================
 // MARK: - Block Timer Row (live seconds counter)
+// =====================================================================
 
 struct BlockTimerRow: View {
     let blockHeight: Int
@@ -1113,7 +1084,9 @@ struct BlockTimerRow: View {
     }
 }
 
-// MARK: - Bitcoin Plug ₿ Logo (vector, no background, 3D)
+// =====================================================================
+// MARK: - Bitcoin Plug Logo (vector, no background, 3D)
+// =====================================================================
 
 struct BitcoinPlugLogo: View {
     var body: some View {
@@ -1148,7 +1121,7 @@ struct BitcoinPlugLogo: View {
     }
 }
 
-/// The ₿ shape with two vertical prongs — drawn as a Path
+/// The B shape with two vertical prongs -- drawn as a Path
 struct BitcoinBShape: Shape {
     func path(in rect: CGRect) -> Path {
         let w = rect.width

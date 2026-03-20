@@ -20,6 +20,7 @@ final class KeychainStore {
         case ledgerMasterFingerprint = "ledger_master_fingerprint"
         case ledgerOriginalXpub = "ledger_original_xpub"
         case ledgerCoinType = "ledger_coin_type"
+        case addressBook = "address_book"
     }
 
     // MARK: - Generic CRUD

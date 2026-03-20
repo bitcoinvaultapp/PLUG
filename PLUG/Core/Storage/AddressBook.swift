@@ -1,7 +1,7 @@
 import Foundation
 
 // MARK: - Address Book
-// Saved recipient addresses persisted in UserDefaults as JSON
+// Saved recipient addresses persisted in Keychain via KeychainStore
 
 final class AddressBook: ObservableObject {
 
@@ -9,7 +9,7 @@ final class AddressBook: ObservableObject {
 
     @Published var entries: [AddressBookEntry] = []
 
-    private let key = "address_book"
+    private let keychainKey = KeychainStore.KeychainKey.addressBook.rawValue
 
     struct AddressBookEntry: Identifiable, Codable {
         let id: String
@@ -49,7 +49,7 @@ final class AddressBook: ObservableObject {
 
     func clearAll() {
         entries.removeAll()
-        UserDefaults.standard.removeObject(forKey: key)
+        KeychainStore.shared.delete(forKey: keychainKey)
     }
 
     // MARK: - Search
@@ -70,18 +70,11 @@ final class AddressBook: ObservableObject {
     // MARK: - Persistence
 
     private func persist() {
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        if let data = try? encoder.encode(entries) {
-            UserDefaults.standard.set(data, forKey: key)
-        }
+        KeychainStore.shared.saveCodable(entries, forKey: keychainKey)
     }
 
     private func load() {
-        guard let data = UserDefaults.standard.data(forKey: key) else { return }
-        let decoder = JSONDecoder()
-        decoder.dateDecodingStrategy = .iso8601
-        if let loaded = try? decoder.decode([AddressBookEntry].self, from: data) {
+        if let loaded = KeychainStore.shared.loadCodable(forKey: keychainKey, type: [AddressBookEntry].self) {
             entries = loaded
         }
     }

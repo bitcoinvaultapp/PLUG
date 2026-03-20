@@ -129,25 +129,32 @@ pub extern "C" fn plug_tor_warmup(
     let rt = get_runtime();
     eprintln!("[plug-tor] Warming up HS circuit to {}:{}...", host_str, port);
 
-    match rt.block_on(async {
-        tokio::time::timeout(
-            std::time::Duration::from_secs(60),
-            tor_http_get(client, &host_str, port, "/api/v1/fees/recommended")
-        ).await
-    }) {
-        Ok(Ok(body)) => {
-            eprintln!("[plug-tor] ✅ Warmup OK! ({} bytes)", body.len());
-            true
+    // Retry up to 5 times — HS circuit needs 2-3 attempts to establish
+    for attempt in 1..=5 {
+        eprintln!("[plug-tor] Warmup attempt {}/5...", attempt);
+        match rt.block_on(async {
+            tokio::time::timeout(
+                std::time::Duration::from_secs(30),
+                tor_http_get(client.clone(), &host_str, port, "/api/v1/fees/recommended")
+            ).await
+        }) {
+            Ok(Ok(body)) => {
+                eprintln!("[plug-tor] ✅ Warmup OK on attempt {}! ({} bytes)", attempt, body.len());
+                return true;
+            }
+            Ok(Err(e)) => {
+                eprintln!("[plug-tor] ⚠️ Warmup attempt {} failed: {}", attempt, e);
+            }
+            Err(_) => {
+                eprintln!("[plug-tor] ⚠️ Warmup attempt {} timed out", attempt);
+            }
         }
-        Ok(Err(e)) => {
-            eprintln!("[plug-tor] ❌ Warmup failed: {}", e);
-            false
-        }
-        Err(_) => {
-            eprintln!("[plug-tor] ❌ Warmup timed out (60s)");
-            false
-        }
+        // Brief pause before retry
+        std::thread::sleep(std::time::Duration::from_secs(2));
     }
+
+    eprintln!("[plug-tor] ❌ Warmup failed after 5 attempts");
+    false
 }
 
 /// Stop the Tor client.

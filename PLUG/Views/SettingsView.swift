@@ -2,7 +2,10 @@ import SwiftUI
 
 struct SettingsView: View {
     @StateObject private var vm = SettingsVM()
+    @EnvironmentObject var walletVM: WalletVM
     @State private var biometricEnabled = UserDefaults.standard.bool(forKey: "biometric_lock_enabled")
+    @State private var showRescanConfirm = false
+    @State private var isRescanning = false
     @AppStorage("balance_unit") private var balanceUnit: String = BalanceUnit.btc.rawValue
 
     var body: some View {
@@ -53,6 +56,21 @@ struct SettingsView: View {
                             .foregroundStyle(.secondary)
                     }
 
+                    Button {
+                        showRescanConfirm = true
+                    } label: {
+                        HStack {
+                            Image(systemName: "arrow.triangle.2.circlepath")
+                                .foregroundStyle(.orange)
+                            Text("Rescan addresses")
+                            Spacer()
+                            if isRescanning {
+                                ProgressView()
+                                    .controlSize(.small)
+                            }
+                        }
+                    }
+                    .disabled(isRescanning || !vm.hasXpub)
                 }
 
                 // Export
@@ -126,6 +144,18 @@ struct SettingsView: View {
                 Button("Cancel", role: .cancel) {}
             } message: {
                 Text("This will delete all keys, contracts, and labels. This action cannot be undone.")
+            }
+            .alert("Rescan addresses?", isPresented: $showRescanConfirm) {
+                Button("Rescan") {
+                    isRescanning = true
+                    Task {
+                        await walletVM.rescanWallet()
+                        isRescanning = false
+                    }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("This will re-derive all addresses from your xpub and fetch fresh balances. This may take a few minutes over Tor.")
             }
             .onAppear { vm.refresh() }
         }

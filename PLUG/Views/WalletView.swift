@@ -242,6 +242,22 @@ struct WalletView: View {
                         }
                     }
 
+                    // Scan progress bar
+                    if let status = vm.scanStatus, vm.scanProgress > 0 && vm.scanProgress < 1 {
+                        VStack(spacing: 6) {
+                            ProgressView(value: vm.scanProgress)
+                                .tint(.orange)
+                                .scaleEffect(y: 0.6, anchor: .center)
+                                .padding(.horizontal, 20)
+
+                            Text(status)
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                        }
+                        .transition(.opacity)
+                        .animation(.easeInOut(duration: 0.3), value: vm.scanProgress)
+                    }
+
                     // Current receive address
                     if !vm.currentReceiveAddress.isEmpty {
                         HStack(spacing: 5) {

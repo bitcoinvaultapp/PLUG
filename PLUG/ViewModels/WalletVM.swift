@@ -11,6 +11,8 @@ final class WalletVM: ObservableObject {
     @Published var totalBalance: UInt64 = 0
     @Published var isLoading = false
     @Published var error: String?
+    @Published var scanProgress: Double = 0
+    @Published var scanStatus: String?
     @Published var selectedStrategy: CoinSelectionStrategy = .largestFirst
 
     // Send form
@@ -235,6 +237,22 @@ final class WalletVM: ObservableObject {
         #endif
     }
 
+    /// Force a full gap scan — clears cached addresses and re-derives from xpub.
+    /// Use when: addresses seem missing, imported a new xpub, or gap > 20 suspected.
+    func rescanWallet() async {
+        #if DEBUG
+        print("[WalletVM] Manual rescan requested — clearing cache")
+        #endif
+        addresses.removeAll()
+        utxos.removeAll()
+        transactions.removeAll()
+        totalBalance = 0
+        addressStatuses.removeAll()
+        cachedXpubString = nil
+        KeychainStore.shared.delete(forKey: KeychainStore.KeychainKey.walletAddresses.rawValue)
+        await loadWallet()
+    }
+
     /// Track which xpub was used for the current address set
     private var cachedXpubString: String?
 
@@ -259,12 +277,37 @@ final class WalletVM: ObservableObject {
             #endif
         }
 
-        // Skip re-derivation if addresses already loaded AND xpub hasn't changed
+        // Skip gap scan if addresses already in memory AND xpub unchanged
         let currentXpubStr = KeychainStore.shared.loadXpub(isTestnet: isTestnet)
         if !addresses.isEmpty && cachedXpubString == currentXpubStr {
             await refreshUTXOs()
             return
         }
+
+        // Try loading cached addresses from Keychain (saved after previous gap scan)
+        if let cached: [WalletAddress] = KeychainStore.shared.loadCodable(
+            forKey: KeychainStore.KeychainKey.walletAddresses.rawValue,
+            type: [WalletAddress].self
+        ), !cached.isEmpty, cachedXpubString == nil || cachedXpubString == currentXpubStr {
+            #if DEBUG
+            print("[WalletVM] Loaded \(cached.count) cached addresses — skipping gap scan")
+            #endif
+            addresses = cached
+            cachedXpubString = currentXpubStr
+
+            // Set receive address
+            if let firstUnused = cached.first(where: { !$0.isChange }) {
+                currentReceiveAddress = firstUnused.address
+                currentReceiveIndex = firstUnused.index
+            }
+
+            await refreshUTXOs()
+            return
+        }
+
+        #if DEBUG
+        print("[WalletVM] No cached addresses — starting full gap scan")
+        #endif
 
         // xpub changed or first load — re-derive
         if !addresses.isEmpty {
@@ -420,10 +463,25 @@ final class WalletVM: ObservableObject {
     func refreshUTXOs() async {
         guard !addresses.isEmpty else { return }
         isLoading = true
+        scanProgress = 0
+        scanStatus = "Scanning addresses..."
 
         // Fetch UTXOs and transactions via shared service
         let addrStrings = addresses.map { $0.address }
-        let result = await UTXOFetchService.fetchUTXOsAndTransactions(for: addrStrings)
+        let result = await UTXOFetchService.fetchUTXOsAndTransactions(
+            for: addrStrings,
+            onProgress: { [weak self] completed, total, phase in
+                guard let self else { return }
+                if phase == "utxos" {
+                    self.scanProgress = Double(completed) / Double(total)
+                    self.scanStatus = "Scanning addresses… \(completed)/\(total)"
+                } else {
+                    self.scanStatus = "Loading transactions…"
+                }
+            }
+        )
+        scanProgress = 1
+        scanStatus = nil
 
         // Merge new transactions with existing (preserves history for spent addresses)
         let activeAddrSet = Set(result.activeAddresses)

@@ -222,6 +222,26 @@ struct WalletView: View {
                         .font(.system(size: 11, design: .monospaced))
                     }
 
+                    if let syncErr = vm.error {
+                        HStack(spacing: 4) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.system(size: 10))
+                                .foregroundStyle(.red)
+                            Text(syncErr)
+                                .font(.system(size: 11))
+                                .foregroundStyle(.red.opacity(0.8))
+                            Spacer()
+                            Button {
+                                Task { await vm.refreshUTXOs() }
+                            } label: {
+                                Text("Retry")
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundStyle(.red)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+
                     // Current receive address
                     if !vm.currentReceiveAddress.isEmpty {
                         HStack(spacing: 5) {

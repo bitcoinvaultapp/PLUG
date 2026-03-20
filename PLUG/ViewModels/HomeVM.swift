@@ -17,6 +17,7 @@ final class HomeVM: ObservableObject {
     @Published var contractBalances: [String: UInt64] = [:]  // contract.id -> on-chain balance
     @Published var isLoading = false
     @Published var error: String?
+    @Published var syncError: String?
     @Published var wsConnected = false
 
     var dustUtxos: [UTXO] { utxos.filter { $0.value < 546 } }
@@ -221,87 +222,39 @@ final class HomeVM: ObservableObject {
         let walletAddrs = receiving.map { WalletAddress(index: $0.index, address: $0.address, publicKey: $0.publicKey.hex, isChange: false) }
             + change.map { WalletAddress(index: $0.index, address: $0.address, publicKey: $0.publicKey.hex, isChange: true) }
 
-        // Fetch UTXOs first, then only fetch transactions for addresses that have UTXOs.
-        // Shuffle address order to prevent timing-based correlation by the API server.
+        // Fetch UTXOs and transactions via shared service
         #if DEBUG
         print("[HomeVM] Fetching UTXOs for \(allAddrs.count) addresses...")
         #endif
-        var allUTXOs: [UTXO] = []
-        var allTxs: [Transaction] = []
-        let usingTor = plug_tor_is_running()
-        let batchSize = usingTor ? 10 : 5
-
-        // Phase 1: Fetch UTXOs only (lightweight)
-        // Shuffle to break sequential query pattern (anti-correlation)
-        let shuffledAddrs = allAddrs.shuffled()
-        var addressesWithActivity: [String] = []
-        for (i, batchStart) in stride(from: 0, to: shuffledAddrs.count, by: batchSize).enumerated() {
-            if !usingTor && i > 0 { try? await Task.sleep(nanoseconds: 200_000_000) }
-            let batchEnd = min(batchStart + batchSize, shuffledAddrs.count)
-            let batch = Array(shuffledAddrs[batchStart..<batchEnd])
-
-            await withTaskGroup(of: (String, [UTXO]).self) { group in
-                for addr in batch {
-                    group.addTask {
-                        do {
-                            let u = try await MempoolAPI.shared.getAddressUTXOs(address: addr.address)
-                            return (addr.address, u)
-                        } catch {
-                            #if DEBUG
-                            print("[HomeVM] API error for \(addr.address.prefix(12)): \(error.localizedDescription)")
-                            #endif
-                            return (addr.address, [])
-                        }
-                    }
-                }
-                for await (addr, utxos) in group {
-                    allUTXOs.append(contentsOf: utxos)
-                    if !utxos.isEmpty { addressesWithActivity.append(addr) }
-                }
-            }
-        }
-
-        // Phase 2: Fetch transactions only for addresses with UTXOs (skip empty)
-        if !addressesWithActivity.isEmpty {
-            #if DEBUG
-            print("[HomeVM] Fetching txs for \(addressesWithActivity.count) active addresses")
-            #endif
-            for (i, batchStart) in stride(from: 0, to: addressesWithActivity.count, by: batchSize).enumerated() {
-                if !usingTor && i > 0 { try? await Task.sleep(nanoseconds: 200_000_000) }
-                let batchEnd = min(batchStart + batchSize, addressesWithActivity.count)
-                let batch = Array(addressesWithActivity[batchStart..<batchEnd])
-
-                await withTaskGroup(of: [Transaction].self) { group in
-                    for addr in batch {
-                        group.addTask {
-                            (try? await MempoolAPI.shared.getAddressTransactions(address: addr)) ?? []
-                        }
-                    }
-                    for await txs in group {
-                        allTxs.append(contentsOf: txs)
-                    }
-                }
-            }
-        }
+        let addrStrings = allAddrs.map { $0.address }
+        let result = await UTXOFetchService.fetchUTXOsAndTransactions(for: addrStrings)
 
         // Merge new transactions with existing (preserves history for spent addresses)
-        let activeAddrSet = Set(addressesWithActivity)
+        let activeAddrSet = Set(result.activeAddresses)
         var mergedTxs = transactions.filter { tx in
             !tx.vout.contains { activeAddrSet.contains($0.scriptpubkeyAddress ?? "") }
             && !tx.vin.contains { activeAddrSet.contains($0.prevout?.scriptpubkeyAddress ?? "") }
         }
-        mergedTxs.append(contentsOf: allTxs)
+        mergedTxs.append(contentsOf: result.transactions)
 
         var seen = Set<String>()
         let dedupedTxs = mergedTxs.filter { seen.insert($0.txid).inserted }
 
         walletAddresses = walletAddrs
-        utxos = allUTXOs
+        utxos = result.utxos
         transactions = dedupedTxs.sorted { ($0.status.blockTime ?? Int.max) > ($1.status.blockTime ?? Int.max) }
-        totalBalance = allUTXOs.reduce(0) { $0 + $1.value }
+        totalBalance = result.utxos.reduce(0) { $0 + $1.value }
         lastBalanceRefresh = Date()
+
+        // Track sync errors — warn user if all fetches failed
+        if result.fetchErrorCount > 0 && result.fetchSuccessCount == 0 {
+            syncError = "Network error — balance may be outdated"
+        } else {
+            syncError = nil
+        }
+
         #if DEBUG
-        print("[HomeVM] Balance: \(totalBalance) sats, \(allUTXOs.count) UTXOs, \(dedupedTxs.count) txs")
+        print("[HomeVM] Balance: \(totalBalance) sats, \(result.utxos.count) UTXOs, \(dedupedTxs.count) txs, errors: \(result.fetchErrorCount)/\(result.fetchErrorCount + result.fetchSuccessCount)")
         #endif
     }
 

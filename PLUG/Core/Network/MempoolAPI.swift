@@ -27,6 +27,40 @@ final class MempoolAPI: NSObject, URLSessionDelegate {
 
     // MARK: - TLS Certificate Pinning (SPKI SHA-256)
 
+    // -------------------------------------------------------------------------
+    // What: SPKI (Subject Public Key Info) SHA-256 hashes for mempool.space.
+    //       The leaf pin matches the current server certificate; the intermediate
+    //       CA pin acts as a backup so the app still connects if the leaf cert
+    //       is renewed but issued by the same CA. At least 2 pins should always
+    //       be present (leaf + backup/intermediate) to avoid bricking the app
+    //       on certificate rotation.
+    //
+    // Current leaf cert expires: 2026-09-28 (Sep 28 23:59:59 UTC 2026).
+    //       Rotate the leaf pin BEFORE this date.
+    //
+    // How to extract new pins (run from any machine with openssl):
+    //
+    //   # Leaf certificate SPKI pin:
+    //   echo | openssl s_client -connect mempool.space:443 2>/dev/null \
+    //     | openssl x509 -pubkey -noout \
+    //     | openssl pkey -pubin -outform DER \
+    //     | openssl dgst -sha256 -binary | base64
+    //
+    //   # Intermediate CA SPKI pin (index 1 in the chain):
+    //   echo | openssl s_client -connect mempool.space:443 -showcerts 2>/dev/null \
+    //     | awk '/BEGIN CERT/{i++} i==2' \
+    //     | openssl x509 -pubkey -noout \
+    //     | openssl pkey -pubin -outform DER \
+    //     | openssl dgst -sha256 -binary | base64
+    //
+    //   # Check current cert expiry:
+    //   echo | openssl s_client -connect mempool.space:443 2>/dev/null \
+    //     | openssl x509 -noout -enddate
+    //
+    // After extracting new pins, replace the corresponding base64 string below
+    // and test that the app connects successfully before releasing.
+    // -------------------------------------------------------------------------
+
     /// Pinned SPKI hashes for mempool.space — leaf + intermediate CA.
     /// Rotate when mempool.space renews their certificate.
     private static let pinnedHashes: Set<String> = [

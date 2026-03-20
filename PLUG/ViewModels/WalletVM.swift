@@ -388,67 +388,25 @@ final class WalletVM: ObservableObject {
         guard !addresses.isEmpty else { return }
         isLoading = true
 
-        // Shuffle to break sequential query pattern (anti-correlation)
-        let shuffledAddrs = addresses.shuffled()
-        var allUTXOs: [UTXO] = []
-        var allTxs: [Transaction] = []
-        let usingTor = plug_tor_is_running()
-        let batchSize = usingTor ? 10 : 5
-
-        // Phase 1: Fetch UTXOs only
-        var addressesWithActivity: [String] = []
-        for (i, batchStart) in stride(from: 0, to: shuffledAddrs.count, by: batchSize).enumerated() {
-            if !usingTor && i > 0 { try? await Task.sleep(nanoseconds: 200_000_000) }
-            let batchEnd = min(batchStart + batchSize, shuffledAddrs.count)
-            let batch = Array(shuffledAddrs[batchStart..<batchEnd])
-
-            await withTaskGroup(of: (String, [UTXO]).self) { group in
-                for addr in batch {
-                    group.addTask {
-                        let u = (try? await MempoolAPI.shared.getAddressUTXOs(address: addr.address)) ?? []
-                        return (addr.address, u)
-                    }
-                }
-                for await (addr, utxos) in group {
-                    allUTXOs.append(contentsOf: utxos)
-                    if !utxos.isEmpty { addressesWithActivity.append(addr) }
-                }
-            }
-        }
-
-        // Phase 2: Fetch transactions only for active addresses
-        for (i, batchStart) in stride(from: 0, to: addressesWithActivity.count, by: batchSize).enumerated() {
-            if !usingTor && i > 0 { try? await Task.sleep(nanoseconds: 200_000_000) }
-            let batchEnd = min(batchStart + batchSize, addressesWithActivity.count)
-            let batch = Array(addressesWithActivity[batchStart..<batchEnd])
-
-            await withTaskGroup(of: [Transaction].self) { group in
-                for addr in batch {
-                    group.addTask {
-                        (try? await MempoolAPI.shared.getAddressTransactions(address: addr)) ?? []
-                    }
-                }
-                for await txs in group {
-                    allTxs.append(contentsOf: txs)
-                }
-            }
-        }
+        // Fetch UTXOs and transactions via shared service
+        let addrStrings = addresses.map { $0.address }
+        let result = await UTXOFetchService.fetchUTXOsAndTransactions(for: addrStrings)
 
         // Merge new transactions with existing (preserves history for spent addresses)
-        let activeAddrSet = Set(addressesWithActivity)
+        let activeAddrSet = Set(result.activeAddresses)
         var mergedTxs = transactions.filter { tx in
             // Keep old txs that DON'T involve active addresses (they weren't re-fetched)
             !tx.vout.contains { activeAddrSet.contains($0.scriptpubkeyAddress ?? "") }
             && !tx.vin.contains { activeAddrSet.contains($0.prevout?.scriptpubkeyAddress ?? "") }
         }
-        mergedTxs.append(contentsOf: allTxs)
+        mergedTxs.append(contentsOf: result.transactions)
 
         var seen = Set<String>()
         let dedupedTxs = mergedTxs.filter { seen.insert($0.txid).inserted }
 
         // Filter: only keep UTXOs on our derived addresses
-        let knownAddresses = Set(addresses.map { $0.address })
-        let cleanUTXOs = allUTXOs.filter { knownAddresses.contains($0.address) }
+        let knownAddresses = Set(addrStrings)
+        let cleanUTXOs = result.utxos.filter { knownAddresses.contains($0.address) }
 
         utxos = cleanUTXOs
         transactions = dedupedTxs.sorted { ($0.status.blockTime ?? Int.max) > ($1.status.blockTime ?? Int.max) }
@@ -464,6 +422,13 @@ final class WalletVM: ObservableObject {
 
         // Track address lifecycle
         updateAddressStatuses()
+
+        // Track sync errors — warn user if all fetches failed
+        if result.fetchErrorCount > 0 && result.fetchSuccessCount == 0 {
+            error = "Network error — balance may be outdated"
+        } else if result.fetchErrorCount == 0 {
+            error = nil
+        }
 
         isLoading = false
     }

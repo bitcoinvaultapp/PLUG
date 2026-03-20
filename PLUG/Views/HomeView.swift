@@ -172,6 +172,27 @@ struct HomeView: View {
                 }
             }
             .buttonStyle(.plain)
+
+            if let syncErr = vm.syncError {
+                HStack(spacing: 4) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.red)
+                    Text(syncErr)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.red.opacity(0.8))
+                    Spacer()
+                    Button {
+                        Task { await vm.refreshBalance() }
+                    } label: {
+                        Text("Retry")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(.red)
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 16)
+            }
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 16)

@@ -132,6 +132,136 @@ pub extern "C" fn plug_tor_port() -> u16 {
     SOCKS_PORT.load(Ordering::SeqCst)
 }
 
+/// Fetch a URL through Tor directly (no SOCKS5 proxy).
+/// Uses Arti's client.connect() which reuses HS circuits.
+/// Returns a C string (caller must free with plug_tor_free_string).
+/// On error, returns null.
+///
+/// Usage from Swift:
+///   let result = plug_tor_fetch("mempoolhqx4isw62xs7abwphsq7ldayuidyx2v2oethdhhj6mlo2r6ad.onion", 80, "/testnet/api/address/tb1q.../utxo")
+#[no_mangle]
+pub extern "C" fn plug_tor_fetch(
+    host: *const std::ffi::c_char,
+    port: u16,
+    path: *const std::ffi::c_char,
+) -> *mut std::ffi::c_char {
+    let host_str = match unsafe { std::ffi::CStr::from_ptr(host) }.to_str() {
+        Ok(s) => s.to_string(),
+        Err(_) => return std::ptr::null_mut(),
+    };
+    let path_str = match unsafe { std::ffi::CStr::from_ptr(path) }.to_str() {
+        Ok(s) => s.to_string(),
+        Err(_) => return std::ptr::null_mut(),
+    };
+
+    let client = match TOR_CLIENT.get() {
+        Some(c) => c.clone(),
+        None => {
+            eprintln!("[plug-tor] fetch: no Tor client");
+            return std::ptr::null_mut();
+        }
+    };
+
+    let rt = get_runtime();
+    match rt.block_on(tor_http_get(client, &host_str, port, &path_str)) {
+        Ok(body) => {
+            match std::ffi::CString::new(body) {
+                Ok(cs) => cs.into_raw(),
+                Err(_) => std::ptr::null_mut(),
+            }
+        }
+        Err(e) => {
+            eprintln!("[plug-tor] fetch error: {}", e);
+            std::ptr::null_mut()
+        }
+    }
+}
+
+/// Free a string returned by plug_tor_fetch.
+#[no_mangle]
+pub extern "C" fn plug_tor_free_string(s: *mut std::ffi::c_char) {
+    if !s.is_null() {
+        unsafe { drop(std::ffi::CString::from_raw(s)); }
+    }
+}
+
+/// HTTP GET through Tor — direct connect, no SOCKS5, reuses HS circuits.
+async fn tor_http_get(
+    client: Arc<TorClient<PreferredRuntime>>,
+    host: &str,
+    port: u16,
+    path: &str,
+) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+    let mut stream = client.connect((host, port)).await?;
+
+    let req = format!(
+        "GET {} HTTP/1.1\r\nHost: {}\r\nConnection: close\r\nAccept: application/json\r\n\r\n",
+        path, host
+    );
+    stream.write_all(req.as_bytes()).await?;
+    stream.flush().await?;
+
+    // Read full response
+    let mut response = Vec::new();
+    loop {
+        let mut buf = [0u8; 8192];
+        match tokio::time::timeout(
+            std::time::Duration::from_secs(30),
+            stream.read(&mut buf)
+        ).await {
+            Ok(Ok(0)) => break,
+            Ok(Ok(n)) => response.extend_from_slice(&buf[..n]),
+            Ok(Err(_)) => break,
+            Err(_) => break, // read timeout
+        }
+    }
+
+    let response_str = String::from_utf8_lossy(&response).to_string();
+
+    // Extract body from HTTP response (after \r\n\r\n)
+    if let Some(pos) = response_str.find("\r\n\r\n") {
+        let body = &response_str[pos + 4..];
+        // Handle chunked transfer encoding
+        if response_str.contains("Transfer-Encoding: chunked") {
+            return Ok(decode_chunked(body));
+        }
+        Ok(body.to_string())
+    } else {
+        Err("No HTTP response body".into())
+    }
+}
+
+/// Decode chunked transfer encoding
+fn decode_chunked(body: &str) -> String {
+    let mut result = String::new();
+    let mut remaining = body;
+    loop {
+        // Read chunk size (hex)
+        let line_end = match remaining.find("\r\n") {
+            Some(pos) => pos,
+            None => break,
+        };
+        let size_str = &remaining[..line_end];
+        let chunk_size = match usize::from_str_radix(size_str.trim(), 16) {
+            Ok(s) => s,
+            Err(_) => break,
+        };
+        if chunk_size == 0 { break; }
+        remaining = &remaining[line_end + 2..];
+        if remaining.len() >= chunk_size {
+            result.push_str(&remaining[..chunk_size]);
+            remaining = &remaining[chunk_size..];
+            if remaining.starts_with("\r\n") {
+                remaining = &remaining[2..];
+            }
+        } else {
+            result.push_str(remaining);
+            break;
+        }
+    }
+    result
+}
+
 /// Simple SOCKS5 proxy that forwards connections through Tor.
 async fn start_socks_proxy(client: Arc<TorClient<PreferredRuntime>>) -> Result<u16, Box<dyn std::error::Error>> {
     let listener = TcpListener::bind("127.0.0.1:0").await?;

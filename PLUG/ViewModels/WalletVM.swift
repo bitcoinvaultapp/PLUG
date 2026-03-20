@@ -286,14 +286,16 @@ final class WalletVM: ObservableObject {
         var allTxs: [Transaction] = []
 
         // Scan receiving addresses (change=0) with gap limit
+        // Batched parallel queries instead of sequential (much faster over Tor)
         var consecutiveEmpty = 0
         var scanIndex: UInt32 = 0
+        let torActive = plug_tor_is_running()
+        let fetchBatchSize = torActive ? 2 : 3  // Small batches for Tor (HS circuits are expensive)
         #if DEBUG
-        print("[WalletVM] Starting gap limit scan (gap=\(gapLimit))...")
+        print("[WalletVM] Starting gap limit scan (gap=\(gapLimit), tor=\(torActive))...")
         #endif
 
         while consecutiveEmpty < gapLimit {
-            // Derive a batch
             let startIdx = scanIndex
             let batch = await Task.detached(priority: .userInitiated) {
                 AddressDerivation.deriveAddresses(
@@ -301,24 +303,51 @@ final class WalletVM: ObservableObject {
                 )
             }.value
 
-            // Check each address for on-chain activity
-            for item in batch {
-                let walletAddr = WalletAddress(index: item.index, address: item.address, publicKey: item.publicKey.hex, isChange: false)
-                allReceiving.append(walletAddr)
+            // Fetch UTXOs + txs in parallel batches (not one-by-one)
+            for fetchStart in stride(from: 0, to: batch.count, by: fetchBatchSize) {
+                let fetchEnd = min(fetchStart + fetchBatchSize, batch.count)
+                let fetchBatch = Array(batch[fetchStart..<fetchEnd])
 
-                do {
-                    let addrUtxos = try await MempoolAPI.shared.getAddressUTXOs(address: item.address)
-                    let addrTxs = try await MempoolAPI.shared.getAddressTransactions(address: item.address)
+                let results = await withTaskGroup(of: (UInt32, String, String, [UTXO], [Transaction], Bool).self) { group in
+                    for item in fetchBatch {
+                        group.addTask {
+                            do {
+                                let utxos = try await MempoolAPI.shared.getAddressUTXOs(address: item.address)
+                                let txs = try await MempoolAPI.shared.getAddressTransactions(address: item.address)
+                                return (item.index, item.address, item.publicKey.hex, utxos, txs, true)
+                            } catch {
+                                #if DEBUG
+                                print("[WalletVM] Scan error #\(item.index) \(item.address.prefix(12)): \(error.localizedDescription)")
+                                #endif
+                                // On Tor error, DON'T count as empty — retry or skip
+                                return (item.index, item.address, item.publicKey.hex, [], [], false)
+                            }
+                        }
+                    }
+                    var res: [(UInt32, String, String, [UTXO], [Transaction], Bool)] = []
+                    for await r in group { res.append(r) }
+                    return res.sorted { $0.0 < $1.0 } // sort by index
+                }
 
-                    if addrUtxos.isEmpty && addrTxs.isEmpty {
+                for (index, address, pubkey, utxos, txs, success) in results {
+                    let walletAddr = WalletAddress(index: index, address: address, publicKey: pubkey, isChange: false)
+                    allReceiving.append(walletAddr)
+
+                    if !success {
+                        // Network error — don't count as empty (avoids early gap termination)
+                        #if DEBUG
+                        print("[WalletVM] Skipping #\(index) due to error (not counting toward gap)")
+                        #endif
+                        continue
+                    }
+
+                    if utxos.isEmpty && txs.isEmpty {
                         consecutiveEmpty += 1
                     } else {
                         consecutiveEmpty = 0
-                        allUTXOs.append(contentsOf: addrUtxos)
-                        allTxs.append(contentsOf: addrTxs)
+                        allUTXOs.append(contentsOf: utxos)
+                        allTxs.append(contentsOf: txs)
                     }
-                } catch {
-                    consecutiveEmpty += 1
                 }
 
                 if consecutiveEmpty >= gapLimit { break }
@@ -326,7 +355,7 @@ final class WalletVM: ObservableObject {
 
             scanIndex += batchSize
             #if DEBUG
-            print("[WalletVM] Scanned up to index #\(scanIndex - 1), gap=\(consecutiveEmpty)")
+            print("[WalletVM] Scanned up to index #\(scanIndex - 1), gap=\(consecutiveEmpty), utxos=\(allUTXOs.count)")
             #endif
         }
 
@@ -342,17 +371,21 @@ final class WalletVM: ObservableObject {
         }.value
         allChange = changeBatch.map { WalletAddress(index: $0.index, address: $0.address, publicKey: $0.publicKey.hex, isChange: true) }
 
-        // Fetch UTXOs for change addresses
-        for addr in allChange {
-            if let changeUtxos = try? await MempoolAPI.shared.getAddressUTXOs(address: addr.address) {
-                allUTXOs.append(contentsOf: changeUtxos)
-            }
-            if let changeTxs = try? await MempoolAPI.shared.getAddressTransactions(address: addr.address) {
-                allTxs.append(contentsOf: changeTxs)
-            }
-        }
+        // Fetch UTXOs for change addresses (parallel batches, not sequential)
+        #if DEBUG
+        print("[WalletVM] Fetching change addresses (\(allChange.count))...")
+        #endif
+        let changeResult = await UTXOFetchService.fetchUTXOsAndTransactions(for: allChange.map { $0.address })
+        allUTXOs.append(contentsOf: changeResult.utxos)
+        allTxs.append(contentsOf: changeResult.transactions)
 
         addresses = allReceiving + allChange
+
+        // Cache addresses for HomeVM to reuse (same address set = same balance)
+        KeychainStore.shared.saveCodable(addresses, forKey: KeychainStore.KeychainKey.walletAddresses.rawValue)
+        #if DEBUG
+        print("[WalletVM] Cached \(addresses.count) addresses to keychain")
+        #endif
 
         // Set receive address to first unused
         if let firstUnused = allReceiving.first(where: { !$0.isChange }) {

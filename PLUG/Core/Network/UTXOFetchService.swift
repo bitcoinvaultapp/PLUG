@@ -30,7 +30,7 @@ enum UTXOFetchService {
         }
 
         let usingTor = plug_tor_is_running()
-        let batchSize = usingTor ? 10 : 5
+        let batchSize = usingTor ? 3 : 5  // Small batches for Tor (HS circuits are expensive)
 
         // Phase 1: Fetch UTXOs only
         // Shuffle to break sequential query pattern (anti-correlation)
@@ -39,9 +39,10 @@ enum UTXOFetchService {
         var addressesWithActivity: [String] = []
         var errorCount = 0
         var successCount = 0
+        let startTime = CFAbsoluteTimeGetCurrent()
 
         #if DEBUG
-        print("[UTXOFetchService] Phase 1: fetching UTXOs for \(shuffledAddrs.count) addresses (batch=\(batchSize), tor=\(usingTor))")
+        print("[UTXOFetch] ▶ Phase 1: \(shuffledAddrs.count) addresses, batch=\(batchSize), tor=\(usingTor), port=\(plug_tor_port())")
         #endif
 
         for (i, batchStart) in stride(from: 0, to: shuffledAddrs.count, by: batchSize).enumerated() {
@@ -53,11 +54,16 @@ enum UTXOFetchService {
                 for addr in batch {
                     group.addTask {
                         do {
+                            let t0 = CFAbsoluteTimeGetCurrent()
                             let u = try await MempoolAPI.shared.getAddressUTXOs(address: addr)
+                            let dt = Int((CFAbsoluteTimeGetCurrent() - t0) * 1000)
+                            #if DEBUG
+                            if !u.isEmpty { print("[UTXOFetch] ✅ \(addr.prefix(12))… \(u.count) UTXOs (\(dt)ms)") }
+                            #endif
                             return (addr, u, true)
                         } catch {
                             #if DEBUG
-                            print("[UTXOFetchService] UTXO error for \(addr.prefix(12)): \(error.localizedDescription)")
+                            print("[UTXOFetch] ❌ \(addr.prefix(12))… \(error.localizedDescription)")
                             #endif
                             return (addr, [], false)
                         }
@@ -97,8 +103,9 @@ enum UTXOFetchService {
             }
         }
 
+        let elapsed = Int((CFAbsoluteTimeGetCurrent() - startTime) * 1000)
         #if DEBUG
-        print("[UTXOFetchService] Done: \(allUTXOs.count) UTXOs, \(allTxs.count) txs, \(addressesWithActivity.count) active addresses")
+        print("[UTXOFetch] ⏱ Done in \(elapsed)ms: \(allUTXOs.count) UTXOs, \(allTxs.count) txs, \(addressesWithActivity.count) active, \(errorCount) errors / \(successCount) success")
         #endif
 
         return FetchResult(

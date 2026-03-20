@@ -176,24 +176,12 @@ final class HomeVM: ObservableObject {
         isLoading = false
     }
 
-    /// Lightweight wallet fetch — derives addresses from xpub, fetches UTXOs + txs.
-    /// Independent from WalletVM. No gap scan, just first 20 receiving + 20 change.
+    /// Wallet fetch — uses cached addresses from WalletVM gap scan when available,
+    /// falls back to deriving first 20+20 from xpub. Ensures same address set = same balance.
     func refreshBalance() async {
         let isTest = NetworkConfig.shared.isTestnet
-        guard let xpubStr = KeychainStore.shared.loadXpub(isTestnet: isTest) else {
-            #if DEBUG
-            print("[HomeVM] No xpub in keychain — skipping balance refresh")
-            #endif
-            return
-        }
-        guard let xpub = ExtendedPublicKey.fromBase58(xpubStr) else {
-            #if DEBUG
-            print("[HomeVM] Failed to parse xpub: \(xpubStr.prefix(20))...")
-            #endif
-            return
-        }
 
-        // Skip if refreshed less than 30s ago to avoid 429 rate limits
+        // Skip if refreshed less than 30s ago
         if let last = lastBalanceRefresh, Date().timeIntervalSince(last) < 30 {
             #if DEBUG
             print("[HomeVM] Skipping — last refresh \(Int(Date().timeIntervalSince(last)))s ago")
@@ -201,32 +189,43 @@ final class HomeVM: ObservableObject {
             return
         }
 
-        #if DEBUG
-        print("[HomeVM] Deriving addresses from xpub...")
-        #endif
-        let receiving = AddressDerivation.deriveAddresses(xpub: xpub, change: 0, startIndex: 0, count: 20, isTestnet: isTest)
-        let change = AddressDerivation.deriveAddresses(xpub: xpub, change: 1, startIndex: 0, count: 20, isTestnet: isTest)
-
-        let allAddrs = receiving + change
-        #if DEBUG
-        print("[HomeVM] Derived \(allAddrs.count) addresses (\(receiving.count) receiving + \(change.count) change)")
-        #endif
-
-        if allAddrs.isEmpty {
+        // Try cached addresses from WalletVM gap scan (ensures same address set)
+        var walletAddrs: [WalletAddress] = []
+        if let cached: [WalletAddress] = KeychainStore.shared.loadCodable(
+            forKey: KeychainStore.KeychainKey.walletAddresses.rawValue,
+            type: [WalletAddress].self
+        ), !cached.isEmpty {
+            walletAddrs = cached
             #if DEBUG
-            print("[HomeVM] No addresses derived — aborting")
+            print("[HomeVM] Using \(cached.count) cached addresses from WalletVM gap scan")
             #endif
-            return
+        } else {
+            // Fallback: derive first 20+20 from xpub
+            guard let xpubStr = KeychainStore.shared.loadXpub(isTestnet: isTest),
+                  let xpub = ExtendedPublicKey.fromBase58(xpubStr) else {
+                #if DEBUG
+                print("[HomeVM] No xpub in keychain — skipping balance refresh")
+                #endif
+                return
+            }
+
+            #if DEBUG
+            print("[HomeVM] No cached addresses — deriving 20+20 from xpub")
+            #endif
+            let receiving = AddressDerivation.deriveAddresses(xpub: xpub, change: 0, startIndex: 0, count: 20, isTestnet: isTest)
+            let change = AddressDerivation.deriveAddresses(xpub: xpub, change: 1, startIndex: 0, count: 20, isTestnet: isTest)
+
+            walletAddrs = receiving.map { WalletAddress(index: $0.index, address: $0.address, publicKey: $0.publicKey.hex, isChange: false) }
+                + change.map { WalletAddress(index: $0.index, address: $0.address, publicKey: $0.publicKey.hex, isChange: true) }
         }
 
-        let walletAddrs = receiving.map { WalletAddress(index: $0.index, address: $0.address, publicKey: $0.publicKey.hex, isChange: false) }
-            + change.map { WalletAddress(index: $0.index, address: $0.address, publicKey: $0.publicKey.hex, isChange: true) }
+        guard !walletAddrs.isEmpty else { return }
 
         // Fetch UTXOs and transactions via shared service
         #if DEBUG
-        print("[HomeVM] Fetching UTXOs for \(allAddrs.count) addresses...")
+        print("[HomeVM] Fetching UTXOs for \(walletAddrs.count) addresses...")
         #endif
-        let addrStrings = allAddrs.map { $0.address }
+        let addrStrings = walletAddrs.map { $0.address }
         let result = await UTXOFetchService.fetchUTXOsAndTransactions(for: addrStrings)
 
         // Merge new transactions with existing (preserves history for spent addresses)

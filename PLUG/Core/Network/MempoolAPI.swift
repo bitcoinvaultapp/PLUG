@@ -125,22 +125,35 @@ final class MempoolAPI: NSObject, URLSessionDelegate {
     static var torSkipped = false
 
     /// Address-specific request — REQUIRES Tor. Never leaks IP.
-    /// Routes through Tor SOCKS5 proxy to mempool .onion (no exit nodes).
+    /// Uses plug_tor_fetch() directly — bypasses URLSession/SOCKS5, reuses HS circuits.
     /// Blocks entirely if Tor is unavailable (unless user explicitly skipped).
     private func addressRequest<T: Decodable>(_ endpoint: String, type: T.Type) async throws -> T {
-        // Route through Tor SOCKS5 proxy → .onion (stays inside Tor network, no exit)
-        if plug_tor_is_running(), let torSession = TorConfig.shared.createTorSession() {
+        if plug_tor_is_running() {
             let isTestnet = NetworkConfig.shared.isTestnet
             let prefix = isTestnet ? "/testnet" : ""
-            let onionBase = "http://\(TorConfig.shared.onionAddress)\(prefix)/api"
-            if let url = URL(string: "\(onionBase)\(endpoint)") {
-                let (data, response) = try await torSession.data(from: url)
-                guard let httpResponse = response as? HTTPURLResponse,
-                      (200...299).contains(httpResponse.statusCode) else {
-                    throw APIError.httpError((response as? HTTPURLResponse)?.statusCode ?? 0)
-                }
-                return try JSONDecoder().decode(type, from: data)
+            let path = "\(prefix)/api\(endpoint)"
+            let onionHost = TorConfig.shared.onionAddress
+
+            // Direct Arti fetch — no SOCKS5 proxy, no URLSession
+            // Runs on background thread since plug_tor_fetch blocks
+            let jsonString: String? = await Task.detached(priority: .userInitiated) {
+                guard let hostC = onionHost.cString(using: .utf8),
+                      let pathC = path.cString(using: .utf8) else { return nil as String? }
+                guard let resultPtr = plug_tor_fetch(hostC, 80, pathC) else { return nil as String? }
+                let result = String(cString: resultPtr)
+                plug_tor_free_string(resultPtr)
+                return result
+            }.value
+
+            guard let json = jsonString, !json.isEmpty else {
+                throw APIError.torFetchFailed
             }
+
+            guard let data = json.data(using: .utf8) else {
+                throw APIError.decodingError
+            }
+
+            return try JSONDecoder().decode(type, from: data)
         }
 
         // User explicitly chose "Skip — use clearnet"
@@ -297,6 +310,7 @@ final class MempoolAPI: NSObject, URLSessionDelegate {
         case decodingError
         case broadcastFailed(String)
         case torRequired
+        case torFetchFailed
 
         var errorDescription: String? {
             switch self {
@@ -305,6 +319,7 @@ final class MempoolAPI: NSObject, URLSessionDelegate {
             case .decodingError: return "Decoding error"
             case .broadcastFailed(let msg): return "Broadcast failed: \(msg)"
             case .torRequired: return "Tor disconnected — address queries blocked to protect your privacy"
+            case .torFetchFailed: return "Tor fetch failed — onion service unreachable"
             }
         }
     }

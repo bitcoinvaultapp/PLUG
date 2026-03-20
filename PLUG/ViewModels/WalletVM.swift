@@ -13,6 +13,7 @@ final class WalletVM: ObservableObject {
     @Published var error: String?
     @Published var scanProgress: Double = 0
     @Published var scanStatus: String?
+    private var hasLoadedOnce = false
     @Published var selectedStrategy: CoinSelectionStrategy = .largestFirst
 
     // Send form
@@ -243,6 +244,7 @@ final class WalletVM: ObservableObject {
         #if DEBUG
         print("[WalletVM] Manual rescan requested — clearing cache")
         #endif
+        hasLoadedOnce = false
         addresses.removeAll()
         utxos.removeAll()
         transactions.removeAll()
@@ -262,7 +264,15 @@ final class WalletVM: ObservableObject {
             return
         }
 
-        // Prevent re-entrant calls (Home + Wallet loading simultaneously)
+        // Only load once per app session — use "Rescan" in Settings to force
+        guard !hasLoadedOnce else {
+            #if DEBUG
+            print("[WalletVM] loadWallet() skipped — already loaded this session")
+            #endif
+            return
+        }
+
+        // Prevent re-entrant calls
         guard !isLoading else {
             #if DEBUG
             print("[WalletVM] loadWallet() skipped — already loading")
@@ -533,6 +543,7 @@ final class WalletVM: ObservableObject {
             error = nil
         }
 
+        hasLoadedOnce = true
         isLoading = false
     }
 

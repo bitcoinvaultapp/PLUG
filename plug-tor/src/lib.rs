@@ -127,33 +127,42 @@ pub extern "C" fn plug_tor_warmup(
     };
 
     let rt = get_runtime();
-    eprintln!("[plug-tor] Warming up HS circuit to {}:{}...", host_str, port);
+    let max_duration = std::time::Duration::from_secs(180); // 3 minute window
+    let per_attempt = std::time::Duration::from_secs(15);   // 15s per try
+    let start = std::time::Instant::now();
+    let mut attempt = 0;
 
-    // Retry up to 5 times — HS circuit needs 2-3 attempts to establish
-    for attempt in 1..=5 {
-        eprintln!("[plug-tor] Warmup attempt {}/5...", attempt);
+    eprintln!("[plug-tor] Warming up HS circuit to {}:{} (max 180s)...", host_str, port);
+
+    // Continuous retry loop — short attempts within a long window.
+    // Each failed attempt progresses HS circuit building in the background.
+    while start.elapsed() < max_duration {
+        attempt += 1;
+        let elapsed = start.elapsed().as_secs();
+        eprintln!("[plug-tor] Warmup attempt {} ({}s elapsed)...", attempt, elapsed);
+
         match rt.block_on(async {
-            tokio::time::timeout(
-                std::time::Duration::from_secs(30),
+            tokio::time::timeout(per_attempt,
                 tor_http_get(client.clone(), &host_str, port, "/api/v1/fees/recommended")
             ).await
         }) {
             Ok(Ok(body)) => {
-                eprintln!("[plug-tor] ✅ Warmup OK on attempt {}! ({} bytes)", attempt, body.len());
+                let total = start.elapsed().as_secs();
+                eprintln!("[plug-tor] ✅ Warmup OK! ({} bytes, attempt {}, {}s total)", body.len(), attempt, total);
                 return true;
             }
             Ok(Err(e)) => {
-                eprintln!("[plug-tor] ⚠️ Warmup attempt {} failed: {}", attempt, e);
+                eprintln!("[plug-tor] ⚠️ attempt {}: {}", attempt, e);
             }
             Err(_) => {
-                eprintln!("[plug-tor] ⚠️ Warmup attempt {} timed out", attempt);
+                eprintln!("[plug-tor] ⚠️ attempt {}: timeout ({}s)", attempt, per_attempt.as_secs());
             }
         }
-        // Brief pause before retry
-        std::thread::sleep(std::time::Duration::from_secs(2));
+        // Brief pause before next attempt
+        std::thread::sleep(std::time::Duration::from_secs(3));
     }
 
-    eprintln!("[plug-tor] ❌ Warmup failed after 5 attempts");
+    eprintln!("[plug-tor] ❌ Warmup failed after {}s ({} attempts)", start.elapsed().as_secs(), attempt);
     false
 }
 

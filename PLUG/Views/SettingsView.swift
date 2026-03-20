@@ -171,6 +171,13 @@ struct TorSettingsRow: View {
                     Text("Bootstrapping Tor...")
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
+                } else if case .warmingUp = torManager.state {
+                    ProgressView()
+                        .controlSize(.small)
+                        .padding(.trailing, 4)
+                    Text("Establishing private route...")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
                 } else if torManager.isRunning {
                     Button {
                         torManager.stop()
@@ -209,7 +216,7 @@ struct TorSettingsRow: View {
     private var statusColor: Color {
         switch torManager.state {
         case .disconnected: return .gray
-        case .connecting: return .orange
+        case .connecting, .warmingUp: return .orange
         case .connected: return .green
         case .error: return .red
         }
@@ -219,6 +226,7 @@ struct TorSettingsRow: View {
         switch torManager.state {
         case .disconnected: return "Off"
         case .connecting: return "Connecting"
+        case .warmingUp: return "Warming up"
         case .connected: return "Connected"
         case .error: return "Error"
         }

@@ -141,14 +141,14 @@ struct PlugHeader: View {
         let color: Color = {
             switch tor.state {
             case .connected: return .purple
-            case .connecting: return .orange
+            case .connecting, .warmingUp: return .orange
             case .error: return .red
             case .disconnected: return .gray
             }
         }()
 
         return HStack(spacing: 4) {
-            if tor.state == .connecting {
+            if tor.state == .connecting || tor.state == .warmingUp {
                 ProgressView()
                     .controlSize(.mini)
             } else {

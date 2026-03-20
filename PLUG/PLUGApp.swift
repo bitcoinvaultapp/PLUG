@@ -64,11 +64,22 @@ struct TorBootstrapWrapper<Content: View>: View {
         self.content = content
     }
 
+    private var statusText: String {
+        switch tor.state {
+        case .connecting: return "Connecting to Tor network..."
+        case .warmingUp: return "Establishing private route..."
+        case .error(let msg): return msg
+        default: return "Protecting your privacy..."
+        }
+    }
+
     var body: some View {
-        if tor.isRunning || skipTor {
+        if case .connected = tor.state {
+            content()
+        } else if skipTor {
             content()
         } else {
-            // Bootstrap screen
+            // Bootstrap + warmup screen
             VStack(spacing: 20) {
                 Spacer()
 
@@ -79,19 +90,24 @@ struct TorBootstrapWrapper<Content: View>: View {
                 Text("Connecting to Tor")
                     .font(.system(size: 18, weight: .semibold))
 
-                Text("Protecting your privacy...")
+                Text(statusText)
                     .font(.system(size: 13))
                     .foregroundStyle(.secondary)
+                    .animation(.easeInOut, value: tor.state)
 
                 ProgressView()
                     .controlSize(.regular)
                     .padding(.top, 8)
 
-                if case .error(let msg) = tor.state {
-                    Text(msg)
-                        .font(.system(size: 11))
-                        .foregroundStyle(.red)
-                        .padding(.top, 8)
+                if case .error = tor.state {
+                    Button {
+                        tor.start()
+                    } label: {
+                        Text("Retry")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(.purple)
+                    }
+                    .padding(.top, 4)
                 }
 
                 Spacer()

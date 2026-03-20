@@ -30,7 +30,7 @@ enum UTXOFetchService {
         }
 
         let usingTor = plug_tor_is_running()
-        let batchSize = usingTor ? 3 : 5  // Small batches for Tor (HS circuits are expensive)
+        let batchSize = usingTor ? 1 : 5  // Serial for Tor (Rust Mutex serializes anyway)
 
         // Phase 1: Fetch UTXOs only
         // Shuffle to break sequential query pattern (anti-correlation)

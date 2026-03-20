@@ -290,7 +290,7 @@ final class WalletVM: ObservableObject {
         var consecutiveEmpty = 0
         var scanIndex: UInt32 = 0
         let torActive = plug_tor_is_running()
-        let fetchBatchSize = torActive ? 2 : 3  // Small batches for Tor (HS circuits are expensive)
+        let fetchBatchSize = torActive ? 1 : 3  // Serial for Tor (Rust Mutex serializes anyway)
         #if DEBUG
         print("[WalletVM] Starting gap limit scan (gap=\(gapLimit), tor=\(torActive))...")
         #endif

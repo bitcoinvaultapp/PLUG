@@ -1,9 +1,8 @@
 use std::sync::atomic::{AtomicBool, AtomicU16, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use once_cell::sync::OnceCell;
 use tokio::runtime::Runtime;
-use tokio::net::TcpListener;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 use arti_client::{TorClient, TorClientConfig};
@@ -16,20 +15,27 @@ static RUNNING: AtomicBool = AtomicBool::new(false);
 static SOCKS_PORT: AtomicU16 = AtomicU16::new(0);
 static RUNTIME: OnceCell<Runtime> = OnceCell::new();
 
+/// Mutex to serialize all Tor fetch requests.
+/// Prevents concurrent HS circuit builds which overwhelm Arti on iOS.
+/// First request builds the circuit (~15-30s), subsequent reuse it (~2-3s).
+static FETCH_LOCK: OnceCell<Mutex<()>> = OnceCell::new();
+
+fn get_fetch_lock() -> &'static Mutex<()> {
+    FETCH_LOCK.get_or_init(|| Mutex::new(()))
+}
+
 fn get_runtime() -> &'static Runtime {
     RUNTIME.get_or_init(|| {
         tokio::runtime::Builder::new_multi_thread()
             .enable_all()
-            .worker_threads(2)
+            .worker_threads(4) // 4 workers (was 2) for better iOS scheduling
             .build()
             .expect("Failed to create Tokio runtime")
     })
 }
 
 /// Get iOS-compatible cache directory for Arti state data.
-/// Falls back to /tmp/arti if no proper directory found.
 fn get_state_dir() -> String {
-    // Try iOS Library/Caches directory
     #[cfg(target_os = "ios")]
     {
         if let Some(home) = std::env::var_os("HOME") {
@@ -38,7 +44,6 @@ fn get_state_dir() -> String {
             return path;
         }
     }
-    // Fallback
     let path = "/tmp/arti_state".to_string();
     let _ = std::fs::create_dir_all(&path);
     path
@@ -58,8 +63,7 @@ fn get_cache_dir() -> String {
     path
 }
 
-/// Start the Tor client and SOCKS5 proxy.
-/// Returns the SOCKS5 port on success, 0 on failure.
+/// Start the Tor client. Returns the SOCKS5 port on success, 0 on failure.
 #[no_mangle]
 pub extern "C" fn plug_tor_start() -> u16 {
     if RUNNING.load(Ordering::SeqCst) {
@@ -68,7 +72,6 @@ pub extern "C" fn plug_tor_start() -> u16 {
 
     let rt = get_runtime();
 
-    // Bootstrap Tor client with iOS-compatible directories
     let client = match rt.block_on(async {
         let state_dir = get_state_dir();
         let cache_dir = get_cache_dir();
@@ -77,13 +80,14 @@ pub extern "C" fn plug_tor_start() -> u16 {
         builder.storage()
             .state_dir(CfgPath::new_literal(state_dir))
             .cache_dir(CfgPath::new_literal(cache_dir));
-        // Increase connect timeout — Tor circuits can be slow
+        // 60s timeout for HS circuit builds (can be slow on mobile)
         builder.stream_timeouts()
-            .connect_timeout(std::time::Duration::from_secs(30));
+            .connect_timeout(std::time::Duration::from_secs(60));
 
         let config = builder.build()
             .map_err(|e| format!("config: {}", e))?;
 
+        eprintln!("[plug-tor] Bootstrapping Tor...");
         TorClient::create_bootstrapped(config)
             .await
             .map_err(|e| format!("bootstrap: {}", e))
@@ -96,21 +100,54 @@ pub extern "C" fn plug_tor_start() -> u16 {
     };
 
     let _ = TOR_CLIENT.set(client.clone());
+    eprintln!("[plug-tor] Bootstrap complete!");
 
-    // Start local SOCKS5 proxy
-    let port = match rt.block_on(async {
-        start_socks_proxy(client).await
-    }) {
-        Ok(p) => p,
-        Err(e) => {
-            eprintln!("[plug-tor] SOCKS proxy failed: {}", e);
-            return 0;
-        }
+    // Use port 1 as a marker that Tor is running (SOCKS5 proxy no longer needed)
+    SOCKS_PORT.store(1, Ordering::SeqCst);
+    RUNNING.store(true, Ordering::SeqCst);
+    1
+}
+
+/// Warm up the HS circuit by connecting to the .onion once.
+/// Call after plug_tor_start() to pre-establish the circuit.
+/// Returns true if warmup succeeded, false if it failed.
+#[no_mangle]
+pub extern "C" fn plug_tor_warmup(
+    host: *const std::ffi::c_char,
+    port: u16,
+) -> bool {
+    let host_str = match unsafe { std::ffi::CStr::from_ptr(host) }.to_str() {
+        Ok(s) => s.to_string(),
+        Err(_) => return false,
     };
 
-    SOCKS_PORT.store(port, Ordering::SeqCst);
-    RUNNING.store(true, Ordering::SeqCst);
-    port
+    let client = match TOR_CLIENT.get() {
+        Some(c) => c.clone(),
+        None => return false,
+    };
+
+    let rt = get_runtime();
+    eprintln!("[plug-tor] Warming up HS circuit to {}:{}...", host_str, port);
+
+    match rt.block_on(async {
+        tokio::time::timeout(
+            std::time::Duration::from_secs(60),
+            tor_http_get(client, &host_str, port, "/api/v1/fees/recommended")
+        ).await
+    }) {
+        Ok(Ok(body)) => {
+            eprintln!("[plug-tor] ✅ Warmup OK! ({} bytes)", body.len());
+            true
+        }
+        Ok(Err(e)) => {
+            eprintln!("[plug-tor] ❌ Warmup failed: {}", e);
+            false
+        }
+        Err(_) => {
+            eprintln!("[plug-tor] ❌ Warmup timed out (60s)");
+            false
+        }
+    }
 }
 
 /// Stop the Tor client.
@@ -133,12 +170,10 @@ pub extern "C" fn plug_tor_port() -> u16 {
 }
 
 /// Fetch a URL through Tor directly (no SOCKS5 proxy).
-/// Uses Arti's client.connect() which reuses HS circuits.
+/// SERIALIZED: only one request at a time via Mutex.
+/// First request builds HS circuit (~15-30s), subsequent reuse it (~2-3s).
 /// Returns a C string (caller must free with plug_tor_free_string).
 /// On error, returns null.
-///
-/// Usage from Swift:
-///   let result = plug_tor_fetch("mempoolhqx4isw62xs7abwphsq7ldayuidyx2v2oethdhhj6mlo2r6ad.onion", 80, "/testnet/api/address/tb1q.../utxo")
 #[no_mangle]
 pub extern "C" fn plug_tor_fetch(
     host: *const std::ffi::c_char,
@@ -162,16 +197,23 @@ pub extern "C" fn plug_tor_fetch(
         }
     };
 
+    // Serialize all Tor requests — prevents concurrent HS circuit builds
+    let _guard = get_fetch_lock().lock().unwrap();
+
     let rt = get_runtime();
+    let t0 = std::time::Instant::now();
     match rt.block_on(tor_http_get(client, &host_str, port, &path_str)) {
         Ok(body) => {
+            let dt = t0.elapsed().as_millis();
+            eprintln!("[plug-tor] ✅ {} ({} bytes, {}ms)", path_str, body.len(), dt);
             match std::ffi::CString::new(body) {
                 Ok(cs) => cs.into_raw(),
                 Err(_) => std::ptr::null_mut(),
             }
         }
         Err(e) => {
-            eprintln!("[plug-tor] fetch error: {}", e);
+            let dt = t0.elapsed().as_millis();
+            eprintln!("[plug-tor] ❌ {} ({}ms): {}", path_str, dt, e);
             std::ptr::null_mut()
         }
     }
@@ -201,7 +243,6 @@ async fn tor_http_get(
     stream.write_all(req.as_bytes()).await?;
     stream.flush().await?;
 
-    // Read full response
     let mut response = Vec::new();
     loop {
         let mut buf = [0u8; 8192];
@@ -212,16 +253,14 @@ async fn tor_http_get(
             Ok(Ok(0)) => break,
             Ok(Ok(n)) => response.extend_from_slice(&buf[..n]),
             Ok(Err(_)) => break,
-            Err(_) => break, // read timeout
+            Err(_) => break,
         }
     }
 
     let response_str = String::from_utf8_lossy(&response).to_string();
 
-    // Extract body from HTTP response (after \r\n\r\n)
     if let Some(pos) = response_str.find("\r\n\r\n") {
         let body = &response_str[pos + 4..];
-        // Handle chunked transfer encoding
         if response_str.contains("Transfer-Encoding: chunked") {
             return Ok(decode_chunked(body));
         }
@@ -236,7 +275,6 @@ fn decode_chunked(body: &str) -> String {
     let mut result = String::new();
     let mut remaining = body;
     loop {
-        // Read chunk size (hex)
         let line_end = match remaining.find("\r\n") {
             Some(pos) => pos,
             None => break,
@@ -262,109 +300,6 @@ fn decode_chunked(body: &str) -> String {
     result
 }
 
-/// Simple SOCKS5 proxy that forwards connections through Tor.
-async fn start_socks_proxy(client: Arc<TorClient<PreferredRuntime>>) -> Result<u16, Box<dyn std::error::Error>> {
-    let listener = TcpListener::bind("127.0.0.1:0").await?;
-    let port = listener.local_addr()?.port();
-
-    tokio::spawn(async move {
-        loop {
-            if !RUNNING.load(Ordering::SeqCst) {
-                break;
-            }
-
-            let (mut stream, _) = match listener.accept().await {
-                Ok(s) => s,
-                Err(_) => continue,
-            };
-
-            let client = client.clone();
-            tokio::spawn(async move {
-                if let Err(e) = handle_socks5_connection(&mut stream, &client).await {
-                    eprintln!("[plug-tor] SOCKS5 error: {}", e);
-                }
-            });
-        }
-    });
-
-    Ok(port)
-}
-
-/// Handle a single SOCKS5 connection.
-async fn handle_socks5_connection(
-    stream: &mut tokio::net::TcpStream,
-    client: &TorClient<PreferredRuntime>,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let mut buf = [0u8; 258];
-    let n = stream.read(&mut buf).await?;
-    if n < 2 || buf[0] != 0x05 {
-        return Err("Not SOCKS5".into());
-    }
-
-    // No auth required
-    stream.write_all(&[0x05, 0x00]).await?;
-
-    // Read SOCKS5 request
-    let n = stream.read(&mut buf).await?;
-    if n < 4 || buf[0] != 0x05 || buf[1] != 0x01 {
-        stream.write_all(&[0x05, 0x07, 0x00, 0x01, 0, 0, 0, 0, 0, 0]).await?;
-        return Err("Not CONNECT".into());
-    }
-
-    // Parse address
-    let (host, port) = match buf[3] {
-        0x01 => {
-            // IPv4
-            if n < 10 { return Err("Short IPv4".into()); }
-            let ip = format!("{}.{}.{}.{}", buf[4], buf[5], buf[6], buf[7]);
-            let port = u16::from_be_bytes([buf[8], buf[9]]);
-            (ip, port)
-        }
-        0x03 => {
-            // Domain name
-            let len = buf[4] as usize;
-            if n < 5 + len + 2 { return Err("Short domain".into()); }
-            let domain = String::from_utf8_lossy(&buf[5..5+len]).to_string();
-            let port = u16::from_be_bytes([buf[5+len], buf[6+len]]);
-            (domain, port)
-        }
-        _ => return Err("Unsupported address type".into()),
-    };
-
-    // Connect through Tor with retry (circuits can be slow/stale)
-    let mut last_err = String::new();
-    for attempt in 0..3 {
-        match client.connect((host.as_str(), port)).await {
-            Ok(tor_stream) => {
-                // Success
-                stream.write_all(&[0x05, 0x00, 0x00, 0x01, 127, 0, 0, 1, 0, 0]).await?;
-
-                // Bidirectional copy
-                let (mut client_read, mut client_write) = stream.split();
-                let (mut tor_read, mut tor_write) = tor_stream.split();
-
-                tokio::select! {
-                    _ = tokio::io::copy(&mut client_read, &mut tor_write) => {},
-                    _ = tokio::io::copy(&mut tor_read, &mut client_write) => {},
-                }
-                return Ok(());
-            }
-            Err(e) => {
-                last_err = format!("{}", e);
-                eprintln!("[plug-tor] Connect attempt {} failed: {} -> {}:{}", attempt + 1, e, host, port);
-                if attempt < 2 {
-                    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
-                }
-            }
-        }
-    }
-
-    eprintln!("[plug-tor] All retries failed for {}:{}: {}", host, port, last_err);
-    stream.write_all(&[0x05, 0x01, 0x00, 0x01, 0, 0, 0, 0, 0, 0]).await?;
-
-    Ok(())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -375,9 +310,8 @@ mod tests {
         let port = plug_tor_start();
 
         if port > 0 {
-            println!("✅ Tor connected! SOCKS5 on 127.0.0.1:{}", port);
+            println!("✅ Tor connected!");
             assert!(plug_tor_is_running());
-            assert_eq!(plug_tor_port(), port);
 
             std::thread::sleep(std::time::Duration::from_secs(3));
 
@@ -385,59 +319,6 @@ mod tests {
             println!("Tor stopped.");
         } else {
             println!("⚠️ Tor bootstrap returned 0 — may need network access");
-        }
-    }
-}
-
-#[cfg(test)]
-mod integration_tests {
-    use super::*;
-
-    #[test]
-    fn test_socks5_connect() {
-        let port = plug_tor_start();
-        assert!(port > 0, "Tor bootstrap failed");
-
-        // Connect to mempool.space through our SOCKS5 proxy
-        let rt = get_runtime();
-        let result = rt.block_on(async {
-            use tokio::net::TcpStream;
-            use tokio::io::{AsyncReadExt, AsyncWriteExt};
-
-            let mut stream = TcpStream::connect(format!("127.0.0.1:{}", port)).await?;
-
-            // SOCKS5 greeting: version 5, 1 auth method (no auth)
-            stream.write_all(&[0x05, 0x01, 0x00]).await?;
-            let mut resp = [0u8; 2];
-            stream.read_exact(&mut resp).await?;
-            assert_eq!(resp, [0x05, 0x00], "SOCKS5 greeting failed");
-
-            // SOCKS5 CONNECT to mempool.space:443
-            let domain = b"mempool.space";
-            let mut req = vec![0x05, 0x01, 0x00, 0x03, domain.len() as u8];
-            req.extend_from_slice(domain);
-            req.extend_from_slice(&443u16.to_be_bytes());
-            stream.write_all(&req).await?;
-
-            let mut resp = [0u8; 10];
-            stream.read_exact(&mut resp).await?;
-            println!("SOCKS5 response: {:?}", resp);
-            println!("Status: {}", resp[1]);
-
-            if resp[1] == 0x00 {
-                println!("✅ SOCKS5 CONNECT succeeded!");
-            } else {
-                println!("❌ SOCKS5 CONNECT failed with status {}", resp[1]);
-            }
-
-            Ok::<u8, Box<dyn std::error::Error>>(resp[1])
-        });
-
-        plug_tor_stop();
-
-        match result {
-            Ok(status) => assert_eq!(status, 0, "SOCKS5 connect returned error status"),
-            Err(e) => panic!("Test failed: {}", e),
         }
     }
 }

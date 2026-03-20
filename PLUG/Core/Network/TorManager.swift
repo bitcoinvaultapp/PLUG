@@ -2,13 +2,7 @@ import Foundation
 import Combine
 
 /// Manages the embedded Arti Tor client.
-/// Starts a local SOCKS5 proxy that URLSession can route through.
-///
-/// Usage:
-///   TorManager.shared.start()
-///   // Wait for state == .connected
-///   // Use TorConfig.shared.socksPort for URLSession proxy
-///   TorManager.shared.stop()
+/// Bootstrap → warmup HS circuit → ready for address queries.
 @MainActor
 final class TorManager: ObservableObject {
 
@@ -17,14 +11,14 @@ final class TorManager: ObservableObject {
     enum TorState: Equatable {
         case disconnected
         case connecting
+        case warmingUp       // Bootstrap done, warming up HS circuit
         case connected(port: UInt16)
         case error(String)
     }
 
     @Published var state: TorState = .disconnected
 
-    /// Start Tor in background thread. Updates state on completion.
-    /// Bootstrap takes 10-30 seconds.
+    /// Start Tor + warm up HS circuit. Updates state at each phase.
     func start() {
         guard state == .disconnected || {
             if case .error = state { return true }
@@ -34,22 +28,39 @@ final class TorManager: ObservableObject {
         state = .connecting
 
         Task.detached(priority: .userInitiated) {
-            // plug_tor_start() blocks until Tor bootstrap completes
+            // Phase 1: Bootstrap Tor (consensus download, ~12s)
             let port = plug_tor_start()
+            guard port > 0 else {
+                await MainActor.run { self.state = .error("Tor bootstrap failed") }
+                return
+            }
 
             await MainActor.run {
-                if port > 0 {
-                    TorConfig.shared.socksPort = Int(port)
-                    TorConfig.shared.isEnabled = true
+                TorConfig.shared.isEnabled = true
+                self.state = .warmingUp
+            }
+
+            // Phase 2: Warm up HS circuit to .onion (~15-30s)
+            let onionHost = TorConfig.shared.onionAddress
+            let success = onionHost.withCString { hostPtr in
+                plug_tor_warmup(hostPtr, 80)
+            }
+
+            await MainActor.run {
+                if success {
                     self.state = .connected(port: port)
                 } else {
-                    self.state = .error("Tor bootstrap failed")
+                    // Warmup failed but Tor is running — let user try anyway
+                    self.state = .connected(port: port)
+                    #if DEBUG
+                    print("[TorManager] Warmup failed but Tor is running — proceeding")
+                    #endif
                 }
             }
         }
     }
 
-    /// Stop the Tor proxy.
+    /// Stop Tor.
     func stop() {
         plug_tor_stop()
         TorConfig.shared.isEnabled = false
@@ -61,7 +72,7 @@ final class TorManager: ObservableObject {
         plug_tor_is_running()
     }
 
-    /// Get the current SOCKS5 port (0 if not running).
+    /// Get the current SOCKS5 port (legacy, returns 1 if running).
     var socksPort: UInt16 {
         plug_tor_port()
     }

@@ -5,6 +5,22 @@ struct OpReturnView: View {
 
     var body: some View {
             Form {
+                // Hero
+                Section {
+                    VStack(spacing: 6) {
+                        Image(systemName: "doc.text.below.ecg.fill")
+                            .font(.system(size: 28))
+                            .symbolRenderingMode(.palette)
+                            .foregroundStyle(.indigo, .indigo.opacity(0.5))
+                        Text("Embed arbitrary data on the Bitcoin blockchain. Permanent, immutable.")
+                            .font(.system(size: 13))
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 4)
+                }
+                .listRowBackground(Color.clear)
                 Section("Mode") {
                     Picker("Type", selection: $vm.mode) {
                         ForEach(OpReturnVM.OpReturnMode.allCases, id: \.self) { mode in
@@ -81,7 +97,7 @@ struct OpReturnView: View {
                         if let psbt = vm.buildTransaction() {
                             let base64 = psbt.base64EncodedString()
                             vm.result = base64
-                            UIPasteboard.general.string = base64
+                            secureCopy(base64)
                         }
                     }
                     .disabled(vm.textInput.isEmpty || vm.isOverLimit)

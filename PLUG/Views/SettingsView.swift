@@ -3,6 +3,7 @@ import SwiftUI
 struct SettingsView: View {
     @StateObject private var vm = SettingsVM()
     @State private var biometricEnabled = UserDefaults.standard.bool(forKey: "biometric_lock_enabled")
+    @AppStorage("balance_unit") private var balanceUnit: String = BalanceUnit.btc.rawValue
 
     var body: some View {
         NavigationStack {
@@ -31,6 +32,15 @@ struct SettingsView: View {
                         }
                         .padding(.vertical, 4)
                     }
+                }
+
+                // Tor Privacy
+                Section {
+                    TorSettingsRow()
+                } header: {
+                    Text("Privacy")
+                } footer: {
+                    Text("Routes wallet address queries through the Tor network. Prevents your IP from being linked to your addresses.")
                 }
 
                 // Wallet
@@ -71,6 +81,15 @@ struct SettingsView: View {
                         }
                 }
 
+                // Display
+                Section("Display") {
+                    Picker("Balance unit", selection: $balanceUnit) {
+                        Text("BTC").tag(BalanceUnit.btc.rawValue)
+                        Text("sats").tag(BalanceUnit.sats.rawValue)
+                        Text("USD").tag(BalanceUnit.usd.rawValue)
+                    }
+                }
+
                 // Backup & Restore
                 Section("Backup") {
                     NavigationLink("Backup & Restore") {
@@ -109,6 +128,99 @@ struct SettingsView: View {
                 Text("This will delete all keys, contracts, and labels. This action cannot be undone.")
             }
             .onAppear { vm.refresh() }
+        }
+    }
+}
+
+// MARK: - Tor Settings Row
+
+struct TorSettingsRow: View {
+    @ObservedObject private var torManager = TorManager.shared
+
+    var body: some View {
+        VStack(spacing: 12) {
+            HStack {
+                HStack(spacing: 10) {
+                    Image(systemName: "network.badge.shield.half.filled")
+                        .font(.system(size: 16))
+                        .foregroundStyle(statusColor)
+                    Text("Tor Network")
+                        .font(.system(size: 15))
+                }
+
+                Spacer()
+
+                HStack(spacing: 5) {
+                    Circle()
+                        .fill(statusColor)
+                        .frame(width: 6, height: 6)
+                    Text(statusLabel)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(statusColor)
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 4)
+                .background(statusColor.opacity(0.1), in: Capsule())
+            }
+
+            HStack {
+                if case .connecting = torManager.state {
+                    ProgressView()
+                        .controlSize(.small)
+                        .padding(.trailing, 4)
+                    Text("Bootstrapping Tor...")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                } else if torManager.isRunning {
+                    Button {
+                        torManager.stop()
+                    } label: {
+                        Text("Disconnect")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(.red)
+                    }
+                } else {
+                    Button {
+                        torManager.start()
+                    } label: {
+                        Text("Connect to Tor")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(.purple)
+                    }
+                }
+
+                Spacer()
+
+                if torManager.isRunning {
+                    Text("SOCKS5 ::\(torManager.socksPort)")
+                        .font(.system(size: 9, design: .monospaced))
+                        .foregroundStyle(.tertiary)
+                }
+            }
+
+            if case .error(let msg) = torManager.state {
+                Text(msg)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.red)
+            }
+        }
+    }
+
+    private var statusColor: Color {
+        switch torManager.state {
+        case .disconnected: return .gray
+        case .connecting: return .orange
+        case .connected: return .green
+        case .error: return .red
+        }
+    }
+
+    private var statusLabel: String {
+        switch torManager.state {
+        case .disconnected: return "Off"
+        case .connecting: return "Connecting"
+        case .connected: return "Connected"
+        case .error: return "Error"
         }
     }
 }

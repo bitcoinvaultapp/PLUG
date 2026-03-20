@@ -79,11 +79,11 @@ final class HTLCVM: ObservableObject {
         guard !isLoading else { return }
         guard !name.isEmpty,
               let timeout = Int(timeoutBlocks), timeout > currentBlockHeight,
-              let amountSats = UInt64(amount), amountSats > 0,
               !receiverPubkey.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             error = "Invalid parameters"
             return
         }
+        let amountSats = UInt64(amount) ?? 0
 
         isLoading = true
 
@@ -159,6 +159,14 @@ final class HTLCVM: ObservableObject {
         // Store the receiver xpub if provided (needed for V2 Ledger signing)
         if ExtendedPublicKey.fromBase58(receiverInput) != nil {
             contract.receiverXpub = receiverInput
+        }
+
+        // Check duplicate address
+        let existing = ContractStore.shared.contractsForNetwork(isTestnet: isTestnet)
+        if existing.contains(where: { $0.address == contract.address }) {
+            error = "A contract with this address already exists."
+            isLoading = false
+            return
         }
 
         // Save preimage to keychain as backup before it's lost

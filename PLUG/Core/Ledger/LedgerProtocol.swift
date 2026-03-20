@@ -189,13 +189,17 @@ struct LedgerProtocol {
         guard result.count >= totalLength else { return .malformed }
         result = Data(result.prefix(totalLength))
 
+        #if DEBUG
         print("[Ledger] Reassembled \(totalLength) bytes from \(frames.count) frames")
+        #endif
 
         // Check status word (last 2 bytes)
         guard result.count >= 2 else { return .malformed }
         let sw = UInt16(result[result.count - 2]) << 8 | UInt16(result[result.count - 1])
 
+        #if DEBUG
         print("[Ledger] Status word: 0x\(String(format: "%04X", sw))")
+        #endif
 
         // Remove status word from data
         let payload = Data(result.prefix(result.count - 2))
@@ -204,10 +208,14 @@ struct LedgerProtocol {
         if sw == 0x9000 {
             return .success(payload)
         } else if sw == 0xE000 {
+            #if DEBUG
             print("[Ledger] Device requests client command")
+            #endif
             return .interrupted(payload)
         } else {
+            #if DEBUG
             print("[Ledger] Error status: 0x\(String(format: "%04X", sw))")
+            #endif
             return .error(sw)
         }
     }

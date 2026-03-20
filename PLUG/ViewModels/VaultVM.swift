@@ -82,11 +82,11 @@ final class VaultVM: ObservableObject {
         guard !isLoading else { return }
 
         guard !name.isEmpty,
-              let lockHeight = Int(lockBlockHeight), lockHeight > currentBlockHeight,
-              let amountSats = UInt64(amount), amountSats > 0 else {
+              let lockHeight = Int(lockBlockHeight), lockHeight > currentBlockHeight else {
             error = "Invalid parameters"
             return
         }
+        let amountSats = UInt64(amount) ?? 0
 
         isLoading = true
 
@@ -117,6 +117,15 @@ final class VaultVM: ObservableObject {
         }
 
         let (scriptData, witnessHash, address) = result
+
+        // Check if another contract already uses this address
+        let existingContracts = ContractStore.shared.contractsForNetwork(isTestnet: isTestnet)
+        if existingContracts.contains(where: { $0.address == address }) {
+            error = "A contract with this address already exists. Use a different key index or lock height."
+            isLoading = false
+            return
+        }
+
         let contract = Contract.newVault(
             name: name,
             script: scriptData,

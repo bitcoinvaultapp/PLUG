@@ -10,160 +10,247 @@ struct PoolView: View {
     @State private var contractToDelete: Contract?
     @State private var showDeleteAlert = false
 
+    @State private var selectedContract: Contract?
+    @State private var showDetail = false
+
     var body: some View {
-            List {
-                Section {
-                    if vm.contracts.isEmpty {
-                        VStack(spacing: 12) {
-                            Image(systemName: "person.3.fill")
-                                .font(.system(size: 40))
-                                .foregroundStyle(.secondary)
-                            Text("No Pool")
-                                .font(.headline)
-                            Text("Create an M-of-N multisig")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
+        List {
+            VStack(spacing: 6) {
+                Image(systemName: "person.3.sequence.fill")
+                    .font(.system(size: 28))
+                    .symbolRenderingMode(.palette)
+                    .foregroundStyle(.blue, .blue.opacity(0.7), .blue.opacity(0.4))
+                Text("M-of-N multisig. Multiple signatures required to spend.")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 8)
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+
+            if vm.contracts.isEmpty {
+                VStack(spacing: 12) {
+                    Image(systemName: "person.3.fill")
+                        .font(.system(size: 32))
+                        .foregroundStyle(.secondary)
+                    Text("No Pool")
+                        .font(.system(size: 15, weight: .semibold))
+                    Text("Create an M-of-N multisig")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 40)
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+            } else {
+                ForEach(vm.contracts) { contract in
+                    poolListRow(contract)
+                        .listRowBackground(Color.clear)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            selectedContract = contract
+                            showDetail = true
                         }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 32)
-                    } else {
-                        ForEach(vm.contracts) { contract in
-                            poolRow(contract)
-                        }
-                        .onDelete { indexSet in
-                            if let i = indexSet.first {
-                                contractToDelete = vm.contracts[i]
-                                showDeleteAlert = true
-                            }
-                        }
-                    }
                 }
             }
-            .navigationTitle("Multisig Pool")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    Menu {
-                        Button("New Pool") { showCreate = true }
-                        Button("Import PSBT") { showImportPSBT = true }
-                    } label: {
-                        Image(systemName: "plus")
-                    }
+        }
+        .listStyle(.plain)
+        .navigationTitle("Multisig Pool")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Menu {
+                    Button("New Pool") { showCreate = true }
+                    Button("Import PSBT") { showImportPSBT = true }
+                } label: {
+                    Image(systemName: "plus")
                 }
             }
-            .sheet(isPresented: $showCreate, onDismiss: { if vm.createdContract != nil { showCreated = true } }) { createSheet }
-            .sheet(isPresented: $showCreated) {
-                ContractCreatedSheet(contract: vm.createdContract!, currentBlockHeight: 0, onDismiss: { showCreated = false; vm.createdContract = nil })
+        }
+        .navigationDestination(isPresented: $showDetail) {
+            if let contract = selectedContract {
+                poolDetailPage(contract)
             }
-            .sheet(isPresented: $showImportPSBT) { importPSBTSheet }
-            .alert("Delete contract?", isPresented: $showDeleteAlert) {
-                Button("Cancel", role: .cancel) { contractToDelete = nil }
-                Button("Delete", role: .destructive) {
-                    if let c = contractToDelete {
-                        vm.delete(id: c.id)
-                        contractToDelete = nil
-                    }
-                }
-            } message: {
+        }
+        .navigationDestination(isPresented: $showCreate) { createPage }
+        .sheet(isPresented: $showCreated) {
+            ContractCreatedSheet(contract: vm.createdContract!, currentBlockHeight: 0, onDismiss: { showCreated = false; vm.createdContract = nil })
+        }
+        .navigationDestination(isPresented: $showImportPSBT) { importPSBTPage }
+        .alert("Delete contract?", isPresented: $showDeleteAlert) {
+            Button("Cancel", role: .cancel) { contractToDelete = nil }
+            Button("Delete", role: .destructive) {
                 if let c = contractToDelete {
-                    let balance = vm.fundedAmount(for: c)
-                    if balance > 0 {
-                        Text("This contract holds \(balance) sats! Make sure you have backed up the address and the witness script before deleting. Funds will be unrecoverable without this information.")
-                    } else {
-                        Text("This action is irreversible.")
-                    }
+                    vm.delete(id: c.id)
+                    contractToDelete = nil
+                    showDetail = false
+                    selectedContract = nil
                 }
             }
-            .task { await vm.refresh() }
+        } message: {
+            if let c = contractToDelete {
+                let balance = vm.fundedAmount(for: c)
+                if balance > 0 {
+                    Text("This contract holds \(balance) sats! Ensure you have the address and witness script backed up.")
+                } else {
+                    Text("This action is irreversible.")
+                }
+            }
+        }
+        .task {
+            await vm.refresh()
+        }
     }
 
-    private func poolRow(_ contract: Contract) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Image(systemName: "person.3.fill")
-                    .foregroundStyle(.blue)
-                Text(contract.name)
-                    .font(.headline)
+    private func poolListRow(_ contract: Contract) -> some View {
+        let funded = vm.fundedAmount(for: contract)
+        let mOfN: String = {
+            if let m = contract.multisigM, let n = contract.multisigPubkeys?.count {
+                return "\(m)-of-\(n)"
             }
+            return "Active"
+        }()
 
-            HStack {
-                Text("\(contract.amount) sats")
-                    .font(.subheadline.monospacedDigit())
-                Spacer()
-                if let m = contract.multisigM, let n = contract.multisigPubkeys?.count {
-                    Text("\(m)-of-\(n)")
-                        .font(.caption)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(.blue.opacity(0.1), in: Capsule())
-                }
-            }
-
-            // Signature requirement reminder
-            if let m = contract.multisigM {
-                Text("Requires \(m) signatures to spend")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-
-            // Funded balance with progress bar
-            let funded = vm.fundedAmount(for: contract)
-            let target = contract.amount
-            let progress = vm.progress(for: contract)
-            let pct = Int(progress * 100)
+        return HStack(spacing: 10) {
+            Circle()
+                .fill(Color.blue)
+                .frame(width: 7, height: 7)
 
             VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    Text("\(funded) / \(target) sats")
-                        .font(.caption.monospacedDigit())
-                    Spacer()
-                    Text("\(pct)%")
-                        .font(.caption.monospacedDigit())
-                        .foregroundStyle(.secondary)
-                }
-
-                ProgressView(value: progress)
-                    .tint(progress >= 1.0 ? .green : .orange)
-            }
-
-            if let confs = vm.confirmations[contract.address], confs > 0 {
-                let label = confs >= 6 ? "Confirmed" : "\(confs)/6 confirmations"
-                let color: Color = confs >= 6 ? .green : .orange
-                Text(label)
-                    .font(.caption2)
-                    .foregroundStyle(color)
-            }
-
-            if let keys = contract.multisigPubkeys {
-                ForEach(Array(keys.enumerated()), id: \.offset) { i, key in
-                    Text("Signer \(i+1): \(key.prefix(16))...")
-                        .font(.system(.caption2, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            Button {
-                UIPasteboard.general.string = contract.address
-                copiedId = "\(contract.id):address"
-                DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                    if copiedId == "\(contract.id):address" {
-                        copiedId = ""
+                HStack(spacing: 6) {
+                    Text(contract.name)
+                        .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                    Text("MULTI")
+                        .font(.system(size: 8, weight: .bold, design: .monospaced))
+                        .foregroundStyle(.blue.opacity(0.7))
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 1.5)
+                        .background(Color.blue.opacity(0.1), in: Capsule())
+                    if let idx = contract.keyIndex {
+                        Text("#\(idx)")
+                            .font(.system(size: 9, weight: .medium, design: .monospaced))
+                            .foregroundStyle(.tertiary)
                     }
                 }
-            } label: {
-                HStack {
-                    Image(systemName: copiedId == "\(contract.id):address" ? "checkmark" : "doc.on.doc")
-                    Text(copiedId == "\(contract.id):address" ? "Copied!" : "Copy address")
-                }
-                .font(.caption.bold())
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 8)
-                .background(Color(.systemGray5))
-                .cornerRadius(8)
+                Text(mOfN)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.blue)
             }
-            .buttonStyle(.plain)
+
+            Spacer()
+
+            Text(BalanceUnit.format(funded))
+                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                .foregroundStyle(.secondary)
+
+            Image(systemName: "chevron.right")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(.quaternary)
         }
         .padding(.vertical, 4)
+    }
+
+    // MARK: - Detail Sheet
+
+    private func poolDetailPage(_ contract: Contract) -> some View {
+        let funded = vm.fundedAmount(for: contract)
+
+        return ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    HStack {
+                        Image(systemName: "person.3.fill")
+                            .font(.title3)
+                            .foregroundStyle(.blue)
+                        Text(contract.name)
+                            .font(.title2.bold())
+                        Spacer()
+                        if let m = contract.multisigM, let n = contract.multisigPubkeys?.count {
+                            Text("\(m)-of-\(n)")
+                                .font(.caption.bold())
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 5)
+                                .background(Color.blue.opacity(0.15), in: Capsule())
+                                .foregroundStyle(.blue)
+                        }
+                    }
+
+                    // Balance
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(BalanceUnit.format(funded))
+                            .font(.system(size: 28, weight: .bold, design: .monospaced))
+                        Text("funded")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
+
+                    // Signers
+                    if let keys = contract.multisigPubkeys {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Signers")
+                                .font(.caption.bold())
+                                .foregroundStyle(.secondary)
+                            ForEach(Array(keys.enumerated()), id: \.offset) { i, key in
+                                Text("Signer \(i+1): \(key.prefix(24))...")
+                                    .font(.system(size: 10, design: .monospaced))
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        .padding()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
+                    }
+
+                    // Address
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Address").font(.caption.bold()).foregroundStyle(.secondary)
+                        Text(contract.address).font(.system(.caption, design: .monospaced)).textSelection(.enabled)
+                    }
+                    .padding()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
+
+                    // Actions
+                    VStack(spacing: 10) {
+                        Button {
+                            UIPasteboard.general.string = contract.address
+                            copiedId = "\(contract.id):address"
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { copiedId = "" }
+                        } label: {
+                            HStack {
+                                Image(systemName: copiedId == "\(contract.id):address" ? "checkmark" : "doc.on.doc")
+                                Text(copiedId == "\(contract.id):address" ? "Copied!" : "Copy Address")
+                            }
+                            .font(.caption.bold())
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 10)
+                            .background(Color(.systemGray5), in: RoundedRectangle(cornerRadius: 10))
+                        }
+                        .buttonStyle(.plain)
+
+                        Button(role: .destructive) {
+                            contractToDelete = contract
+                            showDeleteAlert = true
+                        } label: {
+                            HStack { Image(systemName: "trash"); Text("Delete") }
+                            .font(.caption.bold())
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 10)
+                            .background(Color.red.opacity(0.1), in: RoundedRectangle(cornerRadius: 10))
+                            .foregroundStyle(.red)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding()
+            }
+        .navigationTitle("Pool Details")
+        .navigationBarTitleDisplayMode(.inline)
     }
 
     // MARK: - Create Sheet
@@ -196,8 +283,7 @@ struct PoolView: View {
         return parsed.sorted(by: { $0.hex < $1.hex }).map { $0.hex }
     }
 
-    private var createSheet: some View {
-        NavigationStack {
+    private var createPage: some View {
             Form {
                 Section("Name") {
                     TextField("My Pool", text: $vm.name)
@@ -292,11 +378,6 @@ struct PoolView: View {
                     }
                 }
 
-                Section("Amount (sats)") {
-                    TextField("Amount", text: $vm.amount)
-                        .keyboardType(.numberPad)
-                }
-
                 if let error = vm.error {
                     Section { Text(error).foregroundStyle(.red) }
                 }
@@ -308,23 +389,16 @@ struct PoolView: View {
                             if vm.createdContract != nil { showCreate = false }
                         }
                     }
-                    .disabled(!poolMValid || poolDuplicateKeys || vm.name.isEmpty || vm.amount.isEmpty)
+                    .disabled(!poolMValid || poolDuplicateKeys || vm.name.isEmpty)
                 }
             }
             .navigationTitle("New Pool")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { showCreate = false }
-                }
-            }
-        }
     }
 
     // MARK: - Import PSBT Sheet
 
-    private var importPSBTSheet: some View {
-        NavigationStack {
+    private var importPSBTPage: some View {
             Form {
                 Section("PSBT Base64") {
                     TextEditor(text: $vm.importedPSBTBase64)
@@ -349,11 +423,5 @@ struct PoolView: View {
             }
             .navigationTitle("Import PSBT")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Close") { showImportPSBT = false }
-                }
-            }
-        }
     }
 }

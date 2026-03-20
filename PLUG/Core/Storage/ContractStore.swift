@@ -62,6 +62,10 @@ final class ContractStore: ObservableObject {
         contracts.filter { $0.type == .channel }
     }
 
+    var atomicSwaps: [Contract] {
+        contracts.filter { $0.swapId != nil }
+    }
+
     func contractsForNetwork(isTestnet: Bool) -> [Contract] {
         contracts.filter { $0.isTestnet == isTestnet }
     }

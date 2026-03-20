@@ -5,233 +5,341 @@ struct VaultView: View {
     @State private var showCreate = false
     @State private var showSpend = false
     @State private var showCreated = false
-    /// Tracks which button was copied: "contractId:field" to avoid all cards showing "Copied!"
+    @State private var selectedContract: Contract?
+    @State private var showDetail = false
     @State private var copiedId = ""
     @State private var contractToDelete: Contract?
     @State private var showDeleteAlert = false
 
     var body: some View {
-            List {
-                // Existing vaults
-                if vm.contracts.isEmpty {
-                    VStack(spacing: 12) {
-                        Image(systemName: "lock.shield")
-                            .font(.system(size: 40))
-                            .foregroundStyle(.secondary)
-                        Text("No Vault")
-                            .font(.headline)
-                        Text("Lock bitcoins over time")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 32)
-                } else {
-                    ForEach(vm.contracts) { contract in
-                        vaultRow(contract)
-                    }
-                    .onDelete { indexSet in
-                        if let i = indexSet.first {
-                            contractToDelete = vm.contracts[i]
-                            showDeleteAlert = true
-                        }
-                    }
-                }
-            }
-            .navigationTitle("Vaults")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    Button { showCreate = true } label: {
-                        Image(systemName: "plus")
-                    }
-                }
-            }
-            .sheet(isPresented: $showCreate, onDismiss: {
-                if vm.createdContract != nil { showCreated = true }
-            }) { createSheet }
-            .sheet(isPresented: $showCreated) {
-                if let contract = vm.createdContract {
-                    ContractCreatedSheet(
-                        contract: contract,
-                        currentBlockHeight: vm.currentBlockHeight,
-                        onDismiss: {
-                            showCreated = false
-                            vm.createdContract = nil
-                        }
-                    )
-                }
-            }
-            .sheet(isPresented: $showSpend) { spendSheet }
-            .alert("Delete contract?", isPresented: $showDeleteAlert) {
-                Button("Cancel", role: .cancel) { contractToDelete = nil }
-                Button("Delete", role: .destructive) {
-                    if let c = contractToDelete {
-                        let balance = vm.fundedAmount(for: c)
-                        if balance > 0 {
-                            // Still has funds — warn harder but allow
-                        }
-                        vm.delete(id: c.id)
-                        contractToDelete = nil
-                    }
-                }
-            } message: {
-                if let c = contractToDelete {
-                    let balance = vm.fundedAmount(for: c)
-                    if balance > 0 {
-                        Text("This contract holds \(balance) sats! Make sure you have backed up the address and the witness script before deleting. Funds will be unrecoverable without this information.")
-                    } else {
-                        Text("This action is irreversible.")
-                    }
-                }
-            }
-            .refreshable { await vm.refresh() }
-            .task { await vm.refresh() }
-    }
-
-    private func vaultRow(_ contract: Contract) -> some View {
-        let funded = vm.fundedAmount(for: contract)
-        let target = contract.amount
-        let progress = vm.progress(for: contract)
-        let pct = Int(progress * 100)
-
-        return VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Image(systemName: vm.isUnlocked(contract) ? "lock.open.fill" : "lock.fill")
-                    .foregroundStyle(vm.isUnlocked(contract) ? .green : .orange)
-                Text(contract.name)
-                    .font(.headline)
-                Spacer()
-                if let _ = contract.lockBlockHeight {
-                    let remaining = vm.blocksRemaining(for: contract)
-                    if remaining > 0 {
-                        Text(BlockDurationPicker.blocksToHumanTime(blocks: remaining))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    } else {
-                        Text("Unlocked")
-                            .font(.caption)
-                            .foregroundStyle(.green)
-                    }
-                }
-            }
-
-            // Funded amount vs target
-            HStack(alignment: .firstTextBaseline) {
-                Text("\(funded)")
-                    .font(.title2.bold().monospacedDigit())
-                Text("/ \(target) sats")
-                    .font(.subheadline.monospacedDigit())
+        List {
+            // Hero
+            VStack(spacing: 6) {
+                Image(systemName: "lock.shield.fill")
+                    .font(.system(size: 32))
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(.orange)
+                Text("Lock your sats until a specific block height. No one can spend before then.")
+                    .font(.system(size: 13))
                     .foregroundStyle(.secondary)
-                Spacer()
-                Text("\(pct)%")
-                    .font(.subheadline.bold().monospacedDigit())
-                    .foregroundStyle(progress >= 1.0 ? .green : .orange)
+                    .multilineTextAlignment(.center)
             }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 8)
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
 
-            // Progress bar
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(Color.gray.opacity(0.2))
-                        .frame(height: 6)
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(progress >= 1.0 ? Color.green : Color.orange)
-                        .frame(width: geo.size.width * progress, height: 6)
-                }
-            }
-            .frame(height: 6)
-
-            if let confs = vm.confirmations[contract.address], confs > 0 {
-                let label = confs >= 6 ? "Confirmed" : "\(confs)/6 confirmations"
-                let color: Color = confs >= 6 ? .green : .orange
-                Text(label)
-                    .font(.caption2)
-                    .foregroundStyle(color)
-            }
-
-            Text(contract.address)
-                .font(.system(.caption2, design: .monospaced))
-                .foregroundStyle(.secondary)
-                .textSelection(.enabled)
-
-            if let idx = contract.keyIndex {
-                HStack(spacing: 4) {
-                    Image(systemName: "key.fill")
-                        .font(.system(size: 9))
+            if vm.contracts.isEmpty {
+                VStack(spacing: 12) {
+                    Image(systemName: "lock.shield")
+                        .font(.system(size: 32))
                         .foregroundStyle(.secondary)
-                    Text("Key index: \(idx)")
-                        .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    Text("No Vaults")
+                        .font(.system(size: 15, weight: .semibold))
+                    Text("Lock bitcoins over time")
+                        .font(.system(size: 12))
                         .foregroundStyle(.secondary)
-                    if contract.isTaproot {
-                        Text("P2TR")
-                            .font(.system(size: 8, weight: .bold, design: .monospaced))
-                            .foregroundStyle(.orange)
-                    }
                 }
-            }
-
-            VStack(spacing: 8) {
-                // Primary: Spend (only when unlocked)
-                if vm.isUnlocked(contract) {
-                    Button {
-                        Task {
-                            await vm.prepareSpend(contract: contract)
-                            showSpend = true
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 40)
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+            } else {
+                ForEach(vm.contracts) { contract in
+                    contractRow(contract)
+                        .listRowBackground(Color.clear)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            selectedContract = contract
+                            showDetail = true
                         }
-                    } label: {
-                        HStack {
-                            Image(systemName: "arrow.up.circle.fill")
-                            Text("Spend")
-                        }
-                        .font(.subheadline.bold())
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
-                        .background(Color.green.opacity(0.15))
-                        .foregroundStyle(.green)
-                        .cornerRadius(8)
-                    }
-                    .buttonStyle(.plain)
-                }
-
-                HStack(spacing: 8) {
-                    Button {
-                        UIPasteboard.general.string = contract.address
-                        copiedId = "\(contract.id):address"
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { copiedId = "" }
-                    } label: {
-                        HStack {
-                            Image(systemName: copiedId == "\(contract.id):address" ? "checkmark" : "doc.on.doc")
-                            Text(copiedId == "\(contract.id):address" ? "Copied!" : "Address")
-                        }
-                        .font(.caption.bold())
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
-                        .background(Color(.systemGray5))
-                        .cornerRadius(8)
-                    }
-                    .buttonStyle(.plain)
-
-                    Button {
-                        UIPasteboard.general.string = contract.script.isEmpty ? contract.witnessScript : contract.script
-                        copiedId = "\(contract.id):script"
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { copiedId = "" }
-                    } label: {
-                        HStack {
-                            Image(systemName: copiedId == "\(contract.id):script" ? "checkmark" : "scroll")
-                            Text(copiedId == "\(contract.id):script" ? "Copied!" : "Script")
-                        }
-                        .font(.caption.bold())
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
-                        .background(Color(.systemGray5))
-                        .cornerRadius(8)
-                    }
-                    .buttonStyle(.plain)
                 }
             }
         }
+        .listStyle(.plain)
+        .navigationTitle("Vaults")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button { showCreate = true } label: {
+                    Image(systemName: "plus")
+                }
+            }
+        }
+        .navigationDestination(isPresented: $showDetail) {
+            if let contract = selectedContract {
+                vaultDetailPage(contract)
+            }
+        }
+        .navigationDestination(isPresented: $showCreate) { createPage }
+        .navigationDestination(isPresented: $showSpend) { spendPage }
+        .sheet(isPresented: $showCreated) {
+            if let contract = vm.createdContract {
+                ContractCreatedSheet(
+                    contract: contract,
+                    currentBlockHeight: vm.currentBlockHeight,
+                    onDismiss: {
+                        showCreated = false
+                        vm.createdContract = nil
+                    }
+                )
+            }
+        }
+        .alert("Delete contract?", isPresented: $showDeleteAlert) {
+            Button("Cancel", role: .cancel) { contractToDelete = nil }
+            Button("Delete", role: .destructive) {
+                if let c = contractToDelete {
+                    vm.delete(id: c.id)
+                    contractToDelete = nil
+                    showDetail = false
+                    selectedContract = nil
+                }
+            }
+        } message: {
+            if let c = contractToDelete {
+                let balance = vm.fundedAmount(for: c)
+                if balance > 0 {
+                    Text("This contract holds \(balance) sats! Make sure you have backed up the address and the witness script before deleting. Funds will be unrecoverable without this information.")
+                } else {
+                    Text("This action is irreversible.")
+                }
+            }
+        }
+        .task {
+            await vm.refresh()
+        }
+    }
+
+    // MARK: - Contract Row
+
+    private func contractRow(_ contract: Contract) -> some View {
+        let funded = vm.fundedAmount(for: contract)
+        let unlocked = vm.isUnlocked(contract)
+        let remaining = vm.blocksRemaining(for: contract)
+
+        return HStack(spacing: 10) {
+            Circle()
+                .fill(unlocked ? Color.green : Color.orange)
+                .frame(width: 7, height: 7)
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Text(contract.name)
+                        .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                    Text("CLTV")
+                        .font(.system(size: 8, weight: .bold, design: .monospaced))
+                        .foregroundStyle(.orange.opacity(0.7))
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 1.5)
+                        .background(Color.orange.opacity(0.1), in: Capsule())
+                    if let idx = contract.keyIndex {
+                        Text("#\(idx)")
+                            .font(.system(size: 9, weight: .medium, design: .monospaced))
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+                HStack(spacing: 4) {
+                    Text(unlocked ? "Unlocked" : "Locked")
+                        .foregroundStyle(unlocked ? .green : .orange)
+                    if !unlocked && remaining > 0 {
+                        Text("·").foregroundStyle(.quaternary)
+                        Text(BlockDurationPicker.blocksToHumanTime(blocks: remaining))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .font(.system(size: 10))
+            }
+
+            Spacer()
+
+            Text(BalanceUnit.format(funded))
+                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                .foregroundStyle(.secondary)
+
+            Image(systemName: "chevron.right")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(.quaternary)
+        }
         .padding(.vertical, 4)
+    }
+
+    // MARK: - Detail Sheet
+
+    private func vaultDetailPage(_ contract: Contract) -> some View {
+        let funded = vm.fundedAmount(for: contract)
+
+        return ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    // Status header
+                    HStack {
+                        Image(systemName: vm.isUnlocked(contract) ? "lock.open.fill" : "lock.fill")
+                            .font(.title3)
+                            .foregroundStyle(vm.isUnlocked(contract) ? .green : .orange)
+                        Text(contract.name)
+                            .font(.title2.bold())
+                        Spacer()
+                        if let _ = contract.lockBlockHeight {
+                            let remaining = vm.blocksRemaining(for: contract)
+                            if remaining > 0 {
+                                Text(BlockDurationPicker.blocksToHumanTime(blocks: remaining))
+                                    .font(.caption)
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 5)
+                                    .background(Color.orange.opacity(0.15), in: Capsule())
+                                    .foregroundStyle(.orange)
+                            } else {
+                                Text("Unlocked")
+                                    .font(.caption.bold())
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 5)
+                                    .background(Color.green.opacity(0.15), in: Capsule())
+                                    .foregroundStyle(.green)
+                            }
+                        }
+                    }
+
+                    // Balance
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(BalanceUnit.format(funded))
+                            .font(.system(size: 28, weight: .bold, design: .monospaced))
+                        Text("sats")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
+
+                    if let confs = vm.confirmations[contract.address], confs > 0 {
+                        let label = confs >= 6 ? "Confirmed" : "\(confs)/6 confirmations"
+                        let color: Color = confs >= 6 ? .green : .orange
+                        Text(label)
+                            .font(.caption2)
+                            .foregroundStyle(color)
+                    }
+
+                    // Address
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Address")
+                            .font(.caption.bold())
+                            .foregroundStyle(.secondary)
+                        Text(contract.address)
+                            .font(.system(.caption, design: .monospaced))
+                            .textSelection(.enabled)
+                    }
+                    .padding()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
+
+                    // Script
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Witness Script")
+                            .font(.caption.bold())
+                            .foregroundStyle(.secondary)
+                        Text(contract.witnessScript.isEmpty ? contract.script : contract.witnessScript)
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                            .lineLimit(4)
+                    }
+                    .padding()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
+
+                    if let idx = contract.keyIndex {
+                        HStack(spacing: 4) {
+                            Image(systemName: "key.fill")
+                                .font(.system(size: 9))
+                                .foregroundStyle(.secondary)
+                            Text("Key index: \(idx)")
+                                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                            if contract.isTaproot {
+                                Text("P2TR")
+                                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                    .foregroundStyle(.orange)
+                            }
+                        }
+                    }
+
+                    // Action buttons
+                    VStack(spacing: 10) {
+                        if vm.isUnlocked(contract) {
+                            Button {
+                                showDetail = false
+                                Task {
+                                    await vm.prepareSpend(contract: contract)
+                                    showSpend = true
+                                }
+                            } label: {
+                                HStack {
+                                    Image(systemName: "arrow.up.circle.fill")
+                                    Text("Spend")
+                                }
+                                .font(.subheadline.bold())
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                                .background(Color.green, in: RoundedRectangle(cornerRadius: 12))
+                                .foregroundStyle(.white)
+                            }
+                            .buttonStyle(.plain)
+                        }
+
+                        HStack(spacing: 10) {
+                            Button {
+                                UIPasteboard.general.string = contract.address
+                                copiedId = "\(contract.id):address"
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 2) { copiedId = "" }
+                            } label: {
+                                HStack {
+                                    Image(systemName: copiedId == "\(contract.id):address" ? "checkmark" : "doc.on.doc")
+                                    Text(copiedId == "\(contract.id):address" ? "Copied!" : "Address")
+                                }
+                                .font(.caption.bold())
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 10)
+                                .background(Color(.systemGray5), in: RoundedRectangle(cornerRadius: 10))
+                            }
+                            .buttonStyle(.plain)
+
+                            Button {
+                                secureCopy(contract.script.isEmpty ? contract.witnessScript : contract.script)
+                                copiedId = "\(contract.id):script"
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 2) { copiedId = "" }
+                            } label: {
+                                HStack {
+                                    Image(systemName: copiedId == "\(contract.id):script" ? "checkmark" : "scroll")
+                                    Text(copiedId == "\(contract.id):script" ? "Copied!" : "Script")
+                                }
+                                .font(.caption.bold())
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 10)
+                                .background(Color(.systemGray5), in: RoundedRectangle(cornerRadius: 10))
+                            }
+                            .buttonStyle(.plain)
+                        }
+
+                        Button(role: .destructive) {
+                            contractToDelete = contract
+                            showDeleteAlert = true
+                        } label: {
+                            HStack {
+                                Image(systemName: "trash")
+                                Text("Delete")
+                            }
+                            .font(.caption.bold())
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 10)
+                            .background(Color.red.opacity(0.1), in: RoundedRectangle(cornerRadius: 10))
+                            .foregroundStyle(.red)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding()
+            }
+        .navigationTitle("Vault Details")
+        .navigationBarTitleDisplayMode(.inline)
     }
 
     // MARK: - Create Sheet
@@ -251,9 +359,8 @@ struct VaultView: View {
         return script.p2wshAddress(isTestnet: vm.isTestnet)
     }
 
-    private var createSheet: some View {
-        NavigationStack {
-            Form {
+    private var createPage: some View {
+        Form {
                 Section("Name") {
                     TextField("My Vault", text: $vm.name)
                 }
@@ -268,11 +375,6 @@ struct VaultView: View {
                     mode: .absoluteCLTV,
                     presets: [("1h", 6), ("1d", 144), ("1w", 1008), ("1mo", 4320), ("6mo", 25920), ("1y", 52560)]
                 )
-
-                Section("Amount (sats)") {
-                    TextField("Amount", text: $vm.amount)
-                        .keyboardType(.numberPad)
-                }
 
                 KeyIndexPicker(index: $vm.keyIndex, maxIndex: 19)
 
@@ -308,27 +410,23 @@ struct VaultView: View {
                             }
                         }
                     }
-                    .disabled(vm.name.isEmpty || vm.lockBlockHeight.isEmpty || vm.amount.isEmpty || !vaultLockHeightValid)
+                    .disabled(vm.name.isEmpty || vm.lockBlockHeight.isEmpty || !vaultLockHeightValid)
                 }
             }
-            .navigationTitle("New Vault")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { showCreate = false }
-                }
-            }
+        .navigationTitle("New Vault")
+        .navigationBarTitleDisplayMode(.inline)
+        .onDisappear {
+            if vm.createdContract != nil { showCreated = true }
         }
     }
 
-    // MARK: - Spend Sheet
+    // MARK: - Spend Page
 
-    private var spendSheet: some View {
-        NavigationStack {
-            Form {
+    private var spendPage: some View {
+        Form {
                 if let contract = vm.selectedContract {
                     Section("Available balance") {
-                        Text("\(vm.spendableBalance) sats")
+                        Text(BalanceUnit.format(vm.spendableBalance))
                             .font(.title2.monospacedDigit().bold())
                     }
 
@@ -367,7 +465,7 @@ struct VaultView: View {
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                             Spacer()
-                            Text("\(vm.netSpendAmount) sats")
+                            Text(BalanceUnit.format(vm.netSpendAmount))
                                 .font(.caption.monospacedDigit().bold())
                         }
                     }
@@ -391,7 +489,6 @@ struct VaultView: View {
                             .font(.caption)
                         }
                     } else if let txHex = vm.txForReview {
-                        // Transaction ready for review before broadcast
                         Section("Transaction ready") {
                             HStack {
                                 Image(systemName: "checkmark.circle.fill")
@@ -432,7 +529,7 @@ struct VaultView: View {
 
                             if let psbt = vm.psbtForReview {
                                 Button("Export PSBT") {
-                                    UIPasteboard.general.string = psbt
+                                    secureCopy(psbt)
                                 }
                                 .font(.caption)
                             }
@@ -465,13 +562,7 @@ struct VaultView: View {
                     }
                 }
             }
-            .navigationTitle("Spend Vault")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Close") { showSpend = false }
-                }
-            }
-        }
+        .navigationTitle("Spend Vault")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }

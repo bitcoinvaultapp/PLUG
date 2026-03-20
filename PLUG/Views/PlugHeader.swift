@@ -1,11 +1,12 @@
 import SwiftUI
 
-/// Shared "PLUG." branded header.
-/// Home shows "PLUG. Home" + badge + connect + settings.
-/// Other tabs show only "PLUG. PageName".
+/// Shared "PLUG." branded header with connection status.
+/// Shows on all tabs. Tapping the connection pill opens LedgerView.
 struct PlugHeader: View {
     let pageName: String
 
+    @ObservedObject private var ledger = LedgerManager.shared
+    @ObservedObject private var tor = TorManager.shared
     @State private var showLedger = false
     @State private var showSettings = false
 
@@ -39,21 +40,18 @@ struct PlugHeader: View {
 
             Spacer()
 
-            if isHome {
-                HStack(spacing: 12) {
-                    Button {
-                        showLedger = true
-                    } label: {
-                        HStack(spacing: 6) {
-                            Circle()
-                                .fill(LedgerManager.shared.state == .connected ? Color.green : Color.orange)
-                                .frame(width: 8, height: 8)
-                            Text(LedgerManager.shared.state == .connected ? "Connected" : "Connect")
-                                .font(.system(size: 13, weight: .medium))
-                        }
-                        .foregroundStyle(.primary)
-                    }
+            HStack(spacing: 8) {
+                // Tor pill — always visible
+                torPill
 
+                // Ledger connection pill — visible on ALL tabs
+                Button {
+                    showLedger = true
+                } label: {
+                    connectionPill
+                }
+
+                if isHome {
                     Button {
                         showSettings = true
                     } label: {
@@ -62,16 +60,108 @@ struct PlugHeader: View {
                             .foregroundStyle(.secondary)
                     }
                 }
-                .fixedSize()
-                .padding(.trailing, 4)
-                .navigationDestination(isPresented: $showLedger) {
-                    LedgerView()
-                }
-                .navigationDestination(isPresented: $showSettings) {
-                    SettingsView()
-                }
             }
+            .fixedSize()
+            .padding(.trailing, 4)
         }
         .padding(.vertical, 8)
+        .sheet(isPresented: $showLedger) {
+            NavigationStack {
+                LedgerView()
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Done") { showLedger = false }
+                        }
+                    }
+            }
+        }
+        .sheet(isPresented: $showSettings) {
+            NavigationStack {
+                SettingsView()
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Done") { showSettings = false }
+                        }
+                    }
+            }
+        }
+    }
+
+    // MARK: - Connection Pill
+
+    @ViewBuilder
+    private var connectionPill: some View {
+        let isConnected = ledger.state == .connected
+        let isWorking = ledger.state == .scanning || ledger.state == .connecting
+
+        HStack(spacing: 5) {
+            Circle()
+                .fill(pillColor)
+                .frame(width: 7, height: 7)
+
+            if isWorking {
+                ProgressView()
+                    .controlSize(.mini)
+            }
+
+            Text(pillLabel)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundColor(pillColor)
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 5)
+        .background(pillColor.opacity(0.1), in: Capsule())
+    }
+
+    private var pillColor: Color {
+        switch ledger.state {
+        case .connected: return .green
+        case .scanning, .connecting: return .orange
+        case .error: return .red
+        default: return .gray
+        }
+    }
+
+    private var pillLabel: String {
+        switch ledger.state {
+        case .connected:
+            return ledger.deviceModel ?? ledger.connectedDevice?.name ?? "Ledger"
+        case .scanning:
+            return "Scanning"
+        case .connecting:
+            return "Connecting"
+        case .error: return "Error"
+        case .disconnected: return "Offline"
+        }
+    }
+
+    // MARK: - Tor Pill
+
+    private var torPill: some View {
+        let color: Color = {
+            switch tor.state {
+            case .connected: return .purple
+            case .connecting: return .orange
+            case .error: return .red
+            case .disconnected: return .gray
+            }
+        }()
+
+        return HStack(spacing: 4) {
+            if tor.state == .connecting {
+                ProgressView()
+                    .controlSize(.mini)
+            } else {
+                Circle()
+                    .fill(color)
+                    .frame(width: 6, height: 6)
+            }
+            Text("Tor")
+                .font(.system(size: 10, weight: .medium))
+                .foregroundStyle(color)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 4)
+        .background(color.opacity(0.1), in: Capsule())
     }
 }

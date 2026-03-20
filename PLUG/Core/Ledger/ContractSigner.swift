@@ -265,7 +265,9 @@ struct ContractSigner {
             walletHmac = hmacData
         } else {
             // Need to register
+            #if DEBUG
             print("[ContractSigner] Registering wallet policy: \(policy.descriptorTemplate)")
+            #endif
             let (_, hmac) = try await LedgerSigningV2.registerWallet(policy: policy)
             walletHmac = hmac
             updatedContract.walletPolicyHmac = hmac.hex

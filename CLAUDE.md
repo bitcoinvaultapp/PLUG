@@ -46,11 +46,11 @@ pytest --device nanox --backend ledgercomm  # Run on physical device
 
 **MVVM + Swift Concurrency** with `@MainActor` ViewModels and `@Published` state.
 
-- **Entry point**: `PLUGApp.swift` — routes to onboarding or 5-tab main view (Home, Wallet, Contracts, Learn, Script). Runs keychain migration on version bump (iOS keychain persists across app deletion). Current migration: v3 (full keychain wipe for demo mode removal).
-- **Branding**: All tabs use `PlugHeader(pageName:)` — displays "PLUG." with orange dot + page name. Home shows TESTNET badge + Connect + Settings. Other tabs show only "PLUG. PageName".
+- **Entry point**: `PLUGApp.swift` — routes to onboarding or 5-tab main view (Home, Wallet, Contracts, Learn, Script). Runs keychain migration on version bump (iOS keychain persists across app deletion). Current migration: v4 (wallet-only wipe, preserves contracts). Global disconnect banner in `MainTabView` — red slide-down alert when Ledger drops unexpectedly, auto-dismisses after 4s.
+- **Branding**: All tabs use `PlugHeader(pageName:)` — displays "PLUG." with orange dot + page name. Home shows TESTNET badge + Settings gear. **All tabs** show a reactive connection pill (green "Ledger" / orange "Scanning" / gray "Offline" / red "Error") via `@ObservedObject` on `LedgerManager.shared`. Tapping the pill opens LedgerView from any tab.
 - **Language**: English only. All user-facing strings are in English.
 - **No demo mode**: Removed. App requires a real Ledger connection. Testnet is the dev environment.
-- **Models/Models.swift** — UTXO, Transaction, Contract (with V2 wallet policy fields, Taproot fields: `isTaproot`, `taprootInternalKey`, `taprootMerkleRoot`, `taprootScripts`, `scriptPubKey`, `keyIndex`), WalletAddress (with `.Status` enum: fresh/funded/used, `Hashable`), BlockchainInfo, FeeEstimate, etc.
+- **Models/Models.swift** — UTXO, Transaction (with `witness` on TxInput for preimage extraction), Contract (with V2 wallet policy fields, Taproot fields: `isTaproot`, `taprootInternalKey`, `taprootMerkleRoot`, `taprootScripts`, `scriptPubKey`, `keyIndex`, Atomic Swap fields: `swapId`, `swapRole`, `counterpartyHTLCAddress`, `swapState`), WalletAddress (with `.Status` enum: fresh/funded/used, `Hashable`), DashboardAlert (uses `contractId` for unique IDs), BlockchainInfo, FeeEstimate, etc.
 - **Core/Bitcoin/** — Bitcoin protocol logic:
   - `PSBTBuilder` — BIP174/BIP371 PSBT construction with witness UTXOs, BIP32 derivation maps, and Taproot input keys (tapInternalKey, tapMerkleRoot, tapLeafScript, tapBip32Derivation)
   - `SpendManager` — All contract spend paths (P2WPKH, CLTV, CSV, multisig, HTLC, channels, P2TR key-path, P2TR script-path) with correct sequence/locktime/witness stacks
@@ -62,15 +62,16 @@ pytest --device nanox --backend ledgercomm  # Run on physical device
   - `TaprootBuilder` — BIP340/341/342: tagged hashes, MAST construction, key tweaking, control block, P2TR address generation
   - `MuSig2` — Key aggregation, coefficient calculation, session management (signing deferred to Ledger)
 - **Core/Ledger/** — Hardware wallet integration:
-  - `LedgerManager` — CoreBluetooth BLE transport, APDU framing (tag=0x05, MTU=156), xpub retrieval with coin_type detection, master fingerprint via INS=0x05
+  - `LedgerManager` — Singleton (`LedgerManager.shared`), `ObservableObject`. CoreBluetooth BLE transport, APDU framing (tag=0x05, MTU=156), xpub retrieval with coin_type detection, master fingerprint via INS=0x05. Published state: `.disconnected`, `.scanning`, `.connecting`, `.connected`, `.error(String)`. No auto-reconnect — user must manually rescan after disconnect.
   - `LedgerProtocol` (V1, CLA=0xE0) and `LedgerProtocolV2` (CLA=0xE1) — V2 uses merkleized PSBT signing with client command flow
   - `LedgerSigningV2` — V2 SIGN_PSBT + REGISTER_WALLET. PSBTv2 map construction (separate builders for P2WSH and P2TR), Merkle trees, CommandInterpreter, wallet policy serialization. Client command loop: 500 rounds max.
   - `ContractSigner` — High-level orchestrator: builds wallet policy from contract, auto-builds `inputAddressInfos` when not provided (fetches UTXOs, derives scriptPubKey from address), registers if needed, signs via V2 merkleized PSBT. Selects P2WSH or P2TR spend path based on `contract.isTaproot`.
   - `WalletPolicyBuilder` — Generates Ledger V2 wallet policy descriptors: `wsh(...)` for P2WSH, `tr(...)` for Taproot. **Taproot policies use distinct key indices** (`@0` for internal key, `@1` for script key) — Ledger rejects duplicate pubkeys in keysInfo (`is_policy_sane` in `policy.c:2012`).
-- **Core/Network/** — `MempoolAPI` (mempool.space REST + TLS pinning + Tor SOCKS5 proxy), `NetworkConfig` (testnet/mainnet runtime switching), `WebSocketManager` (real-time blocks/price), `TorConfig`
-- **Core/Storage/** — `KeychainStore`, `ContractStore`, `FrozenUTXOStore`, `TxLabelStore`, `AddressBook`, `BIP329Labels`, `BackupManager`, `BiometricStore`
-- **Views/** — Shared components: `PlugHeader`, `BlockDurationPicker`, `ContractCreatedSheet`, `LearnView` (fetches Mastering Bitcoin chapters from GitHub API as rendered HTML in WKWebView), `KeyIndexPicker` (reusable BIP32 key index selector with derivation path display), `CoinJoinView`
-- **ViewModels/** — One per feature: `WalletVM` (gap limit scan, address rotation, coin control, balance display cycling sats/BTC/USD, privacy score, BTC price), `HomeVM`, `VaultVM` (P2WSH only — Taproot disabled for single-key), `InheritanceVM`, `PoolVM`, `HTLCVM`, `ChannelVM`, `CoinJoinVM`, `BackupVM`, `ScriptVM` (step-by-step execution)
+- **Core/Network/** — `MempoolAPI` (mempool.space REST + TLS pinning + Tor SOCKS5 proxy; address queries prefer Tor via `addressRequest()`), `NetworkConfig` (testnet/mainnet runtime switching), `WebSocketManager` (real-time blocks/price), `TorConfig`, `TorManager` (embedded Arti Tor client — starts local SOCKS5 proxy, managed via Settings)
+- **Core/Storage/** — `KeychainStore` (with `kSecAttrSynchronizable: false` explicit, `secureCopy()` for clipboard auto-clear), `ContractStore`, `FrozenUTXOStore`, `TxLabelStore`, `AddressBook`, `BIP329Labels`, `BiometricStore`
+- **Core/Bitcoin/AtomicSwap.swift** — `SwapOffer` struct (Codable, base64 encode/decode for QR), timeout validation, preimage extraction from on-chain witness data
+- **Views/** — Shared components: `PlugHeader`, `BlockDurationPicker`, `ContractCreatedSheet`, `LearnView` (fetches Mastering Bitcoin chapters from GitHub API as rendered HTML in WKWebView), `KeyIndexPicker` (self-contained BIP32 key index selector — fetches address status via MempoolAPI, no WalletVM dependency), `CoinJoinView` (ScrollView cards, role cards, progress stepper, purple theme), `AtomicSwapView` (exchange interface with role cards, amount fields, QR sharing, progress stepper, cyan theme), `HexGridView` (honeycomb hex tiles for contract display), `QRScannerView` (AVFoundation camera QR scanner)
+- **ViewModels/** — One per feature: `WalletVM` (gap limit scan, address rotation, coin control, balance display cycling sats/BTC/USD with haptic + chevron indicator, privacy score, BTC price), `HomeVM` (independent balance via `refreshBalance()`, owns UTXOs/txs/addresses for privacy score + UTXO health + pending tx tracker), `LedgerVM` (SwiftUI layer over `LedgerManager.shared`), `VaultVM` (P2WSH only — Taproot disabled for single-key), `InheritanceVM`, `PoolVM`, `HTLCVM`, `ChannelVM`, `CoinJoinVM`, `AtomicSwapVM` (initiator/responder flows, HTLC creation, polling, preimage extraction), `BackupVM`, `ScriptVM` (step-by-step execution), `ContractBubbleVM` (loads contracts by type with balances for hex grid)
 
 ### Ledger App (app-bitcoin-new/)
 
@@ -93,17 +94,21 @@ Protocol specification: `doc/bitcoin.md` (commands), `doc/wallet.md` (wallet pol
 - **Taproot single-key limitation**: Ledger's `is_policy_sane()` rejects duplicate pubkeys. Single-key Taproot vaults CANNOT be signed. Vault creation is P2WSH only. Taproot is only for multi-key contracts (Inheritance, HTLC) where `@0` and `@1` are genuinely different xpubs.
 - **Taproot P2TR input maps**: Use `TAP_BIP32_DERIVATION` (key 0x16) with x-only pubkey instead of `BIP32_DERIVATION` (key 0x06). No `WITNESS_SCRIPT` (key 0x05) for Taproot — Ledger derives script from wallet policy.
 - **Contract key index**: Each contract stores `keyIndex` — the BIP32 derivation index used at creation. `KeyIndexPicker` shows derivation path (m/84'/coin_type'/0'/0/N) and derived address.
-- **Home page never calls loadWallet()**: Only the Wallet tab triggers full gap limit scan. Home refresh calls `refreshUTXOs()` to avoid clearing wallet data.
-- **CoinJoin**: Serverless PSBT-based. Participants exchange PSBTs manually. Fixed denomination outputs with random shuffling. Each user signs only their own inputs via standard `wpkh(@0/**)` policy. No server, no registration.
-- **Balance display**: Tappable — cycles sats → BTC (8 decimals) → USD. Sats formatted with thousand separators (196 732).
-- **Privacy score**: 0-100 based on address reuse (-15 each), dust UTXOs (-5), UTXO count (>20 = -10). Shown on Home page.
+- **Home page fully independent from WalletVM**: HomeVM has its own `refreshBalance()` that derives 20 receiving + 20 change addresses from the xpub, fetches UTXOs/txs in batches of 5 with 200ms delays (avoids mempool.space 429 rate limits). 30-second cooldown between refreshes. Pull-to-refresh uses `Task.detached` to survive `.refreshable` cancellation. Privacy score and UTXO health cards read from HomeVM, not WalletVM.
+- **Wallet pull-to-refresh calls refreshUTXOs()** (batched, 5 at a time with 200ms delays), not full `loadWallet()`. Full gap limit scan only on `.task` (first appearance).
+- **CoinJoin**: Serverless PSBT-based. Participants exchange PSBTs manually. Fixed denomination outputs with random shuffling. Each user signs only their own inputs via standard `wpkh(@0/**)` policy. No server, no registration. UI: ScrollView with role cards (Create/Join), denomination chips, progress stepper.
+- **Atomic Swap (P2P Swap)**: Trustless exchange via paired HTLCs with same SHA256 hash lock. Initiator generates preimage, creates HTLC, shares SwapOffer via QR (base64 JSON). Responder decodes, verifies funding, creates matching HTLC. Initiator claims (reveals preimage), responder extracts preimage from on-chain witness. Timeout safety: initiator >= 2x responder window. UI: exchange card (you send/you receive), QR sharing, polling, progress stepper.
+- **Balance display**: Tappable — cycles sats → BTC (8 decimals) → USD with haptic feedback + chevron down indicator. Sats formatted with thousand separators (196 732).
+- **No target amount**: Removed from all contract creation forms and detail views. Contracts show on-chain balance only.
+- **Duplicate address prevention**: All contract VMs check existing contracts before saving — prevents two contracts sharing the same P2WSH address.
+- **Privacy score + UTXO health**: Activity-ring style cards (thin circular arcs, Apple Watch complication feel). Privacy: 0-100 based on dust UTXOs (-5), UTXO count (>20 = -10). UTXO health: deducts for dust (-15 each) and excess count (-3 per UTXO over 15). Soft pastel colors (`.mint`, `.orange`, `.pink`).
 - **Script playground**: Step-by-step execution, guided lessons (8 from Mastering Bitcoin ch7), opcode reference (40+), script decoder (hex → opcodes), 15 loadable templates.
 - **Wallet policy registration**: P2WSH/P2TR contracts require REGISTER_WALLET (INS=0x02) on first spend. HMAC stored in `Contract.walletPolicyHmac`.
 - **Miniscript-aligned scripts**: All contract scripts match the Ledger's miniscript compiler output byte-for-byte.
 - **External keys must be xpubs**: The Ledger V2 protocol requires xpub/tpub for ALL keys (no raw hex pubkeys).
 - **Coin_type auto-detection**: Detects "Bitcoin" (coin_type=0) or "Bitcoin Test" (coin_type=1) app.
 - **Master fingerprint from device**: Always fetched via GET_MASTER_FINGERPRINT (INS=0x05).
-- **Keychain persistence**: iOS keychain survives app deletion. Versioned migration (currently v3).
+- **Keychain persistence**: iOS keychain survives app deletion. Versioned migration (currently v4 — wallet-only wipe, preserves contracts).
 - **xpub change detection**: Posts `.ledgerXpubChanged` notification → full wallet reset + rescan.
 - **Address rotation**: Never reuse addresses. Fresh/Funded/Used tracking. Change addresses use `nextFreshChangeAddress()`.
 - **Gap limit scan**: Scans from index 0 until 20 consecutive empty addresses found.
@@ -178,22 +183,31 @@ Reference: `app-bitcoin-new/doc/bitcoin.md`, `app-bitcoin-new/doc/wallet.md`
 ## UI Architecture
 
 ### Tab Structure (5 tabs)
-1. **Home** — Balance, network stats, privacy score + UTXO health (side-by-side widgets), confirmation tracker, daily Bitcoin tip, contracts summary
-2. **Wallet** — Addresses (receiving + change with status badges), UTXOs with freeze/thaw, transactions. Action buttons: Send / Receive / CoinJoin (Apple-style vertical icon+label). Balance taps to cycle sats/BTC/USD. Receive sheet with address index wheel picker.
-3. **Contracts** — Hub with NavigationLinks to Vault, Inheritance, HTLC, Channel, Pool, OP_RETURN. Sub-views use standard nav bar with toolbar "+" buttons.
+1. **Home** — Balance (no card background, floats on dark), network stats, wallet snapshot, confirmation tracker, daily Bitcoin tip. Balance taps to cycle sats/BTC/USD with haptic + chevron indicator. No contracts section on Home.
+2. **Wallet** — Balance with chevron unit switcher. 4 action buttons in circle outlines (1.8pt, 45% opacity): Send (orange) / Receive (green) | vertical divider | Mix (purple, P2P badge) / Swap (cyan, P2P badge). Scale animation + haptic on tap. Addresses split: active (funded) shown normally, used/retired in collapsible "Archive" DisclosureGroup. UTXOs with index badges (#N / C#N), confirmation dots, EXPOSED tags. Transactions with direction arrows (sent=orange, received=green), net amounts, contract tags (CLTV/CSV/HTLC etc.). Send/Receive/CoinJoin/Swap all push via navigation (not sheets). All sections on dark background, no card boxes.
+3. **Contracts** — Hub with Apple Settings-style rows: colored icon in rounded square, human title, grey description, monospaced opcode tag in capsule, count badge. Types: Vault (CLTV), Inheritance (CSV), HTLC, Channel, Pool, Atomic Swap, OP_RETURN. Sub-views show HexGridView (honeycomb hex tiles) — tap hex to open detail sheet with address, script, spend/claim actions.
 4. **Learn** — Mastering Bitcoin chapters fetched from GitHub API, rendered in WKWebView with dark theme CSS.
 5. **Script** — Bitcoin Script playground with step-by-step execution, templates (15), opcode reference (40+), guided lessons (8), hex decoder. Header: Reset (circle) + Step (orange circle) + Run (green circle).
 
 ### Header Pattern
 - **Tab roots** (Home, Wallet, Script): `PlugHeader` in a `List` with hidden nav bar
 - **Sub-views** (Vault, Inheritance, etc.): standard `.navigationTitle()` + `.toolbar` with visible nav bar and back button
-- **Home only**: shows TESTNET badge + Connect status + Settings gear
+- **All tabs**: show reactive Ledger connection pill (capsule with colored dot + label). Home additionally shows TESTNET badge + Settings gear
+- **Global disconnect banner**: Red slide-down banner in `MainTabView` when Ledger drops after being connected. Auto-dismisses after 4s.
+
+### Onboarding
+- 3-page `TabView`: Welcome (PLUG. logo from `logov6.png` asset), How It Works, Connect Ledger
+- Connect page shows full BLE flow: scan → device list → connecting → connected → fetch xpub
+- Auto-completes onboarding 1.5s after xpub saved. "Skip" available at all times.
 
 ### Common Patterns
-- Apple-style action buttons: vertical `VStack(icon, label)` with tinted background in `RoundedRectangle`
-- Cards: `.ultraThinMaterial` background with 14-16pt rounded corners
-- Contract rows: List-based with `.listRowInsets`, `.listRowBackground(.clear)`, `.listRowSeparator(.hidden)`
-- Sheets: own `NavigationStack` with `.navigationBarTitleDisplayMode(.inline)` + cancel toolbar item
+- Action buttons: circle outline (1.8pt, 45% opacity) with colored icon + label. `WalletButtonStyle` for scale animation + highlight on press. Haptic feedback on tap.
+- Dark background throughout — no card boxes. Content floats on dark. Use `.listRowBackground(Color.clear)`.
+- Contract sub-views: `HexGridView` as main display, detail sheets on tap.
+- Feature pages (Send, Receive, CoinJoin, Swap): `ScrollView` with floating content on dark, hero icon + description at top, progress steppers.
+- Tinted colors: `color.opacity(0.15)` for subtle backgrounds, never solid fills. Outline shapes preferred.
+- Contract creation: all VMs check for duplicate P2WSH address before saving. No target amount field — removed from all contract types.
+- Sheets replaced by navigation push for Send/Receive/CoinJoin/Swap.
 
 ## Security
 
@@ -201,26 +215,49 @@ Reference: `app-bitcoin-new/doc/bitcoin.md`, `app-bitcoin-new/doc/wallet.md`
 - **Testnet-first**: Forces testnet on first launch.
 - **Address rotation**: Never reuse spent-from addresses. Fresh change address per transaction.
 - **Privacy score**: Tracks address reuse, exposed pubkeys, UTXO consolidation. Shown on Home.
-- **Coin control**: Manual UTXO selection to prevent mixing KYC/non-KYC funds.
+- **Coin control**: Manual UTXO selection to prevent mixing KYC/non-KYC funds. UTXO Manager with filters (All/Frozen/Dust/Exposed/Pending), sort, swipe freeze/unfreeze.
 - **CoinJoin**: Serverless collaborative transactions for privacy. Fixed denomination + output shuffling.
 - **Fee sniping defense**: nLockTime = currentBlockHeight on standard sends.
 - **Dust protection**: Blocks outputs < 546 sats. Pinning warnings at 5+ unconfirmed UTXOs.
-- **Encrypted backups**: AES-256-GCM + PBKDF2 (600K rounds).
-- **Tor support**: Optional SOCKS5 proxy routing to mempool.space .onion address.
+- **Encrypted backups**: AES-256-GCM + PBKDF2 (600K rounds). File format: `PLUG_BACKUP_V1` header + salt + nonce + ciphertext + GCM tag. Portable — any language can decrypt with the password. `.completeFileProtection` on temp files.
+- **Embedded Tor (Arti)**: Rust-based Tor client compiled as `PlugTor.xcframework`. Local SOCKS5 proxy on `127.0.0.1:random_port`. Address queries (`/address/{addr}/*`) automatically prefer Tor via `addressRequest()`. Toggle in Settings > Privacy. Bootstrap 10-30s.
+- **Clipboard security**: `secureCopy()` auto-clears sensitive data (preimages, witness scripts, PSBTs) from clipboard after 30 seconds.
+- **Debug logging**: All 123 `print()` statements wrapped in `#if DEBUG` — zero logging in Release builds.
+- **Keychain hardening**: `kSecAttrAccessibleWhenUnlockedThisDeviceOnly` + explicit `kSecAttrSynchronizable: false`. No iCloud sync.
 - **Wallet policy verification**: Ledger registers each P2WSH/P2TR policy with HMAC.
 - **HTLC preimage backup**: Auto-saved to iOS Keychain (hardware-encrypted).
-- **Keychain migration**: Versioned wipe on app update to clear stale data.
+- **Duplicate address prevention**: All contract VMs check existing contracts before saving.
+- **No analytics**: Zero telemetry, crash reporters, or tracking SDKs. Single dependency: `secp256k1.swift`.
+- **Keychain migration**: Versioned wipe on app update to clear stale data (v4 current).
+- **Ledger connection monitoring**: `LedgerManager.shared` state observed via `@ObservedObject` in PlugHeader (all tabs). Global disconnect banner in MainTabView. ContractSigner guards against disconnected state before signing.
 
 ## Known Limitations
 
 - **Single-key Taproot vaults**: Ledger's `is_policy_sane()` in `policy.c:2012` rejects duplicate compressed pubkeys in keysInfo. Single-key Taproot policies with script trees (e.g., `tr(@0/**,and_v(v:pk(@1/**),after(N)))` where @0 and @1 are the same xpub) cannot be registered. Vault creation is P2WSH only. [GitHub issue #442](https://github.com/LedgerHQ/app-bitcoin-new/issues/442).
 - **Taproot vault funds recovery**: Existing Taproot vault funds cannot be spent via key-path (`tr(@0/**)`) because the address was tweaked with the script tree Merkle root, producing a different address than BIP-86 key-path.
 - **BLE only**: No USB transport for Ledger. Same APDUs regardless of transport.
-- **BackupManager vs BackupVM**: Two backup systems exist. `BackupVM` (with simpler XOR crypto) is the one wired to the UI. `BackupManager` (with proper PBKDF2+HMAC) is dead code.
+- **Tor foreground only**: Arti Tor client works only while app is in foreground (iOS kills background network daemons after ~30s). Circuits are re-established on app resume.
+- **Tor bootstrap time**: 10-30 seconds on first connect. Subsequent connections faster if Tor state cache exists.
+- **PlugTor binary size**: ~49MB static library (stripped to ~10-15MB in App Store distribution).
+
+## Tor Integration (plug-tor/)
+
+- **Engine**: Arti (Rust Tor client by Tor Project) compiled as iOS static library
+- **Crate**: `plug-tor/` — wraps `arti-client` + `tokio` runtime + SOCKS5 proxy server
+- **Build**: `cargo build --release --target aarch64-apple-ios` (device) + `aarch64-apple-ios-sim` (simulator)
+- **Output**: `PlugTor.xcframework` bundled in project root
+- **C-FFI**: `plug_tor_start()` → u16 port, `plug_tor_stop()`, `plug_tor_is_running()`, `plug_tor_port()`
+- **Bridging**: `PLUG-Bridging-Header.h` imports `plug_tor.h`
+- **Swift wrapper**: `TorManager.swift` — `@MainActor ObservableObject` with `.disconnected/.connecting/.connected(port)/.error` state
+- **Linker flags**: `-lsqlite3 -lz -framework Security -framework SystemConfiguration`
+- **Rebuild**: `cd plug-tor && ./build-ios.sh`
 
 ## Website & Deployment
 
 - **Domain**: bitcoin-plug.com
-- **Hosted**: VPS via Cloudflare Tunnel
-- **Static files**: `docs/index.html` + `docs/style.css`
-- **Deploy**: `rsync -avz -e "ssh -p PORT -i ~/.ssh/id_ed25519" docs/ zak@IP:/home/zak/sites/plug/`
+- **Hosted**: VPS (LAN 192.168.1.144), nginx, rsync deploy
+- **Static files**: `docs/index.html` + `docs/style.css` + `docs/og.png` (logov6 for Twitter card)
+- **Like counter API**: Python on port 3847, systemd service `plug-likes`, nginx proxied at `/api/likes`, persists to `likes.json`
+- **Deploy**: `rsync -avz -e "ssh -i ~/.ssh/id_ed25519" docs/ zak@192.168.1.144:/home/zak/sites/plug/`
+- **Public GitHub**: `bitcoinvaultapp/plug-app` (README + issue templates, no source code). Private repo `bitcoinvaultapp/PLUG` for actual code.
+- **OG meta tags**: `og:image` + `twitter:card=summary_large_image` pointing to `og.png`

@@ -61,6 +61,7 @@ struct Transaction: Identifiable, Codable {
         let vout: Int
         let prevout: TxOutput?
         let sequence: UInt32
+        let witness: [String]?
     }
 
     struct TxOutput: Codable {
@@ -87,7 +88,9 @@ enum ContractType: String, Codable, CaseIterable {
     case channel
 }
 
-struct Contract: Identifiable, Codable {
+struct Contract: Identifiable, Codable, Hashable {
+    static func == (lhs: Contract, rhs: Contract) -> Bool { lhs.id == rhs.id }
+    func hash(into hasher: inout Hasher) { hasher.combine(id) }
     let id: String
     let type: ContractType
     let name: String
@@ -127,6 +130,12 @@ struct Contract: Identifiable, Codable {
     var receiverXpub: String?         // HTLC/Channel: receiver xpub
     var senderXpub: String?           // HTLC/Channel: sender xpub (when signing as receiver)
     var multisigXpubs: [String]?      // Pool: all co-signer xpubs
+
+    // Atomic Swap fields (only set when HTLC is part of a swap)
+    var swapId: String?                   // Shared UUID linking both legs
+    var swapRole: String?                 // "initiator" or "responder"
+    var counterpartyHTLCAddress: String?  // Other party's HTLC address to monitor
+    var swapState: String?                // "created" | "funded" | "counterpartyFunded" | "claiming" | "completed" | "refunded"
 
     // Taproot (P2TR) fields
     var isTaproot: Bool = false           // true if this is a P2TR contract
@@ -400,23 +409,23 @@ struct WalletAddress: Identifiable, Codable, Hashable {
 // MARK: - Alert types for dashboard
 
 enum DashboardAlert: Identifiable {
-    case vaultUnlocked(contractName: String)
-    case inheritanceApproaching(contractName: String, blocksRemaining: Int)
+    case vaultUnlocked(contractId: String, contractName: String)
+    case inheritanceApproaching(contractId: String, contractName: String, blocksRemaining: Int)
     case unconfirmedTx(txid: String)
 
     var id: String {
         switch self {
-        case .vaultUnlocked(let name): return "vault_\(name)"
-        case .inheritanceApproaching(let name, _): return "inheritance_\(name)"
+        case .vaultUnlocked(let cid, _): return "vault_\(cid)"
+        case .inheritanceApproaching(let cid, _, _): return "inheritance_\(cid)"
         case .unconfirmedTx(let txid): return "tx_\(txid)"
         }
     }
 
     var message: String {
         switch self {
-        case .vaultUnlocked(let name):
+        case .vaultUnlocked(_, let name):
             return "Vault \"\(name)\" is unlocked!"
-        case .inheritanceApproaching(let name, let blocks):
+        case .inheritanceApproaching(_, let name, let blocks):
             return "Inheritance \"\(name)\": \(blocks) blocks remaining"
         case .unconfirmedTx(let txid):
             return "Unconfirmed transaction: \(String(txid.prefix(8)))..."

@@ -6,286 +6,341 @@ struct InheritanceView: View {
     @State private var showCreated = false
     @State private var showClaim = false
     @State private var showKeepAlive = false
+    @State private var selectedContract: Contract?
+    @State private var showDetail = false
     @State private var copiedId = ""
     @State private var contractToDelete: Contract?
     @State private var showDeleteAlert = false
 
     var body: some View {
-            List {
-                if vm.contracts.isEmpty {
-                    VStack(spacing: 12) {
-                        Image(systemName: "person.2.circle")
-                            .font(.system(size: 40))
-                            .foregroundStyle(.secondary)
-                        Text("No Inheritance")
-                            .font(.headline)
-                        Text("Set up a conditional transfer with CSV")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 32)
+        List {
+            VStack(spacing: 6) {
+                Image(systemName: "person.line.dotted.person.fill")
+                    .font(.system(size: 28))
+                    .symbolRenderingMode(.palette)
+                    .foregroundStyle(.purple, .purple.opacity(0.5))
+                Text("Your heir gets access only after a period of inactivity.")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 8)
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
+
+            if vm.contracts.isEmpty {
+                VStack(spacing: 12) {
+                    Image(systemName: "person.2.circle")
+                        .font(.system(size: 32))
+                        .foregroundStyle(.secondary)
+                    Text("No Inheritance")
+                        .font(.system(size: 15, weight: .semibold))
+                    Text("Set up a conditional transfer with CSV")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 40)
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+            } else {
+                ForEach(vm.contracts) { contract in
+                    inheritanceRow(contract)
+                        .listRowBackground(Color.clear)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            selectedContract = contract
+                            showDetail = true
+                        }
+                }
+            }
+        }
+        .listStyle(.plain)
+        .navigationTitle("Inheritance")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button { showCreate = true } label: {
+                    Image(systemName: "plus")
+                }
+            }
+        }
+        .navigationDestination(isPresented: $showDetail) {
+            if let contract = selectedContract {
+                inheritanceDetailPage(contract)
+            }
+        }
+        .navigationDestination(isPresented: $showCreate) { createPage }
+        .navigationDestination(isPresented: $showKeepAlive) { keepAlivePage }
+        .navigationDestination(isPresented: $showClaim) { claimPage }
+        .sheet(isPresented: $showCreated) {
+            ContractCreatedSheet(contract: vm.createdContract!, currentBlockHeight: vm.currentBlockHeight, onDismiss: { showCreated = false; vm.createdContract = nil })
+        }
+        .alert("Delete contract?", isPresented: $showDeleteAlert) {
+            Button("Cancel", role: .cancel) { contractToDelete = nil }
+            Button("Delete", role: .destructive) {
+                if let c = contractToDelete {
+                    vm.delete(id: c.id)
+                    contractToDelete = nil
+                    showDetail = false
+                    selectedContract = nil
+                }
+            }
+        } message: {
+            if let c = contractToDelete {
+                let balance = vm.fundedAmount(for: c)
+                if balance > 0 {
+                    Text("This contract holds \(balance) sats! Make sure you have backed up the address and the witness script before deleting.")
                 } else {
-                    ForEach(vm.contracts) { contract in
-                        inheritanceRow(contract)
+                    Text("This action is irreversible.")
+                }
+            }
+        }
+        .task {
+            await vm.refresh()
+        }
+    }
+
+    // MARK: - Contract Row
+
+    private func inheritanceRow(_ contract: Contract) -> some View {
+        let funded = vm.fundedAmount(for: contract)
+        let csvInfo = contract.csvBlocks.map { BlockDurationPicker.blocksToHumanTime(blocks: $0) } ?? ""
+
+        return HStack(spacing: 10) {
+            Circle()
+                .fill(Color.green)
+                .frame(width: 7, height: 7)
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Text(contract.name)
+                        .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                    Text("CSV")
+                        .font(.system(size: 8, weight: .bold, design: .monospaced))
+                        .foregroundStyle(.purple.opacity(0.7))
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 1.5)
+                        .background(Color.purple.opacity(0.1), in: Capsule())
+                    if let idx = contract.keyIndex {
+                        Text("#\(idx)")
+                            .font(.system(size: 9, weight: .medium, design: .monospaced))
+                            .foregroundStyle(.tertiary)
                     }
-                    .onDelete { indexSet in
-                        if let i = indexSet.first {
-                            contractToDelete = vm.contracts[i]
-                            showDeleteAlert = true
+                }
+                HStack(spacing: 4) {
+                    Text("Active").foregroundStyle(.green)
+                    if !csvInfo.isEmpty {
+                        Text("·").foregroundStyle(.quaternary)
+                        Text(csvInfo).foregroundStyle(.secondary)
+                    }
+                }
+                .font(.system(size: 10))
+            }
+
+            Spacer()
+
+            Text(BalanceUnit.format(funded))
+                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                .foregroundStyle(.secondary)
+
+            Image(systemName: "chevron.right")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(.quaternary)
+        }
+        .padding(.vertical, 4)
+    }
+
+    // MARK: - Detail Sheet
+
+    private func inheritanceDetailPage(_ contract: Contract) -> some View {
+        let funded = vm.fundedAmount(for: contract)
+
+        return ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    // Header
+                    HStack {
+                        Image(systemName: "person.2.fill")
+                            .font(.title3)
+                            .foregroundStyle(.purple)
+                        Text(contract.name)
+                            .font(.title2.bold())
+                        Spacer()
+                        if let csv = contract.csvBlocks {
+                            Text(BlockDurationPicker.blocksToHumanTime(blocks: csv))
+                                .font(.caption)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 5)
+                                .background(Color.purple.opacity(0.15), in: Capsule())
+                                .foregroundStyle(.purple)
                         }
                     }
-                }
-            }
-            .navigationTitle("Inheritance")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    Button { showCreate = true } label: {
-                        Image(systemName: "plus")
+
+                    // Balance
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(BalanceUnit.format(funded))
+                            .font(.system(size: 28, weight: .bold, design: .monospaced))
+                        Text("sats")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
+
+                    if let csv = contract.csvBlocks {
+                        Text("Claimable ~\(BlockDurationPicker.blocksToDateString(blocks: csv)) after inactivity")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    // Parties
+                    VStack(alignment: .leading, spacing: 8) {
+                        if let ownerPk = contract.ownerPubkey {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Owner")
+                                    .font(.caption.bold())
+                                    .foregroundStyle(.secondary)
+                                Text(ownerPk.prefix(24) + "...")
+                                    .font(.system(size: 10, design: .monospaced))
+                                    .foregroundStyle(.secondary)
+                                Text("Can spend at any time")
+                                    .font(.caption2)
+                                    .foregroundStyle(.purple.opacity(0.7))
+                            }
+                        }
+                        if let heirPk = contract.heirPubkey {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Heir")
+                                    .font(.caption.bold())
+                                    .foregroundStyle(.secondary)
+                                Text(heirPk.prefix(24) + "...")
+                                    .font(.system(size: 10, design: .monospaced))
+                                    .foregroundStyle(.secondary)
+                                Text("Can claim after inactivity")
+                                    .font(.caption2)
+                                    .foregroundStyle(.purple.opacity(0.7))
+                            }
+                        }
+                    }
+                    .padding()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
+
+                    // Address
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Address")
+                            .font(.caption.bold())
+                            .foregroundStyle(.secondary)
+                        Text(contract.address)
+                            .font(.system(.caption, design: .monospaced))
+                            .textSelection(.enabled)
+                    }
+                    .padding()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
+
+                    if let lastAlive = contract.lastKeptAlive {
+                        Text("Last Keep Alive: \(Self.relativeTime(from: lastAlive))")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+
+                    if let lastAlive = contract.lastKeptAlive, let csvBlocks = contract.csvBlocks {
+                        if Date().timeIntervalSince(lastAlive) > TimeInterval(csvBlocks * 10 * 60) * 0.5 {
+                            Label("Keep Alive recommended soon", systemImage: "exclamationmark.triangle")
+                                .font(.caption2)
+                                .foregroundStyle(.orange)
+                        }
+                    }
+
+                    // Actions
+                    VStack(spacing: 10) {
+                        Button {
+                            showDetail = false
+                            vm.selectedContract = contract
+                            vm.spendError = nil
+                            vm.spendResult = nil
+                            showKeepAlive = true
+                        } label: {
+                            HStack {
+                                Image(systemName: "heart.fill")
+                                Text("Keep Alive")
+                            }
+                            .font(.subheadline.bold())
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 12)
+                            .background(Color.blue, in: RoundedRectangle(cornerRadius: 12))
+                            .foregroundStyle(.white)
+                        }
+                        .buttonStyle(.plain)
+
+                        HStack(spacing: 10) {
+                            Button {
+                                UIPasteboard.general.string = contract.address
+                                copiedId = "\(contract.id):address"
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 2) { copiedId = "" }
+                            } label: {
+                                HStack {
+                                    Image(systemName: copiedId == "\(contract.id):address" ? "checkmark" : "doc.on.doc")
+                                    Text(copiedId == "\(contract.id):address" ? "Copied!" : "Address")
+                                }
+                                .font(.caption.bold())
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 10)
+                                .background(Color(.systemGray5), in: RoundedRectangle(cornerRadius: 10))
+                            }
+                            .buttonStyle(.plain)
+
+                            Button {
+                                showDetail = false
+                                vm.selectedContract = contract
+                                vm.heirClaimAddress = ""
+                                vm.spendError = nil
+                                vm.spendResult = nil
+                                showClaim = true
+                            } label: {
+                                HStack {
+                                    Image(systemName: "arrow.down.circle")
+                                    Text("Claim")
+                                }
+                                .font(.caption.bold())
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 10)
+                                .background(Color.purple.opacity(0.15), in: RoundedRectangle(cornerRadius: 10))
+                                .foregroundStyle(.purple)
+                            }
+                            .buttonStyle(.plain)
+                        }
+
+                        Button(role: .destructive) {
+                            contractToDelete = contract
+                            showDeleteAlert = true
+                        } label: {
+                            HStack {
+                                Image(systemName: "trash")
+                                Text("Delete")
+                            }
+                            .font(.caption.bold())
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 10)
+                            .background(Color.red.opacity(0.1), in: RoundedRectangle(cornerRadius: 10))
+                            .foregroundStyle(.red)
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
+                .padding()
             }
-            .sheet(isPresented: $showCreate, onDismiss: { if vm.createdContract != nil { showCreated = true } }) { createSheet }
-            .sheet(isPresented: $showCreated) {
-                ContractCreatedSheet(contract: vm.createdContract!, currentBlockHeight: vm.currentBlockHeight, onDismiss: { showCreated = false; vm.createdContract = nil })
-            }
-            .sheet(isPresented: $showKeepAlive) { keepAliveSheet }
-            .sheet(isPresented: $showClaim) { claimSheet }
-            .alert("Delete contract?", isPresented: $showDeleteAlert) {
-                Button("Cancel", role: .cancel) { contractToDelete = nil }
-                Button("Delete", role: .destructive) {
-                    if let c = contractToDelete {
-                        vm.delete(id: c.id)
-                        contractToDelete = nil
-                    }
-                }
-            } message: {
-                if let c = contractToDelete {
-                    let balance = vm.fundedAmount(for: c)
-                    if balance > 0 {
-                        Text("This contract holds \(balance) sats! Make sure you have backed up the address and the witness script before deleting. Funds will be unrecoverable without this information.")
-                    } else {
-                        Text("This action is irreversible.")
-                    }
-                }
-            }
-            .refreshable { await vm.refresh() }
-            .task { await vm.refresh() }
+        .navigationTitle("Inheritance Details")
+        .navigationBarTitleDisplayMode(.inline)
     }
 
     private static func relativeTime(from date: Date) -> String {
         let formatter = RelativeDateTimeFormatter()
         formatter.unitsStyle = .full
         return formatter.localizedString(for: date, relativeTo: Date())
-    }
-
-    private func inheritanceRow(_ contract: Contract) -> some View {
-        let funded = vm.fundedAmount(for: contract)
-        let target = contract.amount
-        let progress = vm.progress(for: contract)
-        let pct = Int(progress * 100)
-
-        return VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Image(systemName: "person.2.fill")
-                    .foregroundStyle(.purple)
-                Text(contract.name)
-                    .font(.headline)
-                Spacer()
-                if let csv = contract.csvBlocks {
-                    Text(BlockDurationPicker.blocksToHumanTime(blocks: csv))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            if let csv = contract.csvBlocks {
-                Text("Claimable ~\(BlockDurationPicker.blocksToDateString(blocks: csv)) after inactivity")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-
-            // Funded amount vs target
-            HStack(alignment: .firstTextBaseline) {
-                Text("\(funded)")
-                    .font(.title2.bold().monospacedDigit())
-                Text("/ \(target) sats")
-                    .font(.subheadline.monospacedDigit())
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Text("\(pct)%")
-                    .font(.subheadline.bold().monospacedDigit())
-                    .foregroundStyle(progress >= 1.0 ? .green : .purple)
-            }
-
-            // Progress bar
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(Color.gray.opacity(0.2))
-                        .frame(height: 6)
-                    RoundedRectangle(cornerRadius: 4)
-                        .fill(progress >= 1.0 ? Color.green : Color.purple)
-                        .frame(width: geo.size.width * progress, height: 6)
-                }
-            }
-            .frame(height: 6)
-
-            if let confs = vm.confirmations[contract.address], confs > 0 {
-                let label = confs >= 6 ? "Confirmed" : "\(confs)/6 confirmations"
-                let color: Color = confs >= 6 ? .green : .orange
-                Text(label)
-                    .font(.caption2)
-                    .foregroundStyle(color)
-            }
-
-            if let idx = contract.keyIndex {
-                HStack(spacing: 4) {
-                    Image(systemName: "key.fill")
-                        .font(.system(size: 9))
-                        .foregroundStyle(.secondary)
-                    Text("Key index: \(idx)")
-                        .font(.system(size: 10, weight: .medium, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                    if contract.isTaproot {
-                        Text("P2TR")
-                            .font(.system(size: 8, weight: .bold, design: .monospaced))
-                            .foregroundStyle(.orange)
-                    }
-                }
-            }
-
-            if let ownerPk = contract.ownerPubkey {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Owner: \(ownerPk.prefix(16))...")
-                        .font(.system(.caption2, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                    Text("Can spend at any time")
-                        .font(.caption2)
-                        .foregroundStyle(.purple.opacity(0.7))
-                }
-            }
-
-            if let heirPk = contract.heirPubkey {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Heir: \(heirPk.prefix(16))...")
-                        .font(.system(.caption2, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                    Text("Can claim after inactivity")
-                        .font(.caption2)
-                        .foregroundStyle(.purple.opacity(0.7))
-                }
-            }
-
-            if let lastAlive = contract.lastKeptAlive {
-                Text("Last Keep Alive: \(Self.relativeTime(from: lastAlive))")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-
-            if let lastAlive = contract.lastKeptAlive, let csvBlocks = contract.csvBlocks {
-                if Date().timeIntervalSince(lastAlive) > TimeInterval(csvBlocks * 10 * 60) * 0.5 {
-                    Label("Keep Alive recommended soon", systemImage: "exclamationmark.triangle")
-                        .font(.caption2)
-                        .foregroundStyle(.orange)
-                }
-            }
-
-            // Action buttons — full width for easy tapping
-            VStack(spacing: 8) {
-                Button {
-                    vm.selectedContract = contract
-                    vm.spendError = nil
-                    vm.spendResult = nil
-                    showKeepAlive = true
-                } label: {
-                    HStack {
-                        Image(systemName: "heart.fill")
-                        Text("Keep Alive")
-                    }
-                    .font(.subheadline.bold())
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 10)
-                    .background(Color.blue.opacity(0.15))
-                    .foregroundStyle(.blue)
-                    .cornerRadius(8)
-                }
-                .buttonStyle(.plain)
-                .disabled(vm.isSpending)
-
-                HStack(spacing: 8) {
-                    Button {
-                        UIPasteboard.general.string = contract.address
-                        copiedId = "\(contract.id):address"
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                            if copiedId == "\(contract.id):address" {
-                                copiedId = ""
-                            }
-                        }
-                    } label: {
-                        HStack {
-                            Image(systemName: copiedId == "\(contract.id):address" ? "checkmark" : "doc.on.doc")
-                            Text(copiedId == "\(contract.id):address" ? "Copied!" : "Address")
-                        }
-                        .font(.caption.bold())
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
-                        .background(Color(.systemGray5))
-                        .cornerRadius(8)
-                    }
-                    .buttonStyle(.plain)
-
-                    Button {
-                        vm.selectedContract = contract
-                        vm.heirClaimAddress = ""
-                        vm.spendError = nil
-                        vm.spendResult = nil
-                        showClaim = true
-                    } label: {
-                        HStack {
-                            Image(systemName: "arrow.down.circle")
-                            Text("Claim")
-                        }
-                        .font(.caption.bold())
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 8)
-                        .background(Color.purple.opacity(0.15))
-                        .foregroundStyle(.purple)
-                        .cornerRadius(8)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-
-            Text("Use 'Keep Alive' regularly to prevent the heir from claiming")
-                .font(.caption2)
-                .foregroundStyle(.secondary)
-                .italic()
-
-            if vm.isSpending {
-                HStack {
-                    ProgressView()
-                    Text("Transaction in progress...")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            if let result = vm.spendResult {
-                Text("TX: \(result.prefix(16))...")
-                    .font(.system(.caption2, design: .monospaced))
-                    .foregroundStyle(.green)
-                    .textSelection(.enabled)
-            }
-
-            if let error = vm.spendError {
-                Text(error)
-                    .font(.caption)
-                    .foregroundStyle(.red)
-            }
-        }
-        .padding(.vertical, 4)
     }
 
     // MARK: - Create Sheet
@@ -326,19 +381,16 @@ struct InheritanceView: View {
     private var inheritanceHeirKeyValid: Bool {
         let trimmed = vm.heirXpub.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return false }
-        // Valid xpub/tpub
         if trimmed.hasPrefix("xpub") || trimmed.hasPrefix("tpub") {
             return ExtendedPublicKey.fromBase58(trimmed) != nil
         }
-        // Valid 33-byte compressed pubkey hex (66 hex chars)
         if trimmed.count == 66, let data = Data(hex: trimmed), data.count == 33 {
             return true
         }
         return false
     }
 
-    private var createSheet: some View {
-        NavigationStack {
+    private var createPage: some View {
             Form {
                 Section("Name") {
                     TextField("My Inheritance", text: $vm.name)
@@ -387,11 +439,6 @@ struct InheritanceView: View {
                     }
                 }
 
-                Section("Amount (sats)") {
-                    TextField("Amount", text: $vm.amount)
-                        .keyboardType(.numberPad)
-                }
-
                 KeyIndexPicker(index: $vm.keyIndex, maxIndex: 19)
 
                 if let address = inheritancePreviewAddress {
@@ -415,23 +462,19 @@ struct InheritanceView: View {
                             if vm.createdContract != nil { showCreate = false }
                         }
                     }
-                    .disabled(vm.name.isEmpty || vm.csvBlocks.isEmpty || vm.heirXpub.isEmpty || vm.amount.isEmpty || !inheritanceHeirKeyValid)
+                    .disabled(vm.name.isEmpty || vm.csvBlocks.isEmpty || vm.heirXpub.isEmpty || !inheritanceHeirKeyValid)
                 }
             }
-            .navigationTitle("New Inheritance")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { showCreate = false }
-                }
-            }
+        .navigationTitle("New Inheritance")
+        .navigationBarTitleDisplayMode(.inline)
+        .onDisappear {
+            if vm.createdContract != nil { showCreated = true }
         }
     }
 
     // MARK: - Keep Alive Sheet
 
-    private var keepAliveSheet: some View {
-        NavigationStack {
+    private var keepAlivePage: some View {
             Form {
                 if let contract = vm.selectedContract {
                     Section("Contract") {
@@ -444,7 +487,7 @@ struct InheritanceView: View {
 
                     Section {
                         let funded = vm.fundedAmount(for: contract)
-                        Text("Current balance: \(funded) sats")
+                        Text("Current balance: \(BalanceUnit.format(funded))")
                             .font(.subheadline.monospacedDigit())
                     } header: {
                         Text("Balance")
@@ -505,26 +548,19 @@ struct InheritanceView: View {
                     }
                 }
             }
-            .navigationTitle("Keep Alive")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { showKeepAlive = false }
-                }
-            }
-        }
+        .navigationTitle("Keep Alive")
+        .navigationBarTitleDisplayMode(.inline)
     }
 
     // MARK: - Claim Sheet (Heir)
 
-    private var claimSheet: some View {
-        NavigationStack {
+    private var claimPage: some View {
             Form {
                 if let contract = vm.selectedContract {
                     Section("Contract") {
                         Text(contract.name)
                             .font(.headline)
-                        Text("\(contract.amount) sats")
+                        Text(contract.address.prefix(20) + "...").font(.system(.caption2, design: .monospaced)).foregroundStyle(.secondary)
                             .font(.subheadline.monospacedDigit())
                         if let csv = contract.csvBlocks {
                             Text("CSV: \(csv) blocks")
@@ -593,13 +629,7 @@ struct InheritanceView: View {
                     }
                 }
             }
-            .navigationTitle("Claim Inheritance")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Close") { showClaim = false }
-                }
-            }
-        }
+        .navigationTitle("Claim Inheritance")
+        .navigationBarTitleDisplayMode(.inline)
     }
 }

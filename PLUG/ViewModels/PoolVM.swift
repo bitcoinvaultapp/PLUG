@@ -68,11 +68,11 @@ final class PoolVM: ObservableObject {
     func create() async {
         guard !isLoading else { return }
         guard !name.isEmpty,
-              let mInt = Int(m), mInt > 0,
-              let amountSats = UInt64(amount), amountSats > 0 else {
+              let mInt = Int(m), mInt > 0 else {
             error = "Invalid parameters"
             return
         }
+        let amountSats = UInt64(amount) ?? 0
 
         isLoading = true
 
@@ -142,6 +142,13 @@ final class PoolVM: ObservableObject {
         }
         if !xpubStrings.isEmpty {
             contract.multisigXpubs = xpubStrings
+        }
+
+        let existing = ContractStore.shared.contractsForNetwork(isTestnet: isTestnet)
+        if existing.contains(where: { $0.address == contract.address }) {
+            error = "A contract with this address already exists."
+            isLoading = false
+            return
         }
 
         ContractStore.shared.add(contract)

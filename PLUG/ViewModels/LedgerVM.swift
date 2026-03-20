@@ -3,6 +3,7 @@ import Combine
 
 extension Notification.Name {
     static let ledgerXpubChanged = Notification.Name("ledgerXpubChanged")
+    static let ledgerManualDisconnect = Notification.Name("ledgerManualDisconnect")
 }
 
 @MainActor
@@ -45,6 +46,7 @@ final class LedgerVM: ObservableObject {
 
     func disconnect() {
         LedgerManager.shared.disconnect()
+        NotificationCenter.default.post(name: .ledgerManualDisconnect, object: nil)
     }
 
     /// Fetch xpub from connected Ledger and save to Keychain.
@@ -62,7 +64,9 @@ final class LedgerVM: ObservableObject {
             // Check if xpub changed — if so, wipe cached wallet data
             let previousXpub = KeychainStore.shared.loadXpub(isTestnet: isTestnet)
             if previousXpub != nil && previousXpub != result.xpub {
+                #if DEBUG
                 print("[LedgerVM] xpub changed — clearing stale wallet cache")
+                #endif
                 // Post notification so WalletVM can invalidate its cache
                 NotificationCenter.default.post(name: .ledgerXpubChanged, object: nil)
             }

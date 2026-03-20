@@ -6,235 +6,300 @@ struct ChannelView: View {
     @State private var showCreated = false
     @State private var showClose = false
     @State private var showRefund = false
+    @State private var selectedContract: Contract?
+    @State private var showDetail = false
     @State private var copiedId = ""
     @State private var contractToDelete: Contract?
     @State private var showDeleteAlert = false
 
     var body: some View {
-            List {
-                if vm.contracts.isEmpty {
-                    VStack(spacing: 12) {
-                        Image(systemName: "arrow.left.arrow.right.circle")
-                            .font(.system(size: 40))
-                            .foregroundStyle(.secondary)
-                        Text("No channels")
-                            .font(.headline)
-                        Text("Off-chain micropayments with timeout")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 32)
-                } else {
-                    ForEach(vm.contracts) { contract in
-                        channelRow(contract)
-                    }
-                    .onDelete { indexSet in
-                        if let i = indexSet.first {
-                            contractToDelete = vm.contracts[i]
-                            showDeleteAlert = true
-                        }
-                    }
-                }
+        List {
+            VStack(spacing: 6) {
+                Image(systemName: "bolt.horizontal.circle.fill")
+                    .font(.system(size: 28))
+                    .symbolRenderingMode(.palette)
+                    .foregroundStyle(.green, .green.opacity(0.5))
+                Text("2-of-2 payment channel with timeout refund.")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
             }
-            .navigationTitle("Payment Channels")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .primaryAction) {
-                    Button { showCreate = true } label: {
-                        Image(systemName: "plus")
-                    }
-                }
-            }
-            .sheet(isPresented: $showCreate, onDismiss: { if vm.createdContract != nil { showCreated = true } }) { createSheet }
-            .sheet(isPresented: $showCreated) {
-                ContractCreatedSheet(contract: vm.createdContract!, currentBlockHeight: vm.currentBlockHeight, onDismiss: { showCreated = false; vm.createdContract = nil })
-            }
-            .sheet(isPresented: $showClose) { closeSheet }
-            .sheet(isPresented: $showRefund) { refundSheet }
-            .alert("Delete contract?", isPresented: $showDeleteAlert) {
-                Button("Cancel", role: .cancel) { contractToDelete = nil }
-                Button("Delete", role: .destructive) {
-                    if let c = contractToDelete {
-                        vm.delete(id: c.id)
-                        contractToDelete = nil
-                    }
-                }
-            } message: {
-                if let c = contractToDelete {
-                    let balance = vm.fundedAmount(for: c)
-                    if balance > 0 {
-                        Text("This contract contains \(balance) sats! Make sure you have saved the address and witness script before deleting. Funds will be unrecoverable without this information.")
-                    } else {
-                        Text("This action is irreversible.")
-                    }
-                }
-            }
-            .refreshable { await vm.refresh() }
-            .task { await vm.refresh() }
-    }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 8)
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
 
-    private func channelRow(_ contract: Contract) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Image(systemName: statusIcon(for: contract))
-                    .foregroundStyle(statusColor(for: contract))
-                Text(contract.name)
-                    .font(.headline)
-            }
-
-            HStack {
-                Text("\(contract.amount) sats")
-                    .font(.subheadline.monospacedDigit())
-                Spacer()
-                Text(statusLabel(for: contract))
-                    .font(.caption)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(statusColor(for: contract).opacity(0.15), in: Capsule())
-                    .foregroundStyle(statusColor(for: contract))
-            }
-
-            // Funded balance with progress bar
-            let funded = vm.fundedAmount(for: contract)
-            let target = contract.amount
-            let progress = vm.progress(for: contract)
-            let pct = Int(progress * 100)
-
-            VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    Text("\(funded) / \(target) sats")
-                        .font(.caption.monospacedDigit())
-                    Spacer()
-                    Text("\(pct)%")
-                        .font(.caption.monospacedDigit())
+            if vm.contracts.isEmpty {
+                VStack(spacing: 12) {
+                    Image(systemName: "arrow.left.arrow.right.circle")
+                        .font(.system(size: 32))
+                        .foregroundStyle(.secondary)
+                    Text("No Channels")
+                        .font(.system(size: 15, weight: .semibold))
+                    Text("Off-chain micropayments with timeout")
+                        .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                 }
-
-                ProgressView(value: progress)
-                    .tint(progress >= 1.0 ? .green : .orange)
-            }
-
-            if let confs = vm.confirmations[contract.address], confs > 0 {
-                let label = confs >= 6 ? "Confirmed" : "\(confs)/6 confirmations"
-                let color: Color = confs >= 6 ? .green : .orange
-                Text(label)
-                    .font(.caption2)
-                    .foregroundStyle(color)
-            }
-
-            if let senderPk = contract.senderPubkey {
-                Text("Sender: \(senderPk.prefix(16))...")
-                    .font(.system(.caption2, design: .monospaced))
-                    .foregroundStyle(.secondary)
-            }
-
-            if let receiverPk = contract.receiverPubkey {
-                Text("Receiver: \(receiverPk.prefix(16))...")
-                    .font(.system(.caption2, design: .monospaced))
-                    .foregroundStyle(.secondary)
-            }
-
-            if let timeout = contract.timeoutBlocks {
-                let remaining = vm.blocksRemaining(for: contract)
-                if remaining > 0 {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("\(BlockDurationPicker.blocksToHumanTime(blocks: remaining)) remaining (block \(timeout))")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Text("Estimated: \(BlockDurationPicker.blocksToDateString(blocks: remaining))")
-                            .font(.caption2)
-                            .foregroundStyle(.secondary)
-                    }
-                } else {
-                    Text("Timeout reached (block \(timeout))")
-                        .font(.caption)
-                        .foregroundStyle(.orange)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 40)
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+            } else {
+                ForEach(vm.contracts) { contract in
+                    channelListRow(contract)
+                        .listRowBackground(Color.clear)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            selectedContract = contract
+                            showDetail = true
+                        }
                 }
             }
+        }
+        .listStyle(.plain)
+        .navigationTitle("Payment Channels")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button { showCreate = true } label: {
+                    Image(systemName: "plus")
+                }
+            }
+        }
+        .navigationDestination(isPresented: $showDetail) {
+            if let contract = selectedContract {
+                channelDetailPage(contract)
+            }
+        }
+        .navigationDestination(isPresented: $showCreate) { createPage }
+        .sheet(isPresented: $showCreated) {
+            ContractCreatedSheet(contract: vm.createdContract!, currentBlockHeight: vm.currentBlockHeight, onDismiss: { showCreated = false; vm.createdContract = nil })
+        }
+        .navigationDestination(isPresented: $showClose) { closePage }
+        .navigationDestination(isPresented: $showRefund) { refundPage }
+        .alert("Delete contract?", isPresented: $showDeleteAlert) {
+            Button("Cancel", role: .cancel) { contractToDelete = nil }
+            Button("Delete", role: .destructive) {
+                if let c = contractToDelete {
+                    vm.delete(id: c.id)
+                    contractToDelete = nil
+                    showDetail = false
+                    selectedContract = nil
+                }
+            }
+        } message: {
+            if let c = contractToDelete {
+                let balance = vm.fundedAmount(for: c)
+                if balance > 0 {
+                    Text("This contract contains \(balance) sats! Make sure you have saved the address and witness script.")
+                } else {
+                    Text("This action is irreversible.")
+                }
+            }
+        }
+        .task {
+            await vm.refresh()
+        }
+    }
 
-            // Close type explanation
-            if vm.isRefundable(contract) {
-                Text("Timeout reached — unilateral refund available")
-                    .font(.caption2)
-                    .foregroundStyle(.orange)
-            } else {
-                Text("Cooperative close (cheap) or unilateral refund after timeout")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+    private func channelListRow(_ contract: Contract) -> some View {
+        let funded = vm.fundedAmount(for: contract)
+        let refundable = vm.isRefundable(contract)
+
+        return HStack(spacing: 10) {
+            Circle()
+                .fill(refundable ? Color.orange : Color.green)
+                .frame(width: 7, height: 7)
+
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(spacing: 6) {
+                    Text(contract.name)
+                        .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                    Text("P2MS")
+                        .font(.system(size: 8, weight: .bold, design: .monospaced))
+                        .foregroundStyle(.green.opacity(0.7))
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 1.5)
+                        .background(Color.green.opacity(0.1), in: Capsule())
+                    if let idx = contract.keyIndex {
+                        Text("#\(idx)")
+                            .font(.system(size: 9, weight: .medium, design: .monospaced))
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+                Text(refundable ? "Refundable" : "Active")
+                    .font(.system(size: 10))
+                    .foregroundStyle(refundable ? .orange : .green)
             }
 
-            VStack(spacing: 8) {
-                HStack(spacing: 8) {
-                    Button {
-                        vm.selectedContract = contract
-                        vm.closesSenderAmount = ""
-                        vm.closesReceiverAmount = ""
-                        vm.closeSenderAddress = ""
-                        vm.closeReceiverAddress = ""
-                        vm.spendError = nil
-                        vm.spendResult = nil
-                        showClose = true
-                    } label: {
-                        HStack {
-                            Image(systemName: "xmark.circle.fill")
-                            Text("Close")
-                        }
-                        .font(.caption.bold())
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 10)
-                        .background(Color.blue.opacity(0.15))
-                        .foregroundStyle(.blue)
-                        .cornerRadius(8)
-                    }
-                    .buttonStyle(.plain)
+            Spacer()
 
-                    if vm.isRefundable(contract) {
+            Text(BalanceUnit.format(funded))
+                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                .foregroundStyle(.secondary)
+
+            Image(systemName: "chevron.right")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(.quaternary)
+        }
+        .padding(.vertical, 4)
+    }
+
+    // MARK: - Detail Sheet
+
+    private func channelDetailPage(_ contract: Contract) -> some View {
+        let funded = vm.fundedAmount(for: contract)
+
+        return ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    HStack {
+                        Image(systemName: statusIcon(for: contract))
+                            .font(.title3)
+                            .foregroundStyle(statusColor(for: contract))
+                        Text(contract.name)
+                            .font(.title2.bold())
+                        Spacer()
+                        Text(statusLabel(for: contract))
+                            .font(.caption)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .background(statusColor(for: contract).opacity(0.15), in: Capsule())
+                            .foregroundStyle(statusColor(for: contract))
+                    }
+
+                    // Balance
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(BalanceUnit.format(funded))
+                            .font(.system(size: 28, weight: .bold, design: .monospaced))
+                        Text("funded")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .padding()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
+
+                    // Parties & timeout
+                    VStack(alignment: .leading, spacing: 8) {
+                        if let senderPk = contract.senderPubkey {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Sender").font(.caption.bold()).foregroundStyle(.secondary)
+                                Text(senderPk.prefix(24) + "...").font(.system(size: 10, design: .monospaced)).foregroundStyle(.secondary)
+                            }
+                        }
+                        if let receiverPk = contract.receiverPubkey {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("Receiver").font(.caption.bold()).foregroundStyle(.secondary)
+                                Text(receiverPk.prefix(24) + "...").font(.system(size: 10, design: .monospaced)).foregroundStyle(.secondary)
+                            }
+                        }
+                        if let timeout = contract.timeoutBlocks {
+                            let remaining = vm.blocksRemaining(for: contract)
+                            if remaining > 0 {
+                                Text("Timeout: \(BlockDurationPicker.blocksToHumanTime(blocks: remaining)) (block \(timeout))")
+                                    .font(.caption).foregroundStyle(.secondary)
+                            } else {
+                                Text("Timeout reached — refund available")
+                                    .font(.caption).foregroundStyle(.orange)
+                            }
+                        }
+                    }
+                    .padding()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
+
+                    // Address
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Address").font(.caption.bold()).foregroundStyle(.secondary)
+                        Text(contract.address).font(.system(.caption, design: .monospaced)).textSelection(.enabled)
+                    }
+                    .padding()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
+
+                    // Actions
+                    VStack(spacing: 10) {
+                        HStack(spacing: 10) {
+                            Button {
+                                showDetail = false
+                                vm.selectedContract = contract
+                                vm.closesSenderAmount = ""
+                                vm.closesReceiverAmount = ""
+                                vm.closeSenderAddress = ""
+                                vm.closeReceiverAddress = ""
+                                vm.spendError = nil
+                                vm.spendResult = nil
+                                showClose = true
+                            } label: {
+                                HStack {
+                                    Image(systemName: "xmark.circle.fill")
+                                    Text("Close")
+                                }
+                                .font(.subheadline.bold())
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 12)
+                                .background(Color.blue, in: RoundedRectangle(cornerRadius: 12))
+                                .foregroundStyle(.white)
+                            }
+                            .buttonStyle(.plain)
+
+                            if vm.isRefundable(contract) {
+                                Button {
+                                    showDetail = false
+                                    vm.selectedContract = contract
+                                    vm.refundDestination = ""
+                                    vm.spendError = nil
+                                    vm.spendResult = nil
+                                    showRefund = true
+                                } label: {
+                                    HStack {
+                                        Image(systemName: "arrow.uturn.backward.circle.fill")
+                                        Text("Refund")
+                                    }
+                                    .font(.subheadline.bold())
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 12)
+                                    .background(Color.orange, in: RoundedRectangle(cornerRadius: 12))
+                                    .foregroundStyle(.white)
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+
                         Button {
-                            vm.selectedContract = contract
-                            vm.refundDestination = ""
-                            vm.spendError = nil
-                            vm.spendResult = nil
-                            showRefund = true
+                            UIPasteboard.general.string = contract.address
+                            copiedId = "\(contract.id):address"
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { copiedId = "" }
                         } label: {
                             HStack {
-                                Image(systemName: "arrow.uturn.backward.circle.fill")
-                                Text("Refund")
+                                Image(systemName: copiedId == "\(contract.id):address" ? "checkmark" : "doc.on.doc")
+                                Text(copiedId == "\(contract.id):address" ? "Copied!" : "Copy Address")
                             }
                             .font(.caption.bold())
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 10)
-                            .background(Color.orange.opacity(0.15))
-                            .foregroundStyle(.orange)
-                            .cornerRadius(8)
+                            .background(Color(.systemGray5), in: RoundedRectangle(cornerRadius: 10))
+                        }
+                        .buttonStyle(.plain)
+
+                        Button(role: .destructive) {
+                            contractToDelete = contract
+                            showDeleteAlert = true
+                        } label: {
+                            HStack { Image(systemName: "trash"); Text("Delete") }
+                            .font(.caption.bold())
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 10)
+                            .background(Color.red.opacity(0.1), in: RoundedRectangle(cornerRadius: 10))
+                            .foregroundStyle(.red)
                         }
                         .buttonStyle(.plain)
                     }
                 }
-
-                Button {
-                    UIPasteboard.general.string = contract.address
-                    copiedId = "\(contract.id):address"
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                        if copiedId == "\(contract.id):address" {
-                            copiedId = ""
-                        }
-                    }
-                } label: {
-                    HStack {
-                        Image(systemName: copiedId == "\(contract.id):address" ? "checkmark" : "doc.on.doc")
-                        Text(copiedId == "\(contract.id):address" ? "Copied!" : "Copy address")
-                    }
-                    .font(.caption.bold())
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 8)
-                    .background(Color(.systemGray5))
-                    .cornerRadius(8)
-                }
-                .buttonStyle(.plain)
+                .padding()
             }
-        }
-        .padding(.vertical, 4)
+        .navigationTitle("Channel Details")
+        .navigationBarTitleDisplayMode(.inline)
     }
 
     private func statusIcon(for contract: Contract) -> String {
@@ -303,8 +368,7 @@ struct ChannelView: View {
         return timeout > vm.currentBlockHeight
     }
 
-    private var createSheet: some View {
-        NavigationStack {
+    private var createPage: some View {
             Form {
                 Section {
                     HStack(spacing: 8) {
@@ -334,11 +398,6 @@ struct ChannelView: View {
                     presets: [("1d", 144), ("1w", 1008), ("1mo", 4320)]
                 )
 
-                Section("Amount (sats)") {
-                    TextField("Amount", text: $vm.amount)
-                        .keyboardType(.numberPad)
-                }
-
                 KeyIndexPicker(index: $vm.keyIndex, maxIndex: 19)
 
                 if let address = channelPreviewAddress {
@@ -365,28 +424,21 @@ struct ChannelView: View {
                             }
                         }
                     }
-                    .disabled(vm.name.isEmpty || vm.receiverPubkey.isEmpty || vm.timeoutBlocks.isEmpty || vm.amount.isEmpty || !channelTimeoutValid)
+                    .disabled(vm.name.isEmpty || vm.receiverPubkey.isEmpty || vm.timeoutBlocks.isEmpty || !channelTimeoutValid)
                 }
             }
             .navigationTitle("New channel")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { showCreate = false }
-                }
-            }
-        }
     }
 
     // MARK: - Close Sheet (Cooperative)
 
-    private var closeSheet: some View {
-        NavigationStack {
+    private var closePage: some View {
             Form {
                 if let contract = vm.selectedContract {
                     Section("Channel") {
                         Text(contract.name).font(.headline)
-                        Text("\(contract.amount) sats").font(.subheadline.monospacedDigit())
+                        Text(contract.address.prefix(20) + "...").font(.system(.caption2, design: .monospaced)).foregroundStyle(.secondary)
                     }
 
                     Section("Sender amount (sats)") {
@@ -478,23 +530,16 @@ struct ChannelView: View {
             }
             .navigationTitle("Close Channel")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { showClose = false }
-                }
-            }
-        }
     }
 
     // MARK: - Refund Sheet (Unilateral)
 
-    private var refundSheet: some View {
-        NavigationStack {
+    private var refundPage: some View {
             Form {
                 if let contract = vm.selectedContract {
                     Section("Channel") {
                         Text(contract.name).font(.headline)
-                        Text("\(contract.amount) sats").font(.subheadline.monospacedDigit())
+                        Text(contract.address.prefix(20) + "...").font(.system(.caption2, design: .monospaced)).foregroundStyle(.secondary)
                         if let timeout = contract.timeoutBlocks {
                             Text("Timeout: block \(timeout)")
                                 .font(.caption).foregroundStyle(.secondary)
@@ -562,11 +607,5 @@ struct ChannelView: View {
             }
             .navigationTitle("Refund Channel")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { showRefund = false }
-                }
-            }
-        }
     }
 }

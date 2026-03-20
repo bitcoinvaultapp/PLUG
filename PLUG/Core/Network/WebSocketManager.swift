@@ -23,7 +23,9 @@ final class WebSocketManager: ObservableObject {
 
         // Skip WebSocket for testnet4 — endpoint doesn't exist
         if NetworkConfig.shared.isTestnet {
+            #if DEBUG
             print("[WS] WebSocket disabled for testnet4")
+            #endif
             return
         }
 
@@ -56,7 +58,9 @@ final class WebSocketManager: ObservableObject {
     private func send(_ message: String) {
         webSocketTask?.send(.string(message)) { error in
             if let error {
+                #if DEBUG
                 print("[WS] Send error: \(error)")
+                #endif
             }
         }
     }
@@ -79,7 +83,9 @@ final class WebSocketManager: ObservableObject {
                 self?.receiveMessage()
 
             case .failure(let error):
+                #if DEBUG
                 print("[WS] Receive error: \(error)")
+                #endif
                 DispatchQueue.main.async {
                     self?.isConnected = false
                 }
@@ -89,12 +95,16 @@ final class WebSocketManager: ObservableObject {
                     self.reconnectAttempts += 1
                     if self.reconnectAttempts <= self.maxReconnectAttempts {
                         let delay = Double(self.reconnectAttempts) * 10 // 10s, 20s, 30s
+                        #if DEBUG
                         print("[WS] Reconnect attempt \(self.reconnectAttempts)/\(self.maxReconnectAttempts) in \(delay)s")
+                        #endif
                         DispatchQueue.main.asyncAfter(deadline: .now() + delay) {
                             self.connect()
                         }
                     } else {
+                        #if DEBUG
                         print("[WS] Max reconnect attempts reached, stopping")
+                        #endif
                     }
                 }
             }
@@ -124,7 +134,9 @@ final class WebSocketManager: ObservableObject {
         pingTimer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { [weak self] _ in
             self?.webSocketTask?.sendPing { error in
                 if let error {
+                    #if DEBUG
                     print("[WS] Ping error: \(error)")
+                    #endif
                     DispatchQueue.main.async {
                         self?.isConnected = false
                     }

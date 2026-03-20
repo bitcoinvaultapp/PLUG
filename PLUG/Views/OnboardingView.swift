@@ -29,19 +29,17 @@ struct OnboardingView: View {
         VStack(spacing: 32) {
             Spacer()
 
-            Image(systemName: "bitcoinsign.circle.fill")
-                .font(.system(size: 80))
-                .foregroundStyle(.orange)
+            Image("LogoV6")
+                .resizable()
+                .scaledToFit()
+                .frame(width: 200)
 
             VStack(spacing: 12) {
-                Text("PLUG")
-                    .font(.system(size: 42, weight: .bold, design: .rounded))
-
-                Text("Bitcoin Wallet")
+                Text("Programmable Locking UTXO Gateway")
                     .font(.title3)
                     .foregroundStyle(.secondary)
 
-                Text("100% native. Zero private keys on device.\nAll signing goes through your Ledger.")
+                Text("Code money on Bitcoin.\nAll signing goes through your Ledger.")
                     .multilineTextAlignment(.center)
                     .foregroundStyle(.secondary)
                     .padding(.horizontal)
@@ -116,36 +114,120 @@ struct OnboardingView: View {
         VStack(spacing: 24) {
             Spacer()
 
-            Image(systemName: "checkmark.shield.fill")
-                .font(.system(size: 60))
-                .foregroundStyle(.green)
+            switch ledgerVM.state {
+            case .disconnected:
+                Image(systemName: "wave.3.right")
+                    .font(.system(size: 60))
+                    .foregroundStyle(.blue)
+                Text("Connect your Ledger")
+                    .font(.title2.weight(.bold))
+                Text("Make sure Bluetooth is on and your Ledger is unlocked.")
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal)
 
-            Text("Connect your Ledger")
-                .font(.title2.weight(.bold))
-
-            Text("Or use demo mode to explore")
-                .foregroundStyle(.secondary)
-
-            VStack(spacing: 12) {
-                Button("Scan Ledger") {
+                Button("Scan for Ledger") {
                     ledgerVM.startScan()
                 }
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
 
-                Button("Skip") {
-                    isComplete = true
+            case .scanning:
+                ProgressView()
+                    .controlSize(.large)
+                Text("Searching for Ledger...")
+                    .foregroundStyle(.secondary)
+
+                if !ledgerVM.discoveredDevices.isEmpty {
+                    VStack(spacing: 8) {
+                        ForEach(Array(ledgerVM.discoveredDevices.enumerated()), id: \.offset) { i, name in
+                            Button {
+                                ledgerVM.connect(at: i)
+                            } label: {
+                                HStack {
+                                    Image(systemName: "checkmark.shield.fill")
+                                    Text(name)
+                                }
+                                .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.bordered)
+                        }
+                    }
+                    .padding(.horizontal)
                 }
-                .foregroundStyle(.secondary)
+
+            case .connecting:
+                ProgressView()
+                    .controlSize(.large)
+                Text("Connecting...")
+                    .foregroundStyle(.secondary)
+
+            case .connected:
+                if ledgerVM.xpubResult != nil {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 60))
+                        .foregroundStyle(.green)
+                    Text("Ledger connected")
+                        .font(.title2.weight(.bold))
+                    Text("xpub saved. You're ready.")
+                        .foregroundStyle(.secondary)
+                } else {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 60))
+                        .foregroundStyle(.green)
+                    Text("Ledger connected")
+                        .font(.title2.weight(.bold))
+                    Text("Open the Bitcoin app on your Ledger.")
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                    if ledgerVM.isLoading {
+                        ProgressView()
+                        Text("Check your Ledger screen...")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Button("Fetch xpub") {
+                            Task { await ledgerVM.fetchAndSaveXpub() }
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.large)
+                    }
+                }
+
+            case .error(let msg):
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 60))
+                    .foregroundStyle(.red)
+                Text(msg)
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                Button("Retry") {
+                    ledgerVM.startScan()
+                }
+                .buttonStyle(.borderedProminent)
+            }
+
+            if let error = ledgerVM.error {
+                Text(error)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal)
             }
 
             Spacer()
+
+            Button("Skip") {
+                isComplete = true
+            }
+            .foregroundStyle(.secondary)
+
+            Spacer().frame(height: 40)
         }
         .padding()
-        .onChange(of: ledgerVM.state) { newState in
-            if case .connected = newState {
-                Task {
-                    await ledgerVM.fetchAndSaveXpub()
+        .onChange(of: ledgerVM.xpubResult) { result in
+            if result != nil {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
                     isComplete = true
                 }
             }

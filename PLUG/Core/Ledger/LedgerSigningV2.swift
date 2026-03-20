@@ -156,7 +156,9 @@ struct LedgerSigningV2 {
                     }
                     // Rest is the signature
                     let sig = offset < data.count ? Data(data[offset...]) : Data()
+                    #if DEBUG
                     print("[LedgerSign] YIELD: input \(inputIndex), pubkey \(pubkeyAugm.count)B, sig \(sig.count) bytes")
+                    #endif
                     if !sig.isEmpty {
                         yieldedSignatures.append((inputIndex, sig))
                     }
@@ -166,7 +168,9 @@ struct LedgerSigningV2 {
             case 0x40: // GET_PREIMAGE
                 guard data.count >= 34 else { return nil }
                 let hash = Data(data[2..<34])
+                #if DEBUG
                 print("[LedgerSign] GET_PREIMAGE: \(hash.hex.prefix(16))...")
+                #endif
                 if let preimage = knownPreimages[hash] {
                     var resp = Data()
                     resp.append(encodeVarint(UInt64(preimage.count)))
@@ -181,7 +185,9 @@ struct LedgerSigningV2 {
                     }
                     return resp
                 } else {
+                    #if DEBUG
                     print("[LedgerSign] WARNING: preimage not found!")
+                    #endif
                     var resp = Data()
                     resp.append(encodeVarint(0))
                     resp.append(0)
@@ -196,7 +202,9 @@ struct LedgerSigningV2 {
                 offset += tsBytesRead
                 guard let (leafIndex, _) = decodeVarint(data, offset: offset) else { return nil }
 
+                #if DEBUG
                 print("[LedgerSign] GET_MERKLE_LEAF_PROOF: root=\(rootHash.hex.prefix(16))... idx=\(leafIndex)")
+                #endif
 
                 if let tree = knownTrees[rootHash], Int(leafIndex) < tree.hashedLeaves.count {
                     let leafHash = tree.hashedLeaves[Int(leafIndex)]
@@ -229,7 +237,9 @@ struct LedgerSigningV2 {
                 let rootHash = Data(data[1..<33])
                 let leafHash = Data(data[33..<65])
 
+                #if DEBUG
                 print("[LedgerSign] GET_MERKLE_LEAF_INDEX: root=\(rootHash.hex.prefix(16))...")
+                #endif
 
                 if let tree = knownTrees[rootHash],
                    let idx = tree.hashedLeaves.firstIndex(of: leafHash) {
@@ -255,7 +265,9 @@ struct LedgerSigningV2 {
                 return resp
 
             default:
+                #if DEBUG
                 print("[LedgerSign] Unknown command: 0x\(String(format: "%02X", cmd))")
+                #endif
                 return nil
             }
         }
@@ -305,7 +317,9 @@ struct LedgerSigningV2 {
             data: apduData
         )
 
+        #if DEBUG
         print("[LedgerSign] Registering wallet: \(policy.name), descriptor: \(policy.descriptorTemplate)")
+        #endif
         var response = try await LedgerManager.shared.sendAPDU(apdu, timeout: 120)
 
         // Multi-round client command loop (same as signPSBT)
@@ -315,7 +329,9 @@ struct LedgerSigningV2 {
             if response.isEmpty { break }
 
             guard let cmdResponse = interpreter.handleCommand(response) else {
+                #if DEBUG
                 print("[LedgerSign] Registration: failed to handle command at round \(rounds)")
+                #endif
                 break
             }
 
@@ -335,7 +351,9 @@ struct LedgerSigningV2 {
         let returnedId = Data(response[0..<32])
         let hmac = Data(response[32..<64])
 
+        #if DEBUG
         print("[LedgerSign] Wallet registered! id=\(returnedId.hex.prefix(16))..., hmac=\(hmac.hex.prefix(16))...")
+        #endif
         return (returnedId, hmac)
     }
 
@@ -463,7 +481,9 @@ struct LedgerSigningV2 {
             data: apduData
         )
 
+        #if DEBUG
         print("[LedgerSign] Signing \(isTaproot ? "P2TR" : "P2WSH") with policy: \(walletPolicy.descriptorTemplate)")
+        #endif
         var response = try await LedgerManager.shared.sendAPDU(apdu, timeout: 120)
 
         var rounds = 0
@@ -472,7 +492,9 @@ struct LedgerSigningV2 {
             if response.isEmpty { break }
 
             guard let cmdResponse = interpreter.handleCommand(response) else {
+                #if DEBUG
                 print("[LedgerSign] P2WSH sign: failed at round \(rounds)")
+                #endif
                 break
             }
 
@@ -489,7 +511,9 @@ struct LedgerSigningV2 {
             throw SignError.noSignatures
         }
 
+        #if DEBUG
         print("[LedgerSign] P2WSH: got \(interpreter.yieldedSignatures.count) signatures")
+        #endif
         return interpreter.yieldedSignatures
     }
 
@@ -662,14 +686,20 @@ struct LedgerSigningV2 {
         let masterFP: Data
         if let savedFP = KeychainStore.shared.load(forKey: KeychainStore.KeychainKey.ledgerMasterFingerprint.rawValue), savedFP.count >= 4 {
             masterFP = Data(savedFP.prefix(4))
+            #if DEBUG
             print("[LedgerSign] Master fingerprint: \(masterFP.hex)")
+            #endif
         } else {
             masterFP = getMasterFingerprint(xpub: xpub)
+            #if DEBUG
             print("[LedgerSign] Master fingerprint (derived fallback): \(masterFP.hex)")
+            #endif
         }
 
         let protocolVersion: UInt8 = useProtocolV1 ? 0x01 : 0x00
+        #if DEBUG
         print("[LedgerSign] Using protocol v\(useProtocolV1 ? "1" : "0") (P2=0x\(String(format: "%02X", protocolVersion)))")
+        #endif
 
         // Build the descriptor — v0: "wpkh(@0)", v1: "wpkh(@0/**)"
         let descriptor: String
@@ -680,7 +710,9 @@ struct LedgerSigningV2 {
             // Protocol v0: no /** in descriptor, it goes in key info instead
             descriptor = walletPolicy.replacingOccurrences(of: "/**)", with: ")")
         }
+        #if DEBUG
         print("[LedgerSign] Descriptor template: \(descriptor)")
+        #endif
 
         // Build PSBTv2 maps
         let globalMap = buildPSBTv2GlobalMap(txInfo: txInfo)
@@ -770,40 +802,82 @@ struct LedgerSigningV2 {
             data: apduData
         )
 
+        #if DEBUG
         print("[LedgerSign] === SIGN_PSBT DEBUG ===")
+        #endif
+        #if DEBUG
         print("[LedgerSign] Protocol: v\(useProtocolV1 ? "1" : "0"), descriptor: \(descriptor)")
+        #endif
+        #if DEBUG
         print("[LedgerSign] Global map: \(globalMap.sortedKeys.count) keys")
+        #endif
         for (i, k) in globalMap.sortedKeys.enumerated() {
+            #if DEBUG
             print("[LedgerSign]   key[\(i)]: \(k.hex) → val: \(globalMap.sortedValues[i].hex.prefix(20))...")
+            #endif
         }
+        #if DEBUG
         print("[LedgerSign] Global keys root: \(globalMap.keysTree.root.hex.prefix(16))...")
+        #endif
+        #if DEBUG
         print("[LedgerSign] Global vals root: \(globalMap.valuesTree.root.hex.prefix(16))...")
+        #endif
+        #if DEBUG
         print("[LedgerSign] Input maps: \(inputMaps.count)")
+        #endif
         for (i, map) in inputMaps.enumerated() {
+            #if DEBUG
             print("[LedgerSign]   input[\(i)]: \(map.sortedKeys.count) keys, commitment: \(map.commitment.hex.prefix(16))...")
+            #endif
             for (j, k) in map.sortedKeys.enumerated() {
+                #if DEBUG
                 print("[LedgerSign]     key[\(j)]: \(k.hex) → val: \(map.sortedValues[j].hex.prefix(32))...")
+                #endif
             }
         }
+        #if DEBUG
         print("[LedgerSign] Input commit root: \(inputCommitTree.root.hex.prefix(16))...")
+        #endif
+        #if DEBUG
         print("[LedgerSign] Output maps: \(outputMaps.count)")
+        #endif
         for (i, map) in outputMaps.enumerated() {
+            #if DEBUG
             print("[LedgerSign]   output[\(i)]: \(map.sortedKeys.count) keys")
+            #endif
         }
+        #if DEBUG
         print("[LedgerSign] Output commit root: \(outputCommitTree.root.hex.prefix(16))...")
+        #endif
+        #if DEBUG
         print("[LedgerSign] Wallet ID: \(walletId.hex)")
+        #endif
+        #if DEBUG
         print("[LedgerSign] Key info: \(String(data: keyInfo, encoding: .ascii) ?? "?")")
+        #endif
+        #if DEBUG
         print("[LedgerSign] APDU total: \(apduData.count) bytes")
+        #endif
+        #if DEBUG
         print("[LedgerSign] Known preimages: \(interpreter.knownPreimages.count)")
+        #endif
         for (hash, preimage) in interpreter.knownPreimages {
             let label = String(data: preimage, encoding: .ascii).map { "ASCII: \($0.prefix(60))" } ?? "hex: \(preimage.hex.prefix(40))"
+            #if DEBUG
             print("[LedgerSign]   SHA256:\(hash.hex.prefix(16))... → \(label)")
+            #endif
         }
+        #if DEBUG
         print("[LedgerSign] Known trees: \(interpreter.knownTrees.count)")
+        #endif
+        #if DEBUG
         print("[LedgerSign] === END DEBUG ===")
+        #endif
 
         // Use 120s timeout — user must confirm the transaction on the Ledger screen
+        #if DEBUG
         print("[LedgerSign] Waiting for Ledger response (confirm on device)...")
+        #endif
         var response = try await LedgerManager.shared.sendAPDU(initialAPDU, timeout: 120)
 
         // Multi-round client command loop
@@ -815,13 +889,17 @@ struct LedgerSigningV2 {
 
             if response.isEmpty {
                 // 0x9000 with empty data = done
+                #if DEBUG
                 print("[LedgerSign] Complete after \(rounds) rounds")
+                #endif
                 break
             }
 
             // Handle client command
             guard let cmdResponse = interpreter.handleCommand(response) else {
+                #if DEBUG
                 print("[LedgerSign] Failed to handle command at round \(rounds), response: \(response.hex)")
+                #endif
                 break
             }
 
@@ -841,7 +919,9 @@ struct LedgerSigningV2 {
             throw SignError.noSignatures
         }
 
+        #if DEBUG
         print("[LedgerSign] Got \(interpreter.yieldedSignatures.count) signatures")
+        #endif
         return interpreter.yieldedSignatures
     }
 
@@ -975,7 +1055,9 @@ struct LedgerSigningV2 {
                 witnessUtxo.append(uint64LEData(info.value))
                 witnessUtxo.append(encodeVarint(UInt64(info.scriptPubKey.count)))
                 witnessUtxo.append(info.scriptPubKey)
+                #if DEBUG
                 print("[LedgerSign] Input[\(i)] WITNESS_UTXO: value=\(info.value) sats, spk=\(info.scriptPubKey.hex)")
+                #endif
             } else if parsed != nil {
                 // Fallback: try to extract from PSBTv1
                 witnessUtxo = extractWitnessUtxoFromPSBT(psbt, inputIndex: i)
@@ -985,7 +1067,9 @@ struct LedgerSigningV2 {
                 keys.append(Data([0x01]))
                 values.append(witnessUtxo)
             } else {
+                #if DEBUG
                 print("[LedgerSign] WARNING: Input[\(i)] missing WITNESS_UTXO — Ledger will reject!")
+                #endif
             }
 
             // BIP32_DERIVATION (0x06) + pubkey — tells Ledger which key to sign with
@@ -1026,7 +1110,9 @@ struct LedgerSigningV2 {
                     bip32Value.append(Data(bytes: &le, count: 4))
                 }
                 values.append(bip32Value)
+                #if DEBUG
                 print("[LedgerSign] Input[\(i)] BIP32: pubkey=\(pubkey.hex.prefix(16))..., path=m/84'/\(coinType)'/0'/\(change)/\(addrIndex)")
+                #endif
             }
 
             // PREVIOUS_TXID (0x0e)
@@ -1158,8 +1244,12 @@ struct LedgerSigningV2 {
         }
 
         let walletId = Crypto.sha256(data)
+        #if DEBUG
         print("[LedgerSign] Wallet policy: version=0x\(String(format: "%02x", data[0])), desc=\"\(descriptor)\", wallet_id=\(walletId.hex.prefix(16))...")
+        #endif
+        #if DEBUG
         print("[LedgerSign] Wallet policy hex: \(data.hex)")
+        #endif
 
         return data
     }
@@ -1173,7 +1263,9 @@ struct LedgerSigningV2 {
             // Protocol v0: "[fingerprint/path]xpub/**" — WITH /** suffix
             keyStr = "[\(masterFP.hex)/\(keyOrigin)]\(xpub)/**"
         }
+        #if DEBUG
         print("[LedgerSign] Key info string: \(keyStr)")
+        #endif
         return Data(keyStr.utf8)
     }
 

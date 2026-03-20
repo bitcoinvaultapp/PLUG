@@ -39,6 +39,7 @@ final class BackupVM: ObservableObject {
             let encrypted = try encryptAESGCM(plaintext: jsonData, password: exportPassword)
             exportedData = encrypted
             message = "Backup exported successfully"
+            UserDefaults.standard.set(Date(), forKey: "last_backup_date")
             exportPassword = ""
         } catch {
             self.error = "Encryption failed: \(error.localizedDescription)"
@@ -132,9 +133,32 @@ final class BackupVM: ObservableObject {
         message = "\(count) BIP329 labels imported"
     }
 
+    /// Public encrypt for single contract export
+    func encryptData(_ data: Data) throws -> Data {
+        try encryptAESGCM(plaintext: data, password: exportPassword)
+    }
+
     // MARK: - AES-256-GCM + PBKDF2
 
-    /// Encrypted format: version(1) + salt(32) + nonce(12) + ciphertext + tag(16)
+    /// File format (PLUG_BACKUP_V1):
+    ///
+    /// Bytes 0-14:   Magic header "PLUG_BACKUP_V1\n" (15 bytes, plaintext)
+    /// Byte  15:     Version (0x01)
+    /// Bytes 16-47:  Salt (32 bytes, random)
+    /// Bytes 48-59:  Nonce (12 bytes, AES-GCM)
+    /// Bytes 60-N:   Ciphertext (AES-256-GCM encrypted JSON)
+    /// Last 16:      GCM authentication tag
+    ///
+    /// Key derivation: PBKDF2-HMAC-SHA256, 600,000 rounds, 32-byte key
+    /// Plaintext: JSON { "contracts": [...], "labels": {...} }
+    ///
+    /// Decrypt with any language:
+    ///   1. Skip first 15 bytes (header)
+    ///   2. Read version (1), salt (32), nonce (12)
+    ///   3. Derive key: PBKDF2(password, salt, 600000, SHA256) → 32 bytes
+    ///   4. Decrypt: AES-256-GCM(key, nonce, ciphertext, tag) → JSON
+
+    private static let magicHeader = Data("PLUG_BACKUP_V1\n".utf8)
     private static let encryptionVersion: UInt8 = 0x01
     private static let pbkdf2Rounds: UInt32 = 600_000
     private static let saltLength = 32
@@ -177,8 +201,9 @@ final class BackupVM: ObservableObject {
         // Encrypt
         let sealedBox = try AES.GCM.seal(plaintext, using: key)
 
-        // Pack: version + salt + nonce + ciphertext + tag
+        // Pack: header + version + salt + nonce + ciphertext + tag
         var packed = Data()
+        packed.append(Self.magicHeader)
         packed.append(Self.encryptionVersion)
         packed.append(salt)
         packed.append(contentsOf: sealedBox.nonce)
@@ -190,19 +215,24 @@ final class BackupVM: ObservableObject {
 
     /// Decrypt AES-256-GCM with PBKDF2 key derivation
     private func decryptAESGCM(ciphertext: Data, password: String) throws -> Data {
-        // Minimum size: version(1) + salt(32) + nonce(12) + tag(16) = 61
-        guard ciphertext.count >= 61 else {
+        let headerLen = Self.magicHeader.count
+        // Minimum size: header(15) + version(1) + salt(32) + nonce(12) + tag(16) = 76
+        // Also support old format without header (61 bytes min)
+        let hasHeader = ciphertext.count >= headerLen && ciphertext.prefix(headerLen) == Self.magicHeader
+        let offset = hasHeader ? headerLen : 0
+
+        guard ciphertext.count >= offset + 61 else {
             throw BackupError.invalidFormat
         }
 
-        let version = ciphertext[0]
+        let version = ciphertext[offset]
         guard version == Self.encryptionVersion else {
             throw BackupError.unsupportedVersion
         }
 
-        let salt = ciphertext[1..<33]
-        let nonce = try AES.GCM.Nonce(data: ciphertext[33..<45])
-        let encrypted = ciphertext[45..<(ciphertext.count - 16)]
+        let salt = ciphertext[(offset + 1)..<(offset + 33)]
+        let nonce = try AES.GCM.Nonce(data: ciphertext[(offset + 33)..<(offset + 45)])
+        let encrypted = ciphertext[(offset + 45)..<(ciphertext.count - 16)]
         let tag = ciphertext[(ciphertext.count - 16)...]
 
         let key = deriveKey(password: password, salt: Data(salt))

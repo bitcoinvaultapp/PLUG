@@ -15,37 +15,35 @@ extension Color {
 
 struct HomeView: View {
     @StateObject private var vm = HomeVM()
-    @EnvironmentObject var walletVM: WalletVM
+    @ObservedObject private var ledgerState = LedgerManager.shared
+    @AppStorage("balance_unit") private var balanceUnit: String = BalanceUnit.btc.rawValue
+
+    private var hasWallet: Bool {
+        KeychainStore.shared.loadXpub(isTestnet: NetworkConfig.shared.isTestnet) != nil
+    }
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 20) {
-                    // Custom header
                     headerBar
 
-                    // Existing cards
-                    balanceCard
-                    networkStatsCard
+                    if hasWallet {
+                        // Full dashboard
+                        balanceCard
+                        networkStatsCard
+                        statusSection
+                        dailyTipCard
+                        quickActionsSection
+                        remindersSection
+                        recentAddressesSection
 
-                    // Wallet insights (side by side)
-                    HStack(spacing: 12) {
-                        privacyScoreCard
-                        utxoHealthCard
+                    } else {
+                        // No wallet — need to connect Ledger first
+                        connectLedgerCard
+                        networkStatsCard
+                        dailyTipCard
                     }
-
-                    // Pending confirmations
-                    confirmationTracker
-
-                    if !vm.alerts.isEmpty {
-                        alertsSection
-                    }
-
-                    // Daily tip
-                    dailyTipCard
-
-                    // Contracts summary
-                    contractsSummary
                 }
                 .padding()
             }
@@ -53,20 +51,70 @@ struct HomeView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(.hidden, for: .navigationBar)
             .refreshable {
-                await vm.refresh()
-                if !walletVM.addresses.isEmpty {
-                    await walletVM.refreshUTXOs()
-                }
-                vm.updateBalance(walletVM.totalBalance)
+                await Task.detached { [vm] in
+                    await vm.refresh()
+                    await vm.refreshBalance()
+                }.value
             }
             .task {
                 await vm.refresh()
-                // Initial load only — if wallet has no data yet, load it once
-                if walletVM.addresses.isEmpty && walletVM.hasWallet {
-                    await walletVM.loadWallet()
-                }
-                vm.updateBalance(walletVM.totalBalance)
+                await vm.refreshBalance()
+                await vm.refreshContractBalances()
                 vm.connectWebSocket()
+            }
+        }
+    }
+
+    // =====================================================================
+    // MARK: - Connect Ledger Card
+    // =====================================================================
+
+    @State private var showLedgerFromCard = false
+    @State private var tipIndex = Int.random(in: 0..<42)
+    @State private var showReceiveFromHome = false
+    @State private var showBackupFromHome = false
+    @State private var copiedAddress = ""
+
+    private var connectLedgerCard: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "wave.3.right")
+                .font(.system(size: 36))
+                .foregroundStyle(.orange)
+                .padding(.top, 8)
+
+            VStack(spacing: 6) {
+                Text("Connect your Ledger")
+                    .font(.system(size: 18, weight: .semibold))
+                Text("Pair via Bluetooth to view your balance and sign transactions.")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 8)
+            }
+
+            Button {
+                showLedgerFromCard = true
+            } label: {
+                Text("Connect")
+                    .font(.system(size: 15, weight: .semibold))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(Color.btcOrange, in: RoundedRectangle(cornerRadius: 12))
+                    .foregroundStyle(.white)
+            }
+            .padding(.horizontal, 8)
+            .padding(.bottom, 4)
+        }
+        .padding(16)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+        .sheet(isPresented: $showLedgerFromCard) {
+            NavigationStack {
+                LedgerView()
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Done") { showLedgerFromCard = false }
+                        }
+                    }
             }
         }
     }
@@ -83,25 +131,50 @@ struct HomeView: View {
     // MARK: - Balance Card (untouched)
     // =====================================================================
 
+    private var currentUnit: BalanceUnit {
+        BalanceUnit(rawValue: balanceUnit) ?? .btc
+    }
+
+    private func formatBalance(_ sats: UInt64) -> (value: String, unit: String) {
+        switch currentUnit {
+        case .btc:
+            let btc = Double(sats) / 100_000_000
+            return (String(format: "%.8f", btc), "BTC")
+        case .sats:
+            return (HomeVM.formatSats(sats), "sats")
+        case .usd:
+            let btc = Double(sats) / 100_000_000
+            let usd = btc * vm.btcPrice
+            return (vm.btcPrice > 0 ? String(format: "%.2f", usd) : "--", "USD")
+        }
+    }
+
     private var balanceCard: some View {
-        VStack(spacing: 12) {
+        let display = formatBalance(vm.totalBalance)
+
+        return VStack(spacing: 8) {
             Text("Total Balance")
                 .font(.subheadline)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(.tertiary)
 
-            Text("\(vm.totalBalance) sats")
-                .font(.system(size: 32, weight: .bold, design: .monospaced))
-
-            if vm.btcPrice > 0 {
-                let btc = Double(vm.totalBalance) / 100_000_000
-                Text(String(format: "%.8f BTC  |  $%.2f USD", btc, btc * vm.btcPrice))
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            Button {
+                let impact = UIImpactFeedbackGenerator(style: .light)
+                impact.impactOccurred()
+                balanceUnit = currentUnit.next.rawValue
+            } label: {
+                VStack(spacing: 2) {
+                    Text(display.value)
+                        .font(.system(size: 34, weight: .bold, design: .monospaced))
+                        .foregroundStyle(.primary)
+                    Text(display.unit)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.tertiary)
+                }
             }
+            .buttonStyle(.plain)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 24)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+        .padding(.vertical, 16)
     }
 
     // =====================================================================
@@ -109,468 +182,913 @@ struct HomeView: View {
     // =====================================================================
 
     private var networkStatsCard: some View {
-        VStack(spacing: 12) {
-            HStack {
-                Text("Network")
-                    .font(.headline)
-                Spacer()
-                Text(NetworkConfig.shared.networkName)
-                    .font(.caption)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(NetworkConfig.shared.isTestnet ? Color.orange : Color.green, in: Capsule())
-                    .foregroundStyle(.white)
-            }
+        VStack(spacing: 10) {
+            // Block height + live timer
+            BlockTimerRow(blockHeight: vm.blockHeight, lastBlockTime: vm.lastBlockTime)
 
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) {
-                statItem(title: "Block", value: "\(vm.blockHeight)")
-                statItem(title: "Fast Fee", value: vm.feeEstimate.map { "\($0.fastestFee) sat/vB" } ?? "—")
-                statItem(title: "Economy Fee", value: vm.feeEstimate.map { "\($0.economyFee) sat/vB" } ?? "—")
-                if let diff = vm.difficulty {
-                    statItem(title: "Difficulty", value: String(format: "%.1f%%", diff.progressPercent))
+            // Fees — 3 tiers in one line
+            if let fee = vm.feeEstimate {
+                HStack(spacing: 8) {
+                    Image(systemName: "gauge.with.dots.needle.33percent")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.tertiary)
+                    Text("Fee")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.tertiary)
+                    Spacer()
+                    HStack(spacing: 0) {
+                        feeChipInline("\(fee.fastestFee)", color: .red)
+                        Text(" · ")
+                            .font(.system(size: 9))
+                            .foregroundStyle(.quaternary)
+                        feeChipInline("\(fee.halfHourFee)", color: .orange)
+                        Text(" · ")
+                            .font(.system(size: 9))
+                            .foregroundStyle(.quaternary)
+                        feeChipInline("\(fee.economyFee)", color: .green)
+                    }
+                    Text("sat/vB")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.quaternary)
                 }
             }
-        }
-        .padding()
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
-    }
 
-    private func statItem(title: String, value: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Text(value)
-                .font(.system(.body, design: .monospaced))
-                .fontWeight(.medium)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    // =====================================================================
-    // MARK: - Alerts (untouched)
-    // =====================================================================
-
-    private var alertsSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Alerts")
-                .font(.headline)
-
-            ForEach(vm.alerts) { alert in
-                HStack {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .foregroundStyle(.yellow)
-                    Text(alert.message)
-                        .font(.subheadline)
+            // BTC price
+            if vm.btcPrice > 0 {
+                HStack(spacing: 8) {
+                    Image(systemName: "dollarsign.circle")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.tertiary)
+                    Text("BTC")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.tertiary)
+                    Spacer()
+                    Text(String(format: "$%,.0f", vm.btcPrice))
+                        .font(.system(size: 13, weight: .medium, design: .monospaced))
                 }
-                .padding(12)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(.yellow.opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
             }
-        }
-    }
 
-    // =====================================================================
-    // MARK: - Privacy Score
-    // =====================================================================
+            // Next halving
+            if vm.blockHeight > 0 {
+                let nextHalving = ((vm.blockHeight / 210_000) + 1) * 210_000
+                let remaining = nextHalving - vm.blockHeight
+                let estimatedDays = remaining * 10 / 60 / 24
+                let years = estimatedDays / 365
+                let months = (estimatedDays % 365) / 30
 
-    private var privacyScoreCard: some View {
-        let reusedCount = walletVM.addresses.filter { !$0.isChange && walletVM.addressStatus(for: $0.address) == .used }.count
-        let exposedKeys = walletVM.addresses.filter { walletVM.addressStatus(for: $0.address) == .used }.count
-        let dustCount = walletVM.dustUtxos.count
-        let utxoCount = walletVM.utxos.count
-
-        // Score: start at 100, deduct for bad practices
-        var score = 100
-        score -= reusedCount * 15  // -15 per reused address
-        score -= dustCount * 5     // -5 per dust UTXO
-        if utxoCount > 20 { score -= 10 } // too many UTXOs = linkability
-        score = max(0, min(100, score))
-
-        let color: Color = score >= 80 ? .green : score >= 50 ? .orange : .red
-        let label = score >= 80 ? "Good" : score >= 50 ? "Fair" : "Poor"
-
-        return VStack(alignment: .leading, spacing: 8) {
-            Image(systemName: "shield.checkered")
-                .font(.system(size: 18))
-                .foregroundStyle(color)
-
-            Text("\(score)")
-                .font(.system(size: 24, weight: .bold, design: .rounded))
-                .foregroundStyle(color)
-
-            Text("Privacy · \(label)")
-                .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(.secondary)
-
-            if reusedCount > 0 {
-                Text("\(reusedCount) addr reused")
-                    .font(.system(size: 9, design: .monospaced))
-                    .foregroundStyle(.red)
-            } else if exposedKeys == 0 {
-                Text("No keys exposed")
-                    .font(.system(size: 9, design: .monospaced))
-                    .foregroundStyle(.green)
+                HStack(spacing: 8) {
+                    Image(systemName: "hourglass")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.tertiary)
+                    Text("Halving")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.tertiary)
+                    Spacer()
+                    Text("\(HomeVM.formatSats(UInt64(remaining))) blocks")
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                    Text(years > 0 ? "~\(years)y \(months)m" : "~\(months)m")
+                        .font(.system(size: 9, design: .monospaced))
+                        .foregroundStyle(.quaternary)
+                }
             }
-        }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
-    }
 
-    // =====================================================================
-    // MARK: - UTXO Health
-    // =====================================================================
-
-    private var utxoHealthCard: some View {
-        let count = walletVM.utxos.count
-        let total = walletVM.totalBalance
-        let avg = count > 0 ? total / UInt64(count) : 0
-        let dustCount = walletVM.dustUtxos.count
-        let color: Color = dustCount > 0 ? .orange : count > 20 ? .yellow : .green
-        let label = dustCount > 0 ? "Dust!" : count > 20 ? "Consolidate" : "Healthy"
-
-        return VStack(alignment: .leading, spacing: 8) {
-            Image(systemName: "cube.fill")
-                .font(.system(size: 18))
-                .foregroundStyle(color)
-
-            Text("\(count)")
-                .font(.system(size: 24, weight: .bold, design: .rounded))
-                .foregroundStyle(color)
-
-            Text("UTXOs · \(label)")
-                .font(.system(size: 10, weight: .medium))
-                .foregroundStyle(.secondary)
-
-            if count > 0 {
-                Text("avg \(avg) sats")
-                    .font(.system(size: 9, design: .monospaced))
-                    .foregroundStyle(.secondary)
+            // Fee insight
+            if let fee = vm.feeEstimate {
+                let level = fee.fastestFee
+                HStack(spacing: 8) {
+                    Circle()
+                        .fill(level < 10 ? Color.green : level < 50 ? Color.orange : Color.red)
+                        .frame(width: 6, height: 6)
+                    Text(level < 10 ? "Good time to send" : level < 50 ? "Moderate fees" : "Network busy")
+                        .font(.system(size: 11))
+                        .foregroundStyle(level < 10 ? .green : level < 50 ? .orange : .red)
+                    Spacer()
+                }
             }
-            if dustCount > 0 {
-                Text("\(dustCount) dust")
-                    .font(.system(size: 9, design: .monospaced))
-                    .foregroundStyle(.orange)
+
+            // Contract activity
+            if !vm.activeContracts.isEmpty {
+                let counts = contractCounts
+                HStack(spacing: 8) {
+                    Image(systemName: "doc.text.fill")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.tertiary)
+                    Text(counts)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                }
             }
-        }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
-    }
 
-    // =====================================================================
-    // MARK: - Confirmation Tracker
-    // =====================================================================
-
-    private var confirmationTracker: some View {
-        let pending = walletVM.transactions.filter { !$0.status.confirmed }
-
-        return Group {
-            if !pending.isEmpty {
-                VStack(spacing: 10) {
-                    HStack {
-                        Image(systemName: "clock.arrow.circlepath")
-                            .font(.system(size: 14))
+            // UTXO health
+            if !vm.utxos.isEmpty {
+                let dustCount = vm.dustUtxos.count
+                HStack(spacing: 8) {
+                    Image(systemName: "circle.grid.3x3.fill")
+                        .font(.system(size: 10))
+                        .foregroundStyle(.tertiary)
+                    Text("\(vm.utxos.count) UTXOs")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                    if dustCount > 0 {
+                        Text("· \(dustCount) dust")
+                            .font(.system(size: 11))
                             .foregroundStyle(.orange)
-                        Text("Pending")
-                            .font(.system(size: 13, weight: .bold))
-                        Spacer()
-                        Text("\(pending.count) tx")
-                            .font(.system(size: 12, weight: .medium, design: .monospaced))
+                    }
+                    Spacer()
+                }
+            }
+        }
+    }
+
+    private var contractCounts: String {
+        let contracts = vm.activeContracts
+        var parts: [String] = []
+        let vaults = contracts.filter { $0.type == .vault }.count
+        let inherits = contracts.filter { $0.type == .inheritance }.count
+        let htlcs = contracts.filter { $0.type == .htlc }.count
+        let channels = contracts.filter { $0.type == .channel }.count
+        let pools = contracts.filter { $0.type == .pool }.count
+        if vaults > 0 { parts.append("\(vaults) CLTV") }
+        if inherits > 0 { parts.append("\(inherits) CSV") }
+        if htlcs > 0 { parts.append("\(htlcs) HTLC") }
+        if channels > 0 { parts.append("\(channels) P2MS") }
+        if pools > 0 { parts.append("\(pools) MULTI") }
+        return parts.joined(separator: " · ")
+    }
+
+    private func feeChipInline(_ value: String, color: Color) -> some View {
+        Text(value)
+            .font(.system(size: 11, weight: .semibold, design: .monospaced))
+            .foregroundStyle(color)
+    }
+
+    // =====================================================================
+    // MARK: - Unified Status Section
+    // =====================================================================
+
+    private var statusSection: some View {
+        let pendingCount = vm.pendingTransactions.count
+        let exposed = exposedAddressFunds
+
+        let unlockedVaults = vm.alerts.filter {
+            if case .vaultUnlocked = $0 { return true }; return false
+        }
+        let inheritanceAlerts = vm.alerts.filter {
+            if case .inheritanceApproaching = $0 { return true }; return false
+        }
+
+        return VStack(spacing: 0) {
+            // Exposed addresses
+            if exposed.count > 0 {
+                if exposed.count == 1 {
+                    statusRow(icon: "exclamationmark.shield.fill", iconColor: .red,
+                              title: "1 address exposed", subtitle: "Public key on-chain · move funds")
+                } else {
+                    statusGroup(
+                        icon: "exclamationmark.shield.fill", iconColor: .red,
+                        title: "\(exposed.count) addresses exposed",
+                        subtitle: "Public key on-chain · move funds",
+                        details: exposedAddressDetails
+                    )
+                }
+                Divider().padding(.leading, 40).opacity(0.2)
+            }
+
+            // Unlocked vaults
+            if !unlockedVaults.isEmpty {
+                if unlockedVaults.count == 1, case .vaultUnlocked(_, let name) = unlockedVaults[0] {
+                    statusRow(icon: "lock.open.fill", iconColor: .green,
+                              title: "Vault \"\(name)\" unlocked", subtitle: "Ready to spend")
+                } else {
+                    statusGroup(
+                        icon: "lock.open.fill", iconColor: .green,
+                        title: "\(unlockedVaults.count) vaults unlocked",
+                        subtitle: "Ready to spend",
+                        details: unlockedVaults.map { alert in
+                            if case .vaultUnlocked(_, let name) = alert { return name }
+                            return ""
+                        }
+                    )
+                }
+                Divider().padding(.leading, 40).opacity(0.2)
+            }
+
+            // Inheritance approaching
+            if !inheritanceAlerts.isEmpty {
+                if inheritanceAlerts.count == 1, case .inheritanceApproaching(_, let name, let blocks) = inheritanceAlerts[0] {
+                    statusRow(icon: "clock.badge.exclamationmark.fill", iconColor: .orange,
+                              title: "Inheritance \"\(name)\"", subtitle: "\(blocks) blocks remaining")
+                } else {
+                    statusGroup(
+                        icon: "clock.badge.exclamationmark.fill", iconColor: .orange,
+                        title: "\(inheritanceAlerts.count) inheritances approaching",
+                        subtitle: "Action needed",
+                        details: inheritanceAlerts.map { alert in
+                            if case .inheritanceApproaching(_, let name, let blocks) = alert {
+                                return "\(name) · \(blocks) blocks"
+                            }
+                            return ""
+                        }
+                    )
+                }
+                Divider().padding(.leading, 40).opacity(0.2)
+            }
+
+            // Pending transactions
+            if pendingCount > 0 {
+                statusRow(icon: "clock.fill", iconColor: .orange,
+                          title: "\(pendingCount) tx pending", subtitle: "Waiting for confirmation")
+                Divider().padding(.leading, 40).opacity(0.2)
+            }
+
+        }
+    }
+
+    /// Expandable status group with DisclosureGroup
+    private func statusGroup(icon: String, iconColor: Color, title: String, subtitle: String, details: [String]) -> some View {
+        DisclosureGroup {
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(details, id: \.self) { detail in
+                    HStack(spacing: 6) {
+                        Circle()
+                            .fill(iconColor.opacity(0.5))
+                            .frame(width: 4, height: 4)
+                        Text(detail)
+                            .font(.system(size: 11, design: .monospaced))
                             .foregroundStyle(.secondary)
                     }
-
-                    ForEach(pending.prefix(3)) { tx in
-                        HStack(spacing: 10) {
-                            // Progress ring
-                            ZStack {
-                                Circle()
-                                    .stroke(Color.gray.opacity(0.2), lineWidth: 3)
-                                    .frame(width: 28, height: 28)
-                                Circle()
-                                    .trim(from: 0, to: 0)
-                                    .stroke(Color.orange, style: StrokeStyle(lineWidth: 3, lineCap: .round))
-                                    .frame(width: 28, height: 28)
-                                    .rotationEffect(.degrees(-90))
-                                Text("0")
-                                    .font(.system(size: 9, weight: .bold, design: .monospaced))
-                                    .foregroundStyle(.orange)
-                            }
-
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(String(tx.txid.prefix(12)) + "...")
-                                    .font(.system(size: 11, design: .monospaced))
-                                Text("Unconfirmed")
-                                    .font(.system(size: 9))
-                                    .foregroundStyle(.orange)
-                            }
-
-                            Spacer()
-
-                            Text("\(tx.fee) sats fee")
-                                .font(.system(size: 10, design: .monospaced))
-                                .foregroundStyle(.secondary)
-                        }
-                    }
                 }
-                .padding()
-                .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+            }
+            .padding(.leading, 32)
+            .padding(.vertical, 4)
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: icon)
+                    .font(.system(size: 14))
+                    .foregroundStyle(iconColor)
+                    .frame(width: 24)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(title)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.primary)
+                    Text(subtitle)
+                        .font(.system(size: 10))
+                        .foregroundStyle(.tertiary)
+                }
             }
         }
+        .tint(.secondary)
+        .padding(.horizontal, 14)
+        .padding(.vertical, 6)
     }
+
+    /// Detail strings for exposed addresses
+    private var exposedAddressDetails: [String] {
+        let knownAddresses = Set(vm.walletAddresses.map { $0.address })
+        var spentFrom = Set<String>()
+        for tx in vm.transactions {
+            for input in tx.vin {
+                if let addr = input.prevout?.scriptpubkeyAddress, knownAddresses.contains(addr) {
+                    spentFrom.insert(addr)
+                }
+            }
+        }
+        return spentFrom.compactMap { addr in
+            let bal = vm.utxos.filter { $0.address == addr }.reduce(UInt64(0)) { $0 + $1.value }
+            guard bal > 0 else { return nil }
+            return String(addr.prefix(10)) + "..." + String(addr.suffix(4))
+        }
+    }
+
+    /// Addresses that have been spent from (pubkey on-chain) but still hold funds
+    private var exposedAddressFunds: (count: Int, totalSats: UInt64) {
+        let knownAddresses = Set(vm.walletAddresses.map { $0.address })
+
+        // Find addresses that appear in tx inputs (spent from = pubkey exposed)
+        var spentFrom = Set<String>()
+        for tx in vm.transactions {
+            for input in tx.vin {
+                if let addr = input.prevout?.scriptpubkeyAddress, knownAddresses.contains(addr) {
+                    spentFrom.insert(addr)
+                }
+            }
+        }
+
+        // Check which spent-from addresses still hold funds
+        var count = 0
+        var total: UInt64 = 0
+        for addr in spentFrom {
+            let balance = vm.utxos.filter { $0.address == addr }.reduce(UInt64(0)) { $0 + $1.value }
+            if balance > 0 {
+                count += 1
+                total += balance
+            }
+        }
+
+        return (count, total)
+    }
+
+    private func statusRow(
+        icon: String,
+        iconColor: Color,
+        title: String,
+        subtitle: String
+    ) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 18))
+                .foregroundStyle(iconColor)
+                .frame(width: 30)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.gray)
+                if !subtitle.isEmpty {
+                    Text(subtitle)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.gray.opacity(0.7))
+                }
+            }
+
+            Spacer()
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+    }
+
 
     // =====================================================================
     // MARK: - Daily Bitcoin Tip (from Mastering Bitcoin ch13)
     // =====================================================================
 
     private var dailyTipCard: some View {
-        let tips = [
-            ("lock.shield.fill", "Never reuse a Bitcoin address. Each address should be used only once for receiving.", Color.green),
-            ("key.fill", "Your Ledger seed phrase is the master key. Store it offline, never digitally.", Color.btcOrange),
-            ("eye.slash.fill", "Use coin control to avoid mixing KYC and non-KYC UTXOs in the same transaction.", Color.purple),
-            ("checkmark.shield.fill", "Always verify the receive address on your Ledger screen before sending funds.", Color.blue),
-            ("clock.fill", "Wait for at least 6 confirmations before considering a large payment final.", Color.orange),
-            ("antenna.radiowaves.left.and.right", "Consider using Tor to hide your IP address when querying the blockchain.", Color.teal),
-            ("exclamationmark.triangle.fill", "Dust outputs (< 546 sats) cost more in fees to spend than they're worth.", Color.yellow),
-            ("arrow.triangle.2.circlepath", "CoinJoin combines multiple transactions for privacy. No trust required.", Color.purple),
-            ("bitcoinsign.circle.fill", "Bitcoin's supply is capped at 21 million. No government can inflate it.", Color.btcOrange),
-            ("doc.text.fill", "Label your transactions. Future you will thank present you.", Color.blue),
-            ("person.2.fill", "Multisig requires M-of-N signatures. No single point of failure.", Color.teal),
-            ("timer", "OP_CHECKLOCKTIMEVERIFY locks funds until a specific block height.", Color.orange),
+        let tips: [(String, String, Color)] = [
+            ("lock.fill", "Never reuse a Bitcoin address. Each should be used only once for privacy.", .green),
+            ("key.fill", "Your seed phrase is the master key. Store it offline in physical form, never digitally.", .orange),
+            ("eye.slash.fill", "Use coin control to avoid mixing KYC and non-KYC UTXOs in the same transaction.", .purple),
+            ("checkmark.shield.fill", "Always verify the receive address on your Ledger screen before sending.", .blue),
+            ("clock.fill", "Wait for 6 confirmations before considering a large payment final.", .orange),
+            ("antenna.radiowaves.left.and.right", "Use Tor to hide your IP when querying the blockchain.", .teal),
+            ("exclamationmark.triangle.fill", "Dust outputs (< 546 sats) cost more in fees to spend than they're worth.", .yellow),
+            ("arrow.triangle.2.circlepath", "CoinJoin mixes your transaction with others. No trust required.", .purple),
+            ("bitcoinsign.circle.fill", "Bitcoin's supply is capped at 21 million. No one can inflate it.", .orange),
+            ("doc.text.fill", "Label your transactions. Future you will thank present you.", .blue),
+            ("person.2.fill", "Multisig requires M-of-N signatures. No single point of failure.", .teal),
+            ("timer", "OP_CHECKLOCKTIMEVERIFY locks funds until a specific block height.", .orange),
+            ("wallet.pass", "A wallet holds keys, not coins. Your bitcoins live on the blockchain.", .cyan),
+            ("arrow.left.arrow.right", "HD wallets generate unlimited addresses from a single seed phrase.", .blue),
+            ("sum", "Fees = Inputs - Outputs. Forgot change? You tipped the miner the difference.", .red),
+            ("arrow.merge", "Consolidate small UTXOs when fees are low to save on future costs.", .green),
+            ("hourglass", "Locktime schedules transactions and protects against fee-sniping attacks.", .teal),
+            ("curlybraces", "Bitcoin Script has no loops by design. This prevents denial-of-service attacks.", .purple),
+            ("seal.fill", "Taproot combines key-path and script-path spending for better privacy.", .mint),
+            ("signature", "Digital signatures prove authorization without revealing your private key.", .blue),
+            ("checkmark.rectangle", "Schnorr signatures are smaller and faster than legacy ECDSA.", .green),
+            ("shield.lefthalf.filled", "Hardware wallets isolate signing from online threats like malware.", .red),
+            ("arrow.triangle.swap", "RBF (Replace-by-Fee) lets you bump fees on stuck transactions.", .purple),
+            ("chart.line.uptrend.xyaxis", "Miners prioritize transactions with the best fee-per-vbyte ratio.", .orange),
+            ("timer", "Low fees? Send on weekends or early mornings for cheaper transactions.", .teal),
+            ("exclamationmark.circle", "Overpaying fees is permanent. Always check the fee rate before sending.", .red),
+            ("arrow.up.arrow.down", "CPFP lets receivers fee-bump unconfirmed transactions they receive.", .green),
+            ("network", "Bitcoin is peer-to-peer. No servers, no central authority, no single point of failure.", .blue),
+            ("globe", "Nodes connect to random peers to resist censorship and sybil attacks.", .cyan),
+            ("lock.shield", "Tor SOCKS5 proxy hides your IP from the API for better privacy.", .purple),
+            ("cube.fill", "6+ confirmations make transaction reversals astronomically expensive.", .blue),
+            ("square.stack.3d.up.fill", "Testnet is for testing. Always verify on testnet before using mainnet.", .orange),
+            ("lock.fill", "Cold storage (offline signing) is the safest technique for large holdings.", .red),
+            ("gear", "Block rewards halve every 210,000 blocks. Eventually only fees incentivize miners.", .orange),
+            ("key.horizontal", "Store multisig keys in separate locations controlled by different people.", .purple),
+            ("dollarsign.circle.fill", "Your keys, your coins. No seed phrase = no recovery. Unlike banks.", .red),
+            ("person.2", "Share recovery details with a trusted person for inheritance planning.", .mint),
+            ("exclamationmark.shield.fill", "Keys on always-online devices can be stolen. Use hardware wallets.", .red),
+            ("lock.square.stack.fill", "Keep < 5% as mobile pocket change. The rest in cold storage.", .orange),
+            ("arrow.turn.up.left", "Back up scripts too, not just keys. Complex contracts need witness data to spend.", .orange),
+            ("checkmark.diamond", "Test your backups. If you secure too well, you might lock yourself out.", .yellow),
+            ("person.3.fill", "For large amounts, use multisig held by different people in different locations.", .green),
         ]
 
-        let dayIndex = Calendar.current.ordinality(of: .day, in: .year, for: Date()) ?? 0
-        let tip = tips[dayIndex % tips.count]
+        let tip = tips[tipIndex % tips.count]
 
-        return HStack(spacing: 12) {
-            Image(systemName: tip.0)
-                .font(.system(size: 22))
-                .foregroundStyle(tip.2)
-                .frame(width: 44, height: 44)
-                .background(tip.2.opacity(0.15), in: RoundedRectangle(cornerRadius: 12))
+        return VStack(alignment: .leading, spacing: 8) {
+            Text("TIP")
+                .font(.system(size: 8, weight: .bold, design: .monospaced))
+                .foregroundStyle(.quaternary)
 
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Daily Tip")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(.secondary)
+            HStack(spacing: 10) {
+                Image(systemName: tip.0)
+                    .font(.system(size: 14))
+                    .foregroundStyle(tip.2)
+                    .frame(width: 20)
                 Text(tip.1)
-                    .font(.system(size: 13))
-                    .foregroundStyle(.primary)
-                    .lineLimit(3)
-            }
-        }
-        .padding()
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
-    }
-
-    // =====================================================================
-    // MARK: - Contracts Summary
-    // =====================================================================
-    // =====================================================================
-
-    private var contractsSummary: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text("Contracts")
-                .font(.headline)
-
-            // Vaults card
-            if !vm.vaults.isEmpty {
-                contractTypeCard(
-                    icon: "lock.fill",
-                    iconBg: Color.vaultYellow,
-                    title: "Vaults",
-                    count: vm.vaults.count,
-                    totalSats: vm.vaultsBalance,
-                    badges: vaultBadges
-                ) {
-                    ForEach(vm.vaults) { vault in
-                        vaultRow(vault)
-                    }
-                }
-            }
-
-            // Inheritance card
-            if !vm.inheritances.isEmpty {
-                contractTypeCard(
-                    icon: "shield.fill",
-                    iconBg: Color.inheritancePurple,
-                    title: "Inheritance",
-                    count: vm.inheritances.count,
-                    totalSats: vm.inheritanceBalance,
-                    badges: [("CSV", Color.inheritancePurple)]
-                ) {
-                    ForEach(vm.inheritances) { inheritance in
-                        inheritanceRow(inheritance)
-                    }
-                }
-            }
-
-            // Pools card
-            if !vm.pools.isEmpty {
-                contractTypeCard(
-                    icon: "person.2.fill",
-                    iconBg: Color.poolTeal,
-                    title: "Pools",
-                    count: vm.pools.count,
-                    totalSats: vm.poolsBalance,
-                    badges: [("MULTI", Color.poolTeal)]
-                ) {
-                    ForEach(vm.pools) { pool in
-                        poolRow(pool)
-                    }
-                }
-            }
-
-            // Nothing at all — no "No contracts" message, just hide
-        }
-    }
-
-    // MARK: - Vault badges
-
-    private var vaultBadges: [(String, Color)] {
-        var badges: [(String, Color)] = []
-        let ready = vm.readyVaultsCount
-        if ready > 0 {
-            badges.append(("\(ready) READY", Color.accentGreen))
-        }
-        badges.append(("CLTV", Color.btcOrange))
-        return badges
-    }
-
-    // MARK: - Generic contract type card
-
-    private func contractTypeCard<Content: View>(
-        icon: String,
-        iconBg: Color,
-        title: String,
-        count: Int,
-        totalSats: UInt64,
-        badges: [(String, Color)],
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            // Card header
-            HStack(spacing: 12) {
-                // Icon badge
-                Image(systemName: icon)
-                    .font(.system(size: 18))
-                    .foregroundStyle(iconBg)
-                    .frame(width: 44, height: 44)
-                    .background(iconBg.opacity(0.15), in: RoundedRectangle(cornerRadius: 12))
-
-                // Title + subtitle
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title)
-                        .font(.system(size: 16, weight: .bold))
-                    Text("\(count) active \u{00B7} \(HomeVM.formatSats(totalSats)) sats")
-                        .font(.system(size: 12, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                }
-
-                Spacer()
-
-                // Badge chips
-                ForEach(Array(badges.enumerated()), id: \.offset) { _, badge in
-                    Text(badge.0)
-                        .font(.system(size: 9, weight: .bold, design: .monospaced))
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(badge.1.opacity(0.2), in: RoundedRectangle(cornerRadius: 6))
-                        .foregroundStyle(badge.1)
-                }
-            }
-
-            // Divider
-            Rectangle()
-                .fill(.secondary.opacity(0.2))
-                .frame(height: 0.5)
-                .padding(.vertical, 10)
-
-            // Contract rows
-            content()
-        }
-        .padding(14)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
-    }
-
-    // MARK: - Vault row
-
-    private func vaultRow(_ vault: Contract) -> some View {
-        HStack {
-            Circle()
-                .fill(vm.isVaultUnlocked(vault) ? Color.accentGreen : Color.btcOrange)
-                .frame(width: 6, height: 6)
-            Text(vault.name)
-                .font(.system(size: 13, weight: .medium))
-            Spacer()
-            if vm.isVaultUnlocked(vault) {
-                Text("Unlocked")
-                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(Color.accentGreen)
-            } else {
-                HStack(spacing: 4) {
-                    Text("Locked")
-                        .foregroundStyle(Color.btcOrange)
-                    Text("\u{00B7}")
-                        .foregroundStyle(.secondary)
-                    Text(vm.vaultTimeRemaining(vault))
-                        .foregroundStyle(Color.btcOrange)
-                }
-                .font(.system(size: 11, weight: .medium, design: .monospaced))
-            }
-        }
-        .padding(.vertical, 3)
-    }
-
-    // MARK: - Inheritance row
-
-    private func inheritanceRow(_ inheritance: Contract) -> some View {
-        HStack {
-            Circle()
-                .fill(Color.accentGreen)
-                .frame(width: 6, height: 6)
-            Text(inheritance.name)
-                .font(.system(size: 13, weight: .medium))
-            Spacer()
-            HStack(spacing: 4) {
-                Text("Active")
-                    .foregroundStyle(Color.accentGreen)
-                Text("\u{00B7}")
+                    .font(.system(size: 12))
                     .foregroundStyle(.secondary)
-                Text(vm.inheritanceWindow(inheritance))
-                    .foregroundStyle(Color.accentGreen)
+                    .lineLimit(2)
             }
-            .font(.system(size: 11, weight: .medium, design: .monospaced))
         }
-        .padding(.vertical, 3)
     }
 
-    // MARK: - Pool row
+    // =====================================================================
+    // MARK: - Quick Actions
+    // =====================================================================
 
-    private func poolRow(_ pool: Contract) -> some View {
-        HStack {
-            Circle()
-                .fill(Color.btcOrange)
-                .frame(width: 6, height: 6)
-            Text(pool.name)
-                .font(.system(size: 13, weight: .medium))
+    @State private var showBatchSend = false
+    @State private var showBumpFee = false
+    @State private var showConsolidate = false
+    @State private var showCrowdfund = false
+
+    private var quickActionsSection: some View {
+        let columns = [
+            GridItem(.flexible(), spacing: 10),
+            GridItem(.flexible(), spacing: 10),
+            GridItem(.flexible(), spacing: 10),
+        ]
+
+        return VStack(alignment: .leading, spacing: 10) {
+            Divider().opacity(0.15)
+
+            Text("TOOLS")
+                .font(.system(size: 8, weight: .bold, design: .monospaced))
+                .foregroundStyle(.quaternary)
+
+            LazyVGrid(columns: columns, spacing: 10) {
+                toolCard(icon: "arrow.left.arrow.right", iconColor: .green, title: "Batch Send", subtitle: "Multi-recipient") {
+                    showBatchSend = true
+                }
+
+                toolCard(icon: "bolt.fill", iconColor: .yellow, title: "Bump Fee", subtitle: "RBF speed-up") {
+                    showBumpFee = true
+                }
+
+                NavigationLink {
+                    utxoManagerView
+                } label: {
+                    toolCardLabel(icon: "square.grid.2x2.fill", iconColor: .purple, title: "UTXOs", subtitle: "Freeze & manage")
+                }
+
+                toolCard(icon: "arrow.triangle.merge", iconColor: .orange, title: "Consolidate", subtitle: "Merge UTXOs") {
+                    showConsolidate = true
+                }
+
+                NavigationLink {
+                    OpReturnView()
+                } label: {
+                    toolCardLabel(icon: "curlybraces", iconColor: .green, title: "OP_RETURN", subtitle: "On-chain data")
+                }
+
+                toolCard(icon: "person.3.fill", iconColor: .teal, title: "Crowdfund", subtitle: "ANYONECANPAY") {
+                    showCrowdfund = true
+                }
+            }
+        }
+        .sheet(isPresented: $showBatchSend) { comingSoonSheet("Batch Send") }
+        .sheet(isPresented: $showBumpFee) { comingSoonSheet("Bump Fee") }
+        .sheet(isPresented: $showConsolidate) { comingSoonSheet("Consolidate") }
+        .sheet(isPresented: $showCrowdfund) { comingSoonSheet("Crowdfund") }
+    }
+
+    private func toolCard(icon: String, iconColor: Color, title: String, subtitle: String, action: @escaping () -> Void) -> some View {
+        Button {
+            let impact = UIImpactFeedbackGenerator(style: .light)
+            impact.impactOccurred()
+            action()
+        } label: {
+            toolCardLabel(icon: icon, iconColor: iconColor, title: title, subtitle: subtitle)
+        }
+        .buttonStyle(WalletButtonStyle(color: iconColor))
+    }
+
+    private func toolCardLabel(icon: String, iconColor: Color, title: String, subtitle: String) -> some View {
+        VStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 16, weight: .medium))
+                .foregroundStyle(iconColor)
+                .frame(width: 34, height: 34)
+                .background(iconColor.opacity(0.15), in: RoundedRectangle(cornerRadius: 9))
+
+            VStack(spacing: 2) {
+                Text(title)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.primary)
+                Text(subtitle)
+                    .font(.system(size: 8))
+                    .foregroundStyle(.tertiary)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 14)
+        .background(Color(.systemGray6).opacity(0.15), in: RoundedRectangle(cornerRadius: 14))
+        .overlay(
+            RoundedRectangle(cornerRadius: 14)
+                .strokeBorder(Color(.systemGray4).opacity(0.15), lineWidth: 0.5)
+        )
+    }
+
+    private func comingSoonSheet(_ title: String) -> some View {
+        VStack(spacing: 16) {
             Spacer()
-            if let m = pool.multisigM, let n = pool.multisigPubkeys?.count {
-                HStack(spacing: 3) {
-                    Text("\(m)/\(n)")
-                        .font(.system(size: 11, weight: .bold, design: .monospaced))
-                        .foregroundStyle(Color.poolTeal)
-                    ForEach(0..<n, id: \.self) { i in
-                        Circle()
-                            .fill(i < m ? Color.poolTeal : Color.dimText)
-                            .frame(width: 5, height: 5)
+            Image(systemName: "hammer.fill")
+                .font(.system(size: 32))
+                .foregroundStyle(.secondary)
+            Text(title)
+                .font(.system(size: 18, weight: .semibold))
+            Text("Coming soon")
+                .font(.system(size: 13))
+                .foregroundStyle(.secondary)
+            Spacer()
+        }
+        .presentationDetents([.medium])
+    }
+
+    // MARK: - UTXO Manager
+
+    @State private var utxoFilter: UTXOFilter = .all
+    @State private var utxoSort: UTXOSort = .amountHigh
+    @State private var copiedTxid = ""
+
+    enum UTXOFilter: String, CaseIterable {
+        case all = "All"
+        case frozen = "Frozen"
+        case dust = "Dust"
+        case exposed = "Exposed"
+        case unconfirmed = "Pending"
+    }
+
+    enum UTXOSort: String, CaseIterable {
+        case amountHigh = "Amount ↓"
+        case amountLow = "Amount ↑"
+        case newest = "Newest"
+        case oldest = "Oldest"
+    }
+
+    private func filteredUtxosForManager() -> [UTXO] {
+        var list = vm.utxos
+        switch utxoFilter {
+        case .all: break
+        case .frozen: list = list.filter { FrozenUTXOStore.shared.isFrozen(outpoint: $0.outpoint) }
+        case .dust: list = list.filter { $0.value < 546 }
+        case .exposed:
+            let known = Set(vm.walletAddresses.map(\.address))
+            var spent = Set<String>()
+            for tx in vm.transactions {
+                for input in tx.vin {
+                    if let a = input.prevout?.scriptpubkeyAddress, known.contains(a) { spent.insert(a) }
+                }
+            }
+            list = list.filter { spent.contains($0.address) }
+        case .unconfirmed: list = list.filter { !$0.status.confirmed }
+        }
+        switch utxoSort {
+        case .amountHigh: list.sort { $0.value > $1.value }
+        case .amountLow: list.sort { $0.value < $1.value }
+        case .newest: list.sort { ($0.status.blockHeight ?? Int.max) > ($1.status.blockHeight ?? Int.max) }
+        case .oldest: list.sort { ($0.status.blockHeight ?? 0) < ($1.status.blockHeight ?? 0) }
+        }
+        return list
+    }
+
+    private var utxoManagerView: some View {
+        UTXOManagerPage(utxos: vm.utxos, walletAddresses: vm.walletAddresses, transactions: vm.transactions)
+    }
+
+    private func utxoManagerRow(_ utxo: UTXO) -> some View {
+        let frozen = FrozenUTXOStore.shared.isFrozen(outpoint: utxo.outpoint)
+        let addr = vm.walletAddresses.first { $0.address == utxo.address }
+        let isChange = addr?.isChange ?? false
+        let index = addr?.index
+
+        return HStack(spacing: 10) {
+            // Confirmation dot
+            Circle()
+                .fill(utxo.status.confirmed ? Color.green : Color.orange)
+                .frame(width: 6, height: 6)
+
+            // Index badge
+            if let idx = index {
+                Text(isChange ? "C#\(idx)" : "#\(idx)")
+                    .font(.system(size: 8, weight: .bold, design: .monospaced))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 2)
+                    .background(
+                        isChange ? Color.gray : Color.purple.opacity(0.8),
+                        in: RoundedRectangle(cornerRadius: 3)
+                    )
+            }
+
+            // Txid + address
+            VStack(alignment: .leading, spacing: 2) {
+                Text(String(utxo.txid.prefix(10)) + ":\(utxo.vout)")
+                    .font(.system(size: 11, design: .monospaced))
+                Text(String(utxo.address.prefix(10)) + "..." + String(utxo.address.suffix(4)))
+                    .font(.system(size: 9, design: .monospaced))
+                    .foregroundStyle(.tertiary)
+            }
+
+            Spacer()
+
+            // Status icons
+            HStack(spacing: 4) {
+                if frozen {
+                    Image(systemName: "snowflake")
+                        .font(.system(size: 9))
+                        .foregroundStyle(.cyan)
+                }
+                if utxo.value < 546 {
+                    Text("DUST")
+                        .font(.system(size: 7, weight: .bold, design: .monospaced))
+                        .foregroundStyle(.yellow)
+                }
+            }
+
+            // Amount
+            Text(BalanceUnit.format(utxo.value))
+                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                .foregroundStyle(frozen ? .secondary : .primary)
+        }
+        .padding(.vertical, 3)
+        .opacity(frozen ? 0.5 : 1)
+    }
+
+    private func utxoStat(_ value: String, label: String) -> some View {
+        VStack(spacing: 2) {
+            Text(value)
+                .font(.system(size: 13, weight: .bold, design: .monospaced))
+            Text(label)
+                .font(.system(size: 9))
+                .foregroundStyle(.tertiary)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    // =====================================================================
+    // MARK: - Reminders
+    // =====================================================================
+
+    private var remindersSection: some View {
+        let frozenUtxos = vm.utxos.filter { FrozenUTXOStore.shared.isFrozen(outpoint: $0.outpoint) }
+        let frozenCount = frozenUtxos.count
+        let frozenSats = frozenUtxos.reduce(UInt64(0)) { $0 + $1.value }
+        let contracts = ContractStore.shared.contractsForNetwork(isTestnet: NetworkConfig.shared.isTestnet)
+        let lastBackup = UserDefaults.standard.object(forKey: "last_backup_date") as? Date
+        let needsBackup = !contracts.isEmpty && (lastBackup == nil || Date().timeIntervalSince(lastBackup!) > 7 * 24 * 3600)
+
+        return Group {
+            if needsBackup || frozenCount > 0 || UserDefaults.standard.string(forKey: "last_read_chapter") != nil {
+                VStack(spacing: 0) {
+                    // Backup alert
+                    if needsBackup {
+                        HStack(spacing: 8) {
+                            Image(systemName: "exclamationmark.triangle.fill")
+                                .font(.system(size: 12))
+                                .foregroundStyle(.red)
+                            Text("\(contracts.count) contract\(contracts.count > 1 ? "s" : "") need backup")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.red.opacity(0.8))
+                            Spacer()
+                            NavigationLink {
+                                BackupView()
+                            } label: {
+                                Text("Backup")
+                                    .font(.system(size: 9, weight: .semibold))
+                                    .foregroundStyle(.orange)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 3)
+                                    .overlay(Capsule().strokeBorder(Color.orange.opacity(0.3), lineWidth: 1))
+                            }
+                        }
+                        .padding(.vertical, 6)
+                    }
+
+                    // Frozen UTXOs
+                    if frozenCount > 0 {
+                        HStack(spacing: 8) {
+                            Image(systemName: "snowflake")
+                                .font(.system(size: 12))
+                                .foregroundStyle(.cyan)
+                            Text("\(frozenCount) UTXO\(frozenCount > 1 ? "s" : "") frozen")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                            Text("· \(BalanceUnit.format(frozenSats))")
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundStyle(.tertiary)
+                            Spacer()
+                        }
+                        .padding(.vertical, 6)
+                    }
+
+                    // Learn shortcut
+                    if let lastChapter = UserDefaults.standard.string(forKey: "last_read_chapter") {
+                        HStack(spacing: 8) {
+                            Image(systemName: "book.fill")
+                                .font(.system(size: 12))
+                                .foregroundStyle(.blue)
+                            Text("Continue: \(lastChapter)")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.system(size: 8, weight: .semibold))
+                                .foregroundStyle(.quaternary)
+                        }
+                        .padding(.vertical, 6)
                     }
                 }
             }
         }
-        .padding(.vertical, 3)
+    }
+
+    // =====================================================================
+    // MARK: - Recent Addresses
+    // =====================================================================
+
+    private var recentAddressesSection: some View {
+        let recent = recentSentAddresses
+
+        return Group {
+            if !recent.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("RECENT")
+                        .font(.system(size: 8, weight: .bold, design: .monospaced))
+                        .foregroundStyle(.quaternary)
+
+                    ForEach(recent, id: \.address) { item in
+                        Button {
+                            UIPasteboard.general.string = item.address
+                            let impact = UIImpactFeedbackGenerator(style: .light)
+                            impact.impactOccurred()
+                            copiedAddress = item.address
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { copiedAddress = "" }
+                        } label: {
+                            HStack(spacing: 8) {
+                                Image(systemName: copiedAddress == item.address ? "checkmark" : "arrow.up.right")
+                                    .font(.system(size: 9))
+                                    .foregroundStyle(copiedAddress == item.address ? Color.green : Color.gray)
+                                    .frame(width: 14)
+                                Text(String(item.address.prefix(12)) + "..." + String(item.address.suffix(4)))
+                                    .font(.system(size: 11, design: .monospaced))
+                                    .foregroundStyle(.secondary)
+                                Spacer()
+                                Text(item.date, style: .relative)
+                                    .font(.system(size: 9))
+                                    .foregroundStyle(.quaternary)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+        }
+    }
+
+    /// Extract recent destination addresses from sent transactions
+    private var recentSentAddresses: [(address: String, date: Date)] {
+        let knownAddresses = Set(vm.walletAddresses.map { $0.address })
+        var seen = Set<String>()
+        var results: [(address: String, date: Date)] = []
+
+        for tx in vm.transactions {
+            // Check if we sent this tx
+            let fromUs = tx.vin.contains { input in
+                if let addr = input.prevout?.scriptpubkeyAddress { return knownAddresses.contains(addr) }
+                return false
+            }
+            guard fromUs else { continue }
+
+            // Find destination addresses (not ours = not change)
+            for output in tx.vout {
+                if let addr = output.scriptpubkeyAddress, !knownAddresses.contains(addr), !seen.contains(addr) {
+                    seen.insert(addr)
+                    let date = tx.status.blockTime.map { Date(timeIntervalSince1970: TimeInterval($0)) } ?? Date()
+                    results.append((address: addr, date: date))
+                }
+            }
+
+            if results.count >= 5 { break }
+        }
+
+        return results
+    }
+
+    // =====================================================================
+}
+
+// MARK: - Receive Sheet (from Home quick action)
+
+struct ReceiveSheetFromHome: View {
+    @State private var address: String = ""
+    @State private var copied = false
+
+    var body: some View {
+        VStack(spacing: 20) {
+            Spacer()
+
+            if !address.isEmpty {
+                // QR
+                if let qr = generateQR(from: address) {
+                    Image(uiImage: qr)
+                        .interpolation(.none)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 180, height: 180)
+                        .colorInvert()
+                }
+
+                // Address
+                Text(address)
+                    .font(.system(size: 12, design: .monospaced))
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+                    .padding(.horizontal)
+
+                // Copy
+                Button {
+                    UIPasteboard.general.string = address
+                    let impact = UIImpactFeedbackGenerator(style: .light)
+                    impact.impactOccurred()
+                    copied = true
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) { copied = false }
+                } label: {
+                    HStack {
+                        Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                        Text(copied ? "Copied" : "Copy Address")
+                    }
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(copied ? .white : .green)
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 10)
+                    .background(copied ? Color.green : Color.green.opacity(0.15), in: Capsule())
+                }
+                .buttonStyle(.plain)
+            } else {
+                ProgressView()
+                Text("Deriving address...")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+        }
+        .navigationTitle("Receive")
+        .navigationBarTitleDisplayMode(.inline)
+        .onAppear { deriveAddress() }
+    }
+
+    private func deriveAddress() {
+        let isTest = NetworkConfig.shared.isTestnet
+        guard let xpubStr = KeychainStore.shared.loadXpub(isTestnet: isTest),
+              let xpub = ExtendedPublicKey.fromBase58(xpubStr) else { return }
+        let addrs = AddressDerivation.deriveAddresses(xpub: xpub, change: 0, startIndex: 0, count: 1, isTestnet: isTest)
+        address = addrs.first?.address ?? ""
+    }
+
+    private func generateQR(from string: String) -> UIImage? {
+        let context = CIContext()
+        let filter = CIFilter.qrCodeGenerator()
+        filter.message = Data(string.utf8)
+        filter.correctionLevel = "M"
+        guard let output = filter.outputImage else { return nil }
+        let scaled = output.transformed(by: CGAffineTransform(scaleX: 10, y: 10))
+        guard let cg = context.createCGImage(scaled, from: scaled.extent) else { return nil }
+        return UIImage(cgImage: cg)
+    }
+}
+
+// MARK: - Block Timer Row (live seconds counter)
+
+struct BlockTimerRow: View {
+    let blockHeight: Int
+    let lastBlockTime: Int
+    @State private var now = Date()
+
+    private let timer = Timer.publish(every: 1, on: .main, in: .common).autoconnect()
+
+    var body: some View {
+        let elapsed = lastBlockTime > 0 ? Int(now.timeIntervalSince1970) - lastBlockTime : 0
+        let mins = elapsed / 60
+        let secs = elapsed % 60
+        let isLate = elapsed > 1200
+
+        HStack(spacing: 8) {
+            Circle()
+                .fill(isLate ? Color.orange : Color.green)
+                .frame(width: 6, height: 6)
+            Text("Block")
+                .font(.system(size: 11))
+                .foregroundStyle(.tertiary)
+            Spacer()
+            Text("\(blockHeight)")
+                .font(.system(size: 13, weight: .medium, design: .monospaced))
+            if elapsed > 0 {
+                Text("\(mins)m \(String(format: "%02d", secs))s")
+                    .font(.system(size: 10, design: .monospaced))
+                    .foregroundStyle(isLate ? Color.orange : Color.gray)
+            }
+        }
+        .onReceive(timer) { now = $0 }
     }
 }
 

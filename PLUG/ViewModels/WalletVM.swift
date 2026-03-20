@@ -201,7 +201,9 @@ final class WalletVM: ObservableObject {
         addressStatuses.removeAll()
         cachedXpubString = nil
         error = nil
+        #if DEBUG
         print("[WalletVM] Full wallet reset — xpub changed, will rescan")
+        #endif
         Task { await loadWallet() }
     }
 
@@ -211,7 +213,26 @@ final class WalletVM: ObservableObject {
         utxos.removeAll()
         currentReceiveAddress = ""
         currentReceiveIndex = 0
+        #if DEBUG
         print("[WalletVM] Address cache invalidated — will re-derive on next load")
+        #endif
+    }
+
+    /// Clear all wallet data — called when Ledger disconnects
+    func clearWalletData() {
+        addresses.removeAll()
+        utxos.removeAll()
+        transactions.removeAll()
+        totalBalance = 0
+        currentReceiveAddress = ""
+        currentReceiveIndex = 0
+        addressStatuses.removeAll()
+        cachedXpubString = nil
+        error = nil
+        isLoading = false
+        #if DEBUG
+        print("[WalletVM] Wallet data cleared — Ledger disconnected")
+        #endif
     }
 
     /// Track which xpub was used for the current address set
@@ -233,7 +254,9 @@ final class WalletVM: ObservableObject {
         do {
             currentBlockHeight = try await MempoolAPI.shared.getBlockHeight()
         } catch {
+            #if DEBUG
             print("[WalletVM] Could not fetch block height: \(error)")
+            #endif
         }
 
         // Skip re-derivation if addresses already loaded AND xpub hasn't changed
@@ -265,7 +288,9 @@ final class WalletVM: ObservableObject {
         // Scan receiving addresses (change=0) with gap limit
         var consecutiveEmpty = 0
         var scanIndex: UInt32 = 0
+        #if DEBUG
         print("[WalletVM] Starting gap limit scan (gap=\(gapLimit))...")
+        #endif
 
         while consecutiveEmpty < gapLimit {
             // Derive a batch
@@ -300,10 +325,14 @@ final class WalletVM: ObservableObject {
             }
 
             scanIndex += batchSize
+            #if DEBUG
             print("[WalletVM] Scanned up to index #\(scanIndex - 1), gap=\(consecutiveEmpty)")
+            #endif
         }
 
+        #if DEBUG
         print("[WalletVM] Gap limit reached at index #\(scanIndex). Found \(allReceiving.count) addresses, \(allUTXOs.count) UTXOs")
+        #endif
 
         // Derive a few change addresses (less critical, typically fewer)
         let changeBatch = await Task.detached(priority: .userInitiated) {
@@ -356,31 +385,65 @@ final class WalletVM: ObservableObject {
     // MARK: - Refresh UTXOs only (no re-derivation)
 
     func refreshUTXOs() async {
+        guard !addresses.isEmpty else { return }
         isLoading = true
+
         let addrList = addresses
-        let (allUTXOs, allTxs): ([UTXO], [Transaction]) = await withTaskGroup(of: (utxos: [UTXO], txs: [Transaction]).self) { group in
-            for addr in addrList {
-                group.addTask {
-                    do {
-                        async let u = MempoolAPI.shared.getAddressUTXOs(address: addr.address)
-                        async let t = MempoolAPI.shared.getAddressTransactions(address: addr.address)
-                        return (try await u, try await t)
-                    } catch {
-                        return ([], [])
+        var allUTXOs: [UTXO] = []
+        var allTxs: [Transaction] = []
+        let usingTor = plug_tor_is_running()
+        let batchSize = usingTor ? 10 : 5
+
+        // Phase 1: Fetch UTXOs only
+        var addressesWithActivity: [String] = []
+        for (i, batchStart) in stride(from: 0, to: addrList.count, by: batchSize).enumerated() {
+            if !usingTor && i > 0 { try? await Task.sleep(nanoseconds: 200_000_000) }
+            let batchEnd = min(batchStart + batchSize, addrList.count)
+            let batch = Array(addrList[batchStart..<batchEnd])
+
+            await withTaskGroup(of: (String, [UTXO]).self) { group in
+                for addr in batch {
+                    group.addTask {
+                        let u = (try? await MempoolAPI.shared.getAddressUTXOs(address: addr.address)) ?? []
+                        return (addr.address, u)
                     }
                 }
+                for await (addr, utxos) in group {
+                    allUTXOs.append(contentsOf: utxos)
+                    if !utxos.isEmpty { addressesWithActivity.append(addr) }
+                }
             }
-            var utxos: [UTXO] = []
-            var txs: [Transaction] = []
-            for await result in group {
-                utxos.append(contentsOf: result.utxos)
-                txs.append(contentsOf: result.txs)
-            }
-            return (utxos, txs)
         }
 
+        // Phase 2: Fetch transactions only for active addresses
+        for (i, batchStart) in stride(from: 0, to: addressesWithActivity.count, by: batchSize).enumerated() {
+            if !usingTor && i > 0 { try? await Task.sleep(nanoseconds: 200_000_000) }
+            let batchEnd = min(batchStart + batchSize, addressesWithActivity.count)
+            let batch = Array(addressesWithActivity[batchStart..<batchEnd])
+
+            await withTaskGroup(of: [Transaction].self) { group in
+                for addr in batch {
+                    group.addTask {
+                        (try? await MempoolAPI.shared.getAddressTransactions(address: addr)) ?? []
+                    }
+                }
+                for await txs in group {
+                    allTxs.append(contentsOf: txs)
+                }
+            }
+        }
+
+        // Merge new transactions with existing (preserves history for spent addresses)
+        let activeAddrSet = Set(addressesWithActivity)
+        var mergedTxs = transactions.filter { tx in
+            // Keep old txs that DON'T involve active addresses (they weren't re-fetched)
+            !tx.vout.contains { activeAddrSet.contains($0.scriptpubkeyAddress ?? "") }
+            && !tx.vin.contains { activeAddrSet.contains($0.prevout?.scriptpubkeyAddress ?? "") }
+        }
+        mergedTxs.append(contentsOf: allTxs)
+
         var seen = Set<String>()
-        let dedupedTxs = allTxs.filter { seen.insert($0.txid).inserted }
+        let dedupedTxs = mergedTxs.filter { seen.insert($0.txid).inserted }
 
         // Filter: only keep UTXOs on our derived addresses
         let knownAddresses = Set(addresses.map { $0.address })
@@ -642,7 +705,9 @@ final class WalletVM: ObservableObject {
         }
         if unconfirmedCount > 5 {
             // Show warning but don't block the transaction
+            #if DEBUG
             print("[WalletVM] Warning: \(unconfirmedCount) unconfirmed UTXOs in selection")
+            #endif
         }
 
         // 4c. Dust output warning on change
@@ -679,13 +744,17 @@ final class WalletVM: ObservableObject {
 
             do {
                 // Real Ledger v2 signing
+                #if DEBUG
                 print("[WalletVM] Signing with real Ledger v2...")
+                #endif
 
                 // Detect Ledger Bitcoin app version to choose protocol
                 var useProtocolV1 = true // default to v1 for updated firmware
                 do {
                     let (appName, appVersion) = try await LedgerManager.shared.getAppAndVersion()
+                    #if DEBUG
                     print("[WalletVM] Ledger app: \(appName) v\(appVersion)")
+                    #endif
                     // Parse version: "2.4.5" → major=2, minor=4
                     let parts = appVersion.split(separator: ".").compactMap { Int($0) }
                     if parts.count >= 2 {
@@ -693,15 +762,21 @@ final class WalletVM: ObservableObject {
                         let minor = parts[1]
                         // Protocol v1 requires firmware >= 2.1.0
                         useProtocolV1 = major > 2 || (major == 2 && minor >= 1)
+                        #if DEBUG
                         print("[WalletVM] Protocol version: v\(useProtocolV1 ? "1" : "0") (app \(major).\(minor))")
+                        #endif
                     }
                 } catch {
+                    #if DEBUG
                     print("[WalletVM] Could not detect app version: \(error), defaulting to protocol v1")
+                    #endif
                 }
 
                 // Master fingerprint already saved to keychain during xpub retrieval
                 if let savedFP = KeychainStore.shared.load(forKey: KeychainStore.KeychainKey.ledgerMasterFingerprint.rawValue) {
+                    #if DEBUG
                     print("[WalletVM] Using saved master fingerprint: \(savedFP.hex)")
+                    #endif
                 }
 
                 // Determine coin_type from what the Ledger app actually uses
@@ -709,12 +784,16 @@ final class WalletVM: ObservableObject {
                 let savedCoinType = KeychainStore.shared.loadString(forKey: KeychainStore.KeychainKey.ledgerCoinType.rawValue) ?? "0"
                 let coinType = savedCoinType == "1" ? 1 : 0
                 let keyOrigin = "84'/\(coinType)'/0'"
+                #if DEBUG
                 print("[WalletVM] Using key origin: \(keyOrigin) (coin_type=\(coinType))")
+                #endif
 
                 // Use the ORIGINAL xpub from Ledger for wallet policy
                 let xpubStr = KeychainStore.shared.loadString(forKey: KeychainStore.KeychainKey.ledgerOriginalXpub.rawValue)
                     ?? KeychainStore.shared.loadXpub(isTestnet: isTestnet) ?? ""
+                #if DEBUG
                 print("[WalletVM] Using xpub for signing: \(xpubStr.prefix(20))...")
+                #endif
 
                 // Build per-input address info for correct BIP32 derivation paths
                 var inputAddressInfos = inputAddressInfosForWitness
@@ -735,9 +814,13 @@ final class WalletVM: ObservableObject {
                                 value: utxo.value,
                                 scriptPubKey: spk
                             ))
+                            #if DEBUG
                             print("[WalletVM] Input UTXO \(utxo.outpoint): \(utxo.value) sats, addr=\(walletAddr.address.prefix(20))... change=\(walletAddr.isChange ? 1 : 0) index=\(walletAddr.index)")
+                            #endif
                         } else {
+                            #if DEBUG
                             print("[WalletVM] WARNING: Could not find wallet address for UTXO \(utxo.outpoint) at \(utxo.address)")
+                            #endif
                         }
                     }
                 }
@@ -755,7 +838,9 @@ final class WalletVM: ObservableObject {
                 )
 
                 signatures = result.map { $0.signature }
+                #if DEBUG
                 print("[WalletVM] Got \(signatures.count) signatures from Ledger")
+                #endif
             }
 
             // Build witness stacks with per-input pubkeys

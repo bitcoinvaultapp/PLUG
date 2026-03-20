@@ -28,17 +28,21 @@ struct PLUGApp: App {
             KeychainStore.shared.delete(forKey: KeychainStore.KeychainKey.walletAddresses.rawValue)
             // Contracts are PRESERVED — they hold witness scripts and policy HMACs
             UserDefaults.standard.set(4, forKey: "keychain_version")
+            #if DEBUG
             print("[PLUG] Cleared wallet keychain data (v4 migration — preserves contracts)")
+            #endif
         }
     }
 
     var body: some Scene {
         WindowGroup {
             if onboardingComplete {
-                MainTabView()
-                    .environmentObject(walletVM)
-                    .environmentObject(networkConfig)
-                    .preferredColorScheme(.dark)
+                TorBootstrapWrapper {
+                    MainTabView()
+                        .environmentObject(walletVM)
+                        .environmentObject(networkConfig)
+                }
+                .preferredColorScheme(.dark)
             } else {
                 OnboardingView(isComplete: $onboardingComplete)
                     .environmentObject(walletVM)
@@ -49,11 +53,77 @@ struct PLUGApp: App {
     }
 }
 
-struct MainTabView: View {
-    @State private var selectedTab = 0
+// MARK: - Tor Bootstrap Wrapper
+
+struct TorBootstrapWrapper<Content: View>: View {
+    @ObservedObject private var tor = TorManager.shared
+    @State private var skipTor = false
+    let content: () -> Content
+
+    init(@ViewBuilder content: @escaping () -> Content) {
+        self.content = content
+    }
 
     var body: some View {
-        TabView(selection: $selectedTab) {
+        if tor.isRunning || skipTor {
+            content()
+        } else {
+            // Bootstrap screen
+            VStack(spacing: 20) {
+                Spacer()
+
+                Image(systemName: "network.badge.shield.half.filled")
+                    .font(.system(size: 44))
+                    .foregroundStyle(.purple)
+
+                Text("Connecting to Tor")
+                    .font(.system(size: 18, weight: .semibold))
+
+                Text("Protecting your privacy...")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+
+                ProgressView()
+                    .controlSize(.regular)
+                    .padding(.top, 8)
+
+                if case .error(let msg) = tor.state {
+                    Text(msg)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.red)
+                        .padding(.top, 8)
+                }
+
+                Spacer()
+
+                Button {
+                    MempoolAPI.torSkipped = true
+                    skipTor = true
+                } label: {
+                    Text("Skip — use clearnet")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                }
+                .padding(.bottom, 40)
+            }
+            .task {
+                tor.start()
+            }
+        }
+    }
+}
+
+struct MainTabView: View {
+    @State private var selectedTab = 0
+    @ObservedObject private var ledger = LedgerManager.shared
+    @EnvironmentObject var walletVM: WalletVM
+    @State private var showDisconnectBanner = false
+    @State private var wasConnected = false
+    @State private var lastDeviceName = ""
+
+    var body: some View {
+        ZStack(alignment: .top) {
+            TabView(selection: $selectedTab) {
                 HomeView()
                     .tag(0)
                     .tabItem {
@@ -92,12 +162,74 @@ struct MainTabView: View {
                     }
             }
             .tint(Color.btcOrange)
+
+            // Disconnect banner — slides down when Ledger drops unexpectedly
+            if showDisconnectBanner {
+                disconnectBanner
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .zIndex(100)
+            }
+        }
+        .onChange(of: ledger.state) { newState in
+            if case .connected = newState {
+                wasConnected = true
+                lastDeviceName = ledger.deviceModel ?? ledger.connectedDevice?.name ?? "Ledger"
+                withAnimation { showDisconnectBanner = false }
+            } else if wasConnected, case .disconnected = newState {
+                withAnimation(.easeOut(duration: 0.3)) { showDisconnectBanner = true }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
+                    withAnimation { showDisconnectBanner = false }
+                    wasConnected = false
+                }
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .ledgerManualDisconnect)) { _ in
+            walletVM.clearWalletData()
+        }
+    }
+
+    private var disconnectBanner: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "bolt.slash.fill")
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundStyle(.white)
+
+            Text("\(lastDeviceName) disconnected")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(.white)
+
+            Spacer()
+
+            Image(systemName: "xmark")
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(.white.opacity(0.6))
+                .onTapGesture {
+                    withAnimation { showDisconnectBanner = false }
+                }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .background(Color.red.opacity(0.85), in: RoundedRectangle(cornerRadius: 14))
+        .padding(.horizontal, 16)
+        .padding(.top, 50)
     }
 }
 
 // MARK: - Contracts Hub (replaces separate Vault/Inheritance tabs)
 
 struct ContractsHubView: View {
+    @ObservedObject private var contractStore = ContractStore.shared
+
+    private var contracts: [Contract] {
+        contractStore.contractsForNetwork(isTestnet: NetworkConfig.shared.isTestnet)
+    }
+
+    private func count(for type: ContractType) -> Int {
+        contracts.filter { $0.type == type }.count
+    }
+
+    private var totalContracts: Int { contracts.count }
+
     var body: some View {
         List {
             PlugHeader(pageName: "Contracts")
@@ -105,90 +237,172 @@ struct ContractsHubView: View {
                 .listRowBackground(Color.clear)
                 .listRowSeparator(.hidden)
 
-            Section {
+            VStack(alignment: .leading, spacing: 4) {
                 Text("Bitcoin Script-based contracts using P2WSH")
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-            }
-
-            Section {
-                NavigationLink(destination: VaultView()) {
-                    contractHubRow(
-                        title: "Time-Lock Vaults",
-                        desc: "Lock sats until a future date",
-                        badge: "CLTV",
-                        badgeColor: .orange
-                    )
-                }
-
-                NavigationLink(destination: InheritanceView()) {
-                    contractHubRow(
-                        title: "Inheritance",
-                        desc: "Automatic heir access after inactivity",
-                        badge: "CSV",
-                        badgeColor: .purple
-                    )
-                }
-
-                NavigationLink(destination: HTLCView()) {
-                    contractHubRow(
-                        title: "Hash Time-Lock",
-                        desc: "Conditional payments with hash preimage",
-                        badge: "HTLC",
-                        badgeColor: .teal
-                    )
-                }
-
-                NavigationLink(destination: ChannelView()) {
-                    contractHubRow(
-                        title: "Payment Channels",
-                        desc: "Off-chain micropayments",
-                        badge: "CHANNEL",
-                        badgeColor: .green
-                    )
-                }
-
-                NavigationLink(destination: PoolView()) {
-                    contractHubRow(
-                        title: "Multisig Pool",
-                        desc: "M-of-N shared custody",
-                        badge: "MULTI",
-                        badgeColor: .blue
-                    )
+                    .font(.system(size: 12))
+                    .foregroundStyle(.tertiary)
+                if !contracts.isEmpty {
+                    let totalLocked = contracts.reduce(UInt64(0)) { $0 + $1.amount }
+                    Text("\(contracts.count) active · \(BalanceUnit.format(totalLocked)) locked")
+                        .font(.system(size: 11, design: .monospaced))
+                        .foregroundStyle(.secondary)
                 }
             }
+            .listRowBackground(Color.clear)
+            .listRowSeparator(.hidden)
 
-            Section {
-                NavigationLink(destination: OpReturnView()) {
-                    contractHubRow(
-                        title: "OP_RETURN",
-                        desc: "Embed data on the blockchain",
-                        badge: "DATA",
-                        badgeColor: .indigo
-                    )
-                }
+            NavigationLink(destination: VaultView()) {
+                contractHubRow(
+                    icon: "lock.shield.fill", color: .orange,
+                    title: "Time-Lock Vault", desc: "Lock sats until a future block",
+                    opcode: "OP_CHECKLOCKTIMEVERIFY", count: count(for: .vault)
+                )
             }
+            .listRowBackground(Color.clear)
+
+            NavigationLink(destination: InheritanceView()) {
+                contractHubRow(
+                    icon: "person.line.dotted.person.fill", color: .purple,
+                    title: "Inheritance", desc: "Heir access after relative timelock",
+                    opcode: "OP_CHECKSEQUENCEVERIFY", count: count(for: .inheritance)
+                )
+            }
+            .listRowBackground(Color.clear)
+
+            NavigationLink(destination: HTLCView()) {
+                contractHubRow(
+                    icon: "key.viewfinder", color: .teal,
+                    title: "Hash Time-Lock", desc: "Conditional payment with preimage",
+                    opcode: "OP_SHA256 + CLTV", count: count(for: .htlc)
+                )
+            }
+            .listRowBackground(Color.clear)
+
+            NavigationLink(destination: ChannelView()) {
+                contractHubRow(
+                    icon: "bolt.horizontal.circle.fill", color: .green,
+                    title: "Payment Channel", desc: "2-of-2 with timeout refund",
+                    opcode: "OP_CHECKMULTISIG + CLTV", count: count(for: .channel)
+                )
+            }
+            .listRowBackground(Color.clear)
+
+            NavigationLink(destination: PoolView()) {
+                contractHubRow(
+                    icon: "person.3.sequence.fill", color: .blue,
+                    title: "Multisig Pool", desc: "M-of-N shared custody",
+                    opcode: "OP_CHECKMULTISIG", count: count(for: .pool)
+                )
+            }
+            .listRowBackground(Color.clear)
+
+            NavigationLink(destination: AtomicSwapView()) {
+                contractHubRow(
+                    icon: "arrow.triangle.swap", color: .cyan,
+                    title: "Atomic Swap", desc: "Trustless P2P exchange via paired HTLCs",
+                    opcode: "HTLC \u{00D7} 2", count: 0
+                )
+            }
+            .listRowBackground(Color.clear)
+
+            NavigationLink(destination: OpReturnView()) {
+                contractHubRow(
+                    icon: "doc.text.below.ecg.fill", color: .indigo,
+                    title: "OP_RETURN", desc: "Embed data on the blockchain",
+                    opcode: "OP_RETURN", count: 0
+                )
+            }
+            .listRowBackground(Color.clear)
+
+            // Backup status
+            backupStatusRow
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
         }
+        .listStyle(.plain)
         .navigationTitle("")
         .toolbar(.hidden, for: .navigationBar)
     }
 
-    private func contractHubRow(title: String, desc: String, badge: String, badgeColor: Color) -> some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title)
-                    .font(.subheadline.weight(.semibold))
-                Text(desc)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+    private var backupStatusRow: some View {
+        let lastBackup = UserDefaults.standard.object(forKey: "last_backup_date") as? Date
+        let needsBackup = !contracts.isEmpty && (lastBackup == nil || Date().timeIntervalSince(lastBackup!) > 7 * 24 * 3600)
+
+        return Group {
+            if needsBackup {
+                NavigationLink(destination: BackupView()) {
+                    HStack(spacing: 8) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 12))
+                            .foregroundStyle(.red)
+                        Text("\(contracts.count) contract\(contracts.count > 1 ? "s" : "") need backup")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.red.opacity(0.8))
+                        Spacer()
+                        Text("Backup")
+                            .font(.system(size: 9, weight: .semibold))
+                            .foregroundStyle(.orange)
+                    }
+                }
+            } else if let date = lastBackup {
+                HStack(spacing: 8) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.green)
+                    Text("All backed up")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                    Text("·")
+                        .foregroundStyle(.quaternary)
+                    Text(date, style: .relative)
+                        .font(.system(size: 10))
+                        .foregroundStyle(.tertiary)
+                    Spacer()
+                }
             }
+        }
+        .padding(.top, 8)
+    }
+
+    private func contractHubRow(icon: String, color: Color, title: String, desc: String, opcode: String, count: Int) -> some View {
+        HStack(spacing: 12) {
+            // Icon — colored, no background
+            Image(systemName: icon)
+                .font(.system(size: 18, weight: .medium))
+                .foregroundStyle(color)
+                .frame(width: 24)
+
+            // Title + description + opcode tag
+            VStack(alignment: .leading, spacing: 3) {
+                Text(title)
+                    .font(.system(size: 15, weight: .medium))
+                Text(desc)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                Text(opcode)
+                    .font(.system(size: 9, weight: .medium, design: .monospaced))
+                    .foregroundStyle(color.opacity(0.7))
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(color.opacity(0.08), in: Capsule())
+            }
+
             Spacer()
-            Text(badge)
-                .font(.system(size: 10, weight: .bold, design: .monospaced))
-                .padding(.horizontal, 8)
-                .padding(.vertical, 4)
-                .background(badgeColor.opacity(0.15), in: RoundedRectangle(cornerRadius: 6))
-                .foregroundStyle(badgeColor)
+
+            // Count badge
+            if count > 0 {
+                Text("\(count)")
+                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .foregroundStyle(.white)
+                    .frame(width: 20, height: 20)
+                    .background(color, in: Circle())
+            }
+
+            // Chevron
+            Image(systemName: "chevron.right")
+                .font(.system(size: 10, weight: .semibold))
+                .foregroundStyle(.quaternary)
         }
         .padding(.vertical, 4)
     }

@@ -65,11 +65,11 @@ final class InheritanceVM: ObservableObject {
     func create() async {
         guard !isLoading else { return }
         guard !name.isEmpty,
-              let csv = Int(csvBlocks), csv > 0,
-              let amountSats = UInt64(amount), amountSats > 0 else {
+              let csv = Int(csvBlocks), csv > 0 else {
             error = "Invalid parameters"
             return
         }
+        let amountSats = UInt64(amount) ?? 0
 
         isLoading = true
 
@@ -176,6 +176,15 @@ final class InheritanceVM: ObservableObject {
         }
 
         contract.keyIndex = keyIndex
+
+        // Check duplicate address
+        let existing = ContractStore.shared.contractsForNetwork(isTestnet: isTestnet)
+        if existing.contains(where: { $0.address == contract.address }) {
+            error = "A contract with this address already exists. Use a different key index or CSV value."
+            isLoading = false
+            return
+        }
+
         ContractStore.shared.add(contract)
         createdContract = contract
         contracts = inheritances

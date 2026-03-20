@@ -25,6 +25,7 @@ final class LedgerManager: NSObject, ObservableObject {
     @Published var state: LedgerState = .disconnected
     @Published var discoveredDevices: [CBPeripheral] = []
     @Published var connectedDevice: CBPeripheral?
+    @Published var deviceModel: String?
 
     /// Cached app version from last getAppAndVersion call
     var cachedAppVersion: (name: String, version: String)?
@@ -92,6 +93,7 @@ final class LedgerManager: NSObject, ObservableObject {
         connectedDevice = nil
         state = .disconnected
         cachedAppVersion = nil
+        deviceModel = nil
     }
 
     // MARK: - Communication
@@ -112,9 +114,13 @@ final class LedgerManager: NSObject, ObservableObject {
         // Frame APDU for BLE — always use Ledger's max frame size (156 bytes)
         // iOS may report MTU=512 but the Ledger Nano X BLE characteristic only handles ~155 bytes per write
         let encoded = apdu.encoded
+        #if DEBUG
         print("[Ledger] Sending APDU: CLA=\(String(format: "%02X", apdu.cla)) INS=\(String(format: "%02X", apdu.ins)) P1=\(String(format: "%02X", apdu.p1)) P2=\(String(format: "%02X", apdu.p2)) data=\(apdu.data.hex) (\(encoded.count) bytes)")
+        #endif
         let frames = LedgerProtocol.frameForBLE(encoded)
+        #if DEBUG
         print("[Ledger] Framed into \(frames.count) BLE packets")
+        #endif
 
         // Cancel any previous pending continuation
         if let prev = responseContinuation {
@@ -141,10 +147,14 @@ final class LedgerManager: NSObject, ObservableObject {
                 let delay = Double(i) * interFrameDelay
                 DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
                     guard self?.responseContinuation != nil else { return } // Already resolved
+                    #if DEBUG
                     print("[Ledger] Sending frame \(i)/\(frames.count): \(frame.count) bytes")
+                    #endif
                     peripheral.writeValue(frame, for: writeChar, type: writeType)
                     if i == frames.count - 1 {
+                        #if DEBUG
                         print("[Ledger] All \(frames.count) frames sent")
+                        #endif
                     }
                 }
             }
@@ -154,7 +164,9 @@ final class LedgerManager: NSObject, ObservableObject {
             DispatchQueue.main.asyncAfter(deadline: .now() + frameDelay + timeout) { [weak self] in
                 guard let self = self else { return }
                 if self.responseContinuation != nil && self.currentApduSequence == mySequence {
+                    #if DEBUG
                     print("[Ledger] Timeout — no response after \(Int(timeout))s")
+                    #endif
                     self.responseContinuation?.resume(throwing: LedgerError.timeout)
                     self.responseContinuation = nil
                     self.responseFrames.removeAll()
@@ -170,7 +182,9 @@ final class LedgerManager: NSObject, ObservableObject {
         // Check which app is running on the Ledger
         do {
             let (appName, appVersion) = try await getAppAndVersion()
+            #if DEBUG
             print("[Ledger] App detected: \(appName) v\(appVersion)")
+            #endif
 
             // Must be "Bitcoin" or "Bitcoin Test" app
             let validApps = ["Bitcoin", "Bitcoin Test", "Bitcoin Test Legacy", "Bitcoin Legacy"]
@@ -183,9 +197,13 @@ final class LedgerManager: NSObject, ObservableObject {
             }
             // getAppAndVersion itself might fail with wrongApp — that's fine, rethrow
             if case .statusError = error {
+                #if DEBUG
                 print("[Ledger] Could not detect app (status error), will try commands directly")
+                #endif
             } else {
+                #if DEBUG
                 print("[Ledger] Could not detect app: \(error), will try commands directly")
+                #endif
             }
         }
 
@@ -199,32 +217,46 @@ final class LedgerManager: NSObject, ObservableObject {
             let noDisplayResp = try await sendAPDU(noDisplayAPDU)
             xpubNoDisplay = LedgerV2.parseExtendedPubkeyResponse(noDisplayResp)
             if let x = xpubNoDisplay {
+                #if DEBUG
                 print("[Ledger] Got xpub without display: \(x.prefix(20))...")
+                #endif
 
                 // Try GET_MASTER_FINGERPRINT (INS=0x05) — available on firmware >= 2.1.0
                 do {
                     let realFP = try await getMasterFingerprint()
+                    #if DEBUG
                     print("[Ledger] Real master fingerprint saved: \(realFP.hex)")
+                    #endif
                 } catch {
                     // Fallback: save parent fingerprint from xpub (wrong but best effort for old firmware)
+                    #if DEBUG
                     print("[Ledger] GET_MASTER_FINGERPRINT failed (\(error)), falling back to parent fingerprint")
+                    #endif
                     if let epk = ExtendedPublicKey.fromBase58(x) {
                         KeychainStore.shared.save(epk.fingerprint, forKey: KeychainStore.KeychainKey.ledgerMasterFingerprint.rawValue)
+                        #if DEBUG
                         print("[Ledger] Parent fingerprint saved (fallback): \(epk.fingerprint.hex)")
+                        #endif
                     }
                 }
             }
         } catch {
+            #if DEBUG
             print("[Ledger] No-display xpub/fingerprint failed: \(error)")
+            #endif
         }
 
         // Always fetch master fingerprint — works on both Bitcoin and Bitcoin Test apps
         if KeychainStore.shared.load(forKey: KeychainStore.KeychainKey.ledgerMasterFingerprint.rawValue) == nil || xpubNoDisplay == nil {
             do {
                 let realFP = try await getMasterFingerprint()
+                #if DEBUG
                 print("[Ledger] Master fingerprint: \(realFP.hex)")
+                #endif
             } catch {
+                #if DEBUG
                 print("[Ledger] GET_MASTER_FINGERPRINT failed: \(error)")
+                #endif
             }
         }
 
@@ -255,7 +287,9 @@ final class LedgerManager: NSObject, ObservableObject {
 
             return (xpubString, epk.key)
         } catch {
+            #if DEBUG
             print("[Ledger] v2 path failed: \(error)")
+            #endif
         }
 
         // Fallback: re-encode mainnet xpub as tpub for testnet (coin_type=0)
@@ -293,7 +327,9 @@ final class LedgerManager: NSObject, ObservableObject {
             KeychainStore.shared.saveXpub(result, isTestnet: isTestnet)
             return (result, compressedKey)
         } catch {
+            #if DEBUG
             print("[Ledger] v1 also failed: \(error)")
+            #endif
             throw LedgerError.invalidResponse
         }
     }
@@ -303,9 +339,13 @@ final class LedgerManager: NSObject, ObservableObject {
     /// Get xpub using Ledger Bitcoin App v2 protocol (CLA=0xE1, INS=0x00)
     private func getXpubV2(path: [UInt32], display: Bool) async throws -> String {
         let apdu = LedgerV2.getExtendedPubkeyAPDU(path: path, display: display)
+        #if DEBUG
         print("[Ledger] Sending v2 GET_PUBKEY: CLA=E1 INS=00 path=\(path)")
+        #endif
         let response = try await sendAPDU(apdu)
+        #if DEBUG
         print("[Ledger] v2 response: \(response.count) bytes")
+        #endif
 
         guard let xpub = LedgerV2.parseExtendedPubkeyResponse(response) else {
             throw LedgerError.invalidResponse
@@ -317,7 +357,9 @@ final class LedgerManager: NSObject, ObservableObject {
     /// Get app name and version from Ledger (caches result)
     func getAppAndVersion() async throws -> (name: String, version: String) {
         if let cached = cachedAppVersion {
+            #if DEBUG
             print("[Ledger] Using cached app version: \(cached.name) v\(cached.version)")
+            #endif
             return cached
         }
         let apdu = LedgerV2.getAppAndVersionAPDU()
@@ -332,15 +374,80 @@ final class LedgerManager: NSObject, ObservableObject {
     /// Get master fingerprint via INS=0x05 (available on firmware >= 2.1.0)
     func getMasterFingerprint() async throws -> Data {
         let apdu = LedgerV2.getMasterFingerprintAPDU()
+        #if DEBUG
         print("[Ledger] Requesting master fingerprint (INS=0x05)...")
+        #endif
         let response = try await sendAPDU(apdu)
         guard response.count >= 4 else {
             throw LedgerError.invalidResponse
         }
         let fp = Data(response.prefix(4))
+        #if DEBUG
         print("[Ledger] Master fingerprint: \(fp.hex)")
+        #endif
         KeychainStore.shared.save(fp, forKey: KeychainStore.KeychainKey.ledgerMasterFingerprint.rawValue)
         return fp
+    }
+
+    // MARK: - Device Model Detection
+
+    /// Detect Ledger hardware model.
+    /// Tries GET_VERSION (dashboard APDU) first. If Bitcoin app is open, it fails —
+    /// fall back to model stored from UserDefaults or BLE name.
+    func detectDeviceModel() async {
+        let bleName = connectedDevice?.name ?? ""
+
+        // Try GET_VERSION (only works on dashboard, not inside an app)
+        do {
+            let apdu = LedgerProtocol.APDU(cla: 0xE0, ins: 0x01, p1: 0x00, p2: 0x00, data: Data())
+            let response = try await sendAPDU(apdu)
+            if response.count >= 4 {
+                let b0 = UInt32(response[0])
+                let b1 = UInt32(response[1])
+                let b2 = UInt32(response[2])
+                let b3 = UInt32(response[3])
+                let targetId = (b0 << 24) | (b1 << 16) | (b2 << 8) | b3
+
+                let model: String
+                switch targetId {
+                case 0x33000004: model = "Nano X"
+                case 0x33100004: model = "Nano S Plus"
+                case 0x33200004: model = "Stax"
+                case 0x33300004: model = "Flex"
+                case 0x33400004: model = "Apex P"
+                default: model = "Ledger"
+                }
+
+                // Cache for future connections when Bitcoin app is open
+                UserDefaults.standard.set(model, forKey: "ledger_device_model")
+                let finalModel = bleName.isEmpty ? model : "\(model) \(bleName)"
+                DispatchQueue.main.async { self.deviceModel = finalModel }
+                #if DEBUG
+                print("[Ledger] Device model detected: \(finalModel) (targetId: \(String(format: "0x%08X", targetId)))")
+                #endif
+                return
+            }
+        } catch {
+            #if DEBUG
+            print("[Ledger] GET_VERSION failed (app likely open): \(error.localizedDescription)")
+            #endif
+        }
+
+        // Fallback: use cached model from previous successful detection
+        if let cached = UserDefaults.standard.string(forKey: "ledger_device_model") {
+            let finalModel = bleName.isEmpty ? cached : "\(cached) \(bleName)"
+            DispatchQueue.main.async { self.deviceModel = finalModel }
+            #if DEBUG
+            print("[Ledger] Using cached device model: \(finalModel)")
+            #endif
+        } else {
+            // Last resort — BLE-only devices are Nano X or newer
+            let finalModel = bleName.isEmpty ? "Nano X" : "Nano X \(bleName)"
+            DispatchQueue.main.async { self.deviceModel = finalModel }
+            #if DEBUG
+            print("[Ledger] No cached model, defaulting to: \(finalModel)")
+            #endif
+        }
     }
 
     // MARK: - Errors
@@ -400,7 +507,9 @@ extension LedgerManager: CBCentralManagerDelegate {
     }
 
     func centralManager(_ central: CBCentralManager, didConnect peripheral: CBPeripheral) {
+        #if DEBUG
         print("[Ledger] BLE CONNECTED to \(peripheral.name ?? "unknown")")
+        #endif
         peripheral.discoverServices([Self.serviceUUID])
     }
 
@@ -410,7 +519,9 @@ extension LedgerManager: CBCentralManagerDelegate {
     }
 
     func centralManager(_ central: CBCentralManager, didDisconnectPeripheral peripheral: CBPeripheral, error: Error?) {
+        #if DEBUG
         print("[Ledger] BLE DISCONNECTED! error: \(error?.localizedDescription ?? "none")")
+        #endif
         cleanup()
     }
 }
@@ -434,23 +545,33 @@ extension LedgerManager: CBPeripheralDelegate {
         for char in characteristics {
             if char.uuid == Self.writeCharUUID {
                 writeCharacteristic = char
+                #if DEBUG
                 print("[Ledger] Write characteristic found — properties: \(char.properties.rawValue) (write=\(char.properties.contains(.write)), writeNoResp=\(char.properties.contains(.writeWithoutResponse)))")
+                #endif
             } else if char.uuid == Self.notifyCharUUID {
                 notifyCharacteristic = char
                 peripheral.setNotifyValue(true, for: char)
+                #if DEBUG
                 print("[Ledger] Notify characteristic found — properties: \(char.properties.rawValue)")
+                #endif
             }
         }
 
         if writeCharacteristic != nil && notifyCharacteristic != nil {
             state = .connected
+            #if DEBUG
             print("[Ledger] BLE fully ready (write + notify characteristics found)")
+            #endif
+            // Detect hardware model in background
+            Task { await detectDeviceModel() }
         }
     }
 
     func peripheral(_ peripheral: CBPeripheral, didWriteValueFor characteristic: CBCharacteristic, error: Error?) {
         if let error = error {
+            #if DEBUG
             print("[Ledger] BLE write error: \(error)")
+            #endif
         }
         // Resume write continuation if waiting
         if let cont = writeContinuation {
@@ -461,12 +582,16 @@ extension LedgerManager: CBPeripheralDelegate {
 
     func peripheral(_ peripheral: CBPeripheral, didUpdateValueFor characteristic: CBCharacteristic, error: Error?) {
         if let error = error {
+            #if DEBUG
             print("[Ledger] BLE notify error: \(error)")
+            #endif
         }
         guard characteristic.uuid == Self.notifyCharUUID,
               let data = characteristic.value else { return }
 
+        #if DEBUG
         print("[Ledger] Received frame: \(data.count) bytes - \(data.prefix(10).hex)...")
+        #endif
         responseFrames.append(data)
 
         // Check if we have enough data
@@ -474,7 +599,9 @@ extension LedgerManager: CBPeripheralDelegate {
         // The length field includes the status word (2 bytes)
         if responseFrames.count == 1 && data.count >= 5 {
             expectedResponseLength = Int(UInt16(data[3]) << 8 | UInt16(data[4]))
+            #if DEBUG
             print("[Ledger] Expecting \(expectedResponseLength!) bytes of APDU response")
+            #endif
         }
 
         // Check if response is complete
@@ -485,7 +612,9 @@ extension LedgerManager: CBPeripheralDelegate {
                 let headerSize = i == 0 ? 5 : 3
                 totalData += frame.count - headerSize
             }
+            #if DEBUG
             print("[Ledger] Accumulated \(totalData)/\(expected) bytes")
+            #endif
 
             if totalData >= expected {
                 let result = LedgerProtocol.reassembleBLEFrames(responseFrames)

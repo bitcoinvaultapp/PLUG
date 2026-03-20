@@ -35,3 +35,4 @@ build/
 *~
 ledger_bug_report.md
 test_sign_usb.py
+plug-tor/target/

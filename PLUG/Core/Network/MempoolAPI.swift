@@ -14,19 +14,14 @@ final class MempoolAPI: NSObject, URLSessionDelegate {
         return URLSession(configuration: config, delegate: self, delegateQueue: nil)
     }()
 
-    /// Active session — routes through Tor SOCKS5 proxy when enabled
+    /// Active session — always clearnet for non-address queries (block height, fees, price).
+    /// Address queries use addressRequest() which tries Tor first.
     private var session: URLSession {
-        if TorConfig.shared.isEnabled, let torSession = TorConfig.shared.createTorSession() {
-            return torSession
-        }
-        return clearnetSession
+        clearnetSession
     }
 
     private var baseURL: String {
-        if TorConfig.shared.isEnabled {
-            return TorConfig.shared.mempoolBaseURL
-        }
-        return NetworkConfig.shared.mempoolBaseURL
+        NetworkConfig.shared.mempoolBaseURL
     }
 
     // MARK: - TLS Certificate Pinning
@@ -63,6 +58,37 @@ final class MempoolAPI: NSObject, URLSessionDelegate {
         }
 
         return try JSONDecoder().decode(type, from: data)
+    }
+
+    /// Whether the user explicitly skipped Tor (allows clearnet address queries)
+    static var torSkipped = false
+
+    /// Address-specific request — REQUIRES Tor. Never leaks IP.
+    /// Routes through Tor SOCKS5 proxy to mempool .onion (no exit nodes).
+    /// Blocks entirely if Tor is unavailable (unless user explicitly skipped).
+    private func addressRequest<T: Decodable>(_ endpoint: String, type: T.Type) async throws -> T {
+        // Route through Tor SOCKS5 proxy → .onion (stays inside Tor network, no exit)
+        if plug_tor_is_running(), let torSession = TorConfig.shared.createTorSession() {
+            let isTestnet = NetworkConfig.shared.isTestnet
+            let prefix = isTestnet ? "/testnet" : ""
+            let onionBase = "http://\(TorConfig.shared.onionAddress)\(prefix)/api"
+            if let url = URL(string: "\(onionBase)\(endpoint)") {
+                let (data, response) = try await torSession.data(from: url)
+                guard let httpResponse = response as? HTTPURLResponse,
+                      (200...299).contains(httpResponse.statusCode) else {
+                    throw APIError.httpError((response as? HTTPURLResponse)?.statusCode ?? 0)
+                }
+                return try JSONDecoder().decode(type, from: data)
+            }
+        }
+
+        // User explicitly chose "Skip — use clearnet"
+        if Self.torSkipped {
+            return try await request(endpoint, type: type)
+        }
+
+        // Tor not running and not skipped — block to protect privacy
+        throw APIError.torRequired
     }
 
     private func requestRaw(_ endpoint: String) async throws -> Data {
@@ -132,7 +158,7 @@ final class MempoolAPI: NSObject, URLSessionDelegate {
             let status: UTXO.UTXOStatus
         }
 
-        let utxos = try await request("/address/\(address)/utxo", type: [MempoolUTXO].self)
+        let utxos = try await addressRequest("/address/\(address)/utxo", type: [MempoolUTXO].self)
         return utxos.map { utxo in
             UTXO(
                 txid: utxo.txid,
@@ -146,7 +172,7 @@ final class MempoolAPI: NSObject, URLSessionDelegate {
     }
 
     func getAddressTransactions(address: String) async throws -> [Transaction] {
-        try await request("/address/\(address)/txs", type: [Transaction].self)
+        try await addressRequest("/address/\(address)/txs", type: [Transaction].self)
     }
 
     func hasTransactions(address: String) async throws -> Bool {
@@ -167,7 +193,7 @@ final class MempoolAPI: NSObject, URLSessionDelegate {
             }
         }
 
-        let info = try await request("/address/\(address)", type: AddressInfo.self)
+        let info = try await addressRequest("/address/\(address)", type: AddressInfo.self)
         return info.chainStats.txCount > 0 || info.mempoolStats.txCount > 0
     }
 
@@ -209,6 +235,7 @@ final class MempoolAPI: NSObject, URLSessionDelegate {
         case httpError(Int)
         case decodingError
         case broadcastFailed(String)
+        case torRequired
 
         var errorDescription: String? {
             switch self {
@@ -216,6 +243,7 @@ final class MempoolAPI: NSObject, URLSessionDelegate {
             case .httpError(let code): return "HTTP error \(code)"
             case .decodingError: return "Decoding error"
             case .broadcastFailed(let msg): return "Broadcast failed: \(msg)"
+            case .torRequired: return "Tor disconnected — address queries blocked to protect your privacy"
             }
         }
     }

@@ -7,10 +7,10 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		8B4FA03C2D9E5F67B1C2D3E4 /* PLUG/Core/BalanceUnit.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A3E9F2B1C8D4E56A0B1C2D3 /* PLUG/Core/BalanceUnit.swift */; };
 		00CFB42040364F22B48FA7D4 /* PLUG/Core/Bitcoin/SpendManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83AC242C744243288CE2FF43 /* PLUG/Core/Bitcoin/SpendManager.swift */; };
 		0125621986D82555A44C63DB /* BlockDurationPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = A407FE6284EB3CC477B1D716 /* BlockDurationPicker.swift */; };
 		020A7B84E10843828A3B1762 /* PLUG/ViewModels/HTLCVM.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42A63DBA14DE40A08874D989 /* PLUG/ViewModels/HTLCVM.swift */; };
-		04A3CE3D343A4A5481ED116D /* PLUG/Core/Storage/BackupManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DF42B687EFF484AB49F09EE /* PLUG/Core/Storage/BackupManager.swift */; };
 		06C4A226DAE149678E041B80 /* PLUG/Core/Bitcoin/PSBTBuilder.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2585F52F00384540A9ED260B /* PLUG/Core/Bitcoin/PSBTBuilder.swift */; };
 		0717CE1392EB47B5BECB8A31 /* PLUG/Core/Bitcoin/PaymentChannel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 167C53634494444EAA10CCDE /* PLUG/Core/Bitcoin/PaymentChannel.swift */; };
 		0BDF145A671342398662AFF5 /* PLUG/Core/Bitcoin/Secp256k1.swift in Sources */ = {isa = PBXBuildFile; fileRef = 797D5492187443319629F3A1 /* PLUG/Core/Bitcoin/Secp256k1.swift */; };
@@ -85,6 +85,15 @@
 		F21F025938B546BEB40DDC12 /* PLUG/Views/SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87D26F8A2AE4454AA4F9912C /* PLUG/Views/SettingsView.swift */; };
 		F24911BF850F44F7958E041D /* PLUG/Core/Bitcoin/BatchSend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 33D2076012C748678790F1B3 /* PLUG/Core/Bitcoin/BatchSend.swift */; };
 		FF2EA09FF4AB4429817ED849 /* PLUG/Core/Network/BlockFilterService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20FBB8C99E144C30837CCBBB /* PLUG/Core/Network/BlockFilterService.swift */; };
+		D0FF437173F8D0E66EDE3E8B /* PLUG/ViewModels/ContractBubbleVM.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2161BE908FAD623D7B9F37A8 /* PLUG/ViewModels/ContractBubbleVM.swift */; };
+		21182FC298E64EE98B5B8C54 /* PLUG/Views/BubbleMapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C142667BE8C9988E7B03E78B /* PLUG/Views/BubbleMapView.swift */; };
+		CC4D1C56B0E1034A36DE1CC1 /* AtomicSwap.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA057E02BCB612E512E72769 /* AtomicSwap.swift */; };
+		5CEDFC818BED984F457715D7 /* AtomicSwapVM.swift in Sources */ = {isa = PBXBuildFile; fileRef = DEF337520C5ADE3F4C8487DF /* AtomicSwapVM.swift */; };
+		E6348742CDBDDAC7E6D46C54 /* AtomicSwapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2002476AD56BDC0DFB16C462 /* AtomicSwapView.swift */; };
+		5317DF9A4DA1D1D00A2741E5 /* QRScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 89C612E03CBC58E25E56C315 /* QRScannerView.swift */; };
+		401EED307652255B45874971 /* UTXOManagerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CEEE822D59C0C5B199FADA4A /* UTXOManagerView.swift */; };
+		FE6988A2D35DF5DA0B2FB01C /* TorManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86A32D30DB27693279DFD1D1 /* TorManager.swift */; };
+		94DD291F5199230F00AC4C13 /* PlugTor.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = DACBAFB39E7B63F507CB8BFA /* PlugTor.xcframework */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -111,6 +120,7 @@
 		304B41F658074449BE595E5B /* PLUG/Core/Network/MempoolAPI.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/Core/Network/MempoolAPI.swift; sourceTree = SOURCE_ROOT; };
 		305D7B19CAC343CF91A704E0 /* PLUG/ViewModels/BackupVM.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/ViewModels/BackupVM.swift; sourceTree = SOURCE_ROOT; };
 		31ABECE5C09B45068D526264 /* PLUG/ViewModels/ScriptVM.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/ViewModels/ScriptVM.swift; sourceTree = SOURCE_ROOT; };
+		7A3E9F2B1C8D4E56A0B1C2D3 /* PLUG/Core/BalanceUnit.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/Core/BalanceUnit.swift; sourceTree = SOURCE_ROOT; };
 		33D2076012C748678790F1B3 /* PLUG/Core/Bitcoin/BatchSend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/Core/Bitcoin/BatchSend.swift; sourceTree = SOURCE_ROOT; };
 		35E1EE9440934813824E6DCC /* PLUG/Core/Bitcoin/MuSig2.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/Core/Bitcoin/MuSig2.swift; sourceTree = SOURCE_ROOT; };
 		37A930D932D44FCD997B2341 /* PLUG/ViewModels/WalletVM.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/ViewModels/WalletVM.swift; sourceTree = SOURCE_ROOT; };
@@ -130,7 +140,6 @@
 		75731786685843199FFC88B3 /* PLUG/Models/Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/Models/Models.swift; sourceTree = SOURCE_ROOT; };
 		785505D4169E4E659C5E19E5 /* PLUG/Views/BackupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/Views/BackupView.swift; sourceTree = SOURCE_ROOT; };
 		797D5492187443319629F3A1 /* PLUG/Core/Bitcoin/Secp256k1.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/Core/Bitcoin/Secp256k1.swift; sourceTree = SOURCE_ROOT; };
-		7DF42B687EFF484AB49F09EE /* PLUG/Core/Storage/BackupManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/Core/Storage/BackupManager.swift; sourceTree = SOURCE_ROOT; };
 		7F727AADD71041AB8766F16C /* PLUG/Core/Bitcoin/Crowdfund.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/Core/Bitcoin/Crowdfund.swift; sourceTree = SOURCE_ROOT; };
 		803DC3F17DDC4CFF9EE83329 /* PLUG/Core/Bitcoin/CoinSelection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/Core/Bitcoin/CoinSelection.swift; sourceTree = SOURCE_ROOT; };
 		81F6A0BBADF64A19ACC177F7 /* PLUG/Core/Ledger/LedgerManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/Core/Ledger/LedgerManager.swift; sourceTree = SOURCE_ROOT; };
@@ -166,6 +175,15 @@
 		FAA9890C5BA44689B59981B5 /* PLUG/PLUGApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/PLUGApp.swift; sourceTree = SOURCE_ROOT; };
 		FCA41D42C13747888BF859E3 /* PLUG/Core/Bitcoin/HTLC.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/Core/Bitcoin/HTLC.swift; sourceTree = SOURCE_ROOT; };
 		FEC430D148544643A9A746D5 /* PLUG/Core/Network/NetworkConfig.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/Core/Network/NetworkConfig.swift; sourceTree = SOURCE_ROOT; };
+		2161BE908FAD623D7B9F37A8 /* PLUG/ViewModels/ContractBubbleVM.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/ViewModels/ContractBubbleVM.swift; sourceTree = SOURCE_ROOT; };
+		C142667BE8C9988E7B03E78B /* PLUG/Views/BubbleMapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/Views/BubbleMapView.swift; sourceTree = SOURCE_ROOT; };
+		DA057E02BCB612E512E72769 /* AtomicSwap.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/Core/Bitcoin/AtomicSwap.swift; sourceTree = SOURCE_ROOT; };
+		DEF337520C5ADE3F4C8487DF /* AtomicSwapVM.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/ViewModels/AtomicSwapVM.swift; sourceTree = SOURCE_ROOT; };
+		2002476AD56BDC0DFB16C462 /* AtomicSwapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/Views/AtomicSwapView.swift; sourceTree = SOURCE_ROOT; };
+		89C612E03CBC58E25E56C315 /* QRScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/Views/QRScannerView.swift; sourceTree = SOURCE_ROOT; };
+		CEEE822D59C0C5B199FADA4A /* UTXOManagerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/Views/UTXOManagerView.swift; sourceTree = SOURCE_ROOT; };
+		86A32D30DB27693279DFD1D1 /* TorManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/Core/Network/TorManager.swift; sourceTree = SOURCE_ROOT; };
+		DACBAFB39E7B63F507CB8BFA /* PlugTor.xcframework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.xcframework; path = PlugTor.xcframework; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -173,6 +191,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				94DD291F5199230F00AC4C13 /* PlugTor.xcframework in Frameworks */,
 				9EC569D90B69092C952C32D3 /* libsecp256k1 in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -191,6 +210,7 @@
 		541D4DBDE26B4A1FAA99EB61 = {
 			isa = PBXGroup;
 			children = (
+				7A3E9F2B1C8D4E56A0B1C2D3 /* PLUG/Core/BalanceUnit.swift */,
 				33D2076012C748678790F1B3 /* PLUG/Core/Bitcoin/BatchSend.swift */,
 				48A6B14304204432B6064973 /* PLUG/Core/Bitcoin/Bech32.swift */,
 				803DC3F17DDC4CFF9EE83329 /* PLUG/Core/Bitcoin/CoinSelection.swift */,
@@ -199,6 +219,8 @@
 				2BFE720EA255476A9E7A6967 /* PLUG/Core/Bitcoin/Crypto.swift */,
 				E2AE3A171EB843FE8CBBB1CE /* PLUG/Core/Bitcoin/FeeBumping.swift */,
 				FCA41D42C13747888BF859E3 /* PLUG/Core/Bitcoin/HTLC.swift */,
+				2161BE908FAD623D7B9F37A8 /* PLUG/ViewModels/ContractBubbleVM.swift */,
+				C142667BE8C9988E7B03E78B /* PLUG/Views/BubbleMapView.swift */,
 				F9105F5B315443E1B2A3D108 /* PLUG/Core/Bitcoin/KeyDerivation.swift */,
 				40BAB247172247409516A81F /* PLUG/Core/Bitcoin/Miniscript.swift */,
 				35E1EE9440934813824E6DCC /* PLUG/Core/Bitcoin/MuSig2.swift */,
@@ -221,7 +243,6 @@
 				94035B9D72C74D28AA9EEA08 /* PLUG/Core/Network/WebSocketManager.swift */,
 				2FF9582133F94D54B8EB2C88 /* PLUG/Core/Storage/AddressBook.swift */,
 				1818831F5C3E4F578B779D4A /* PLUG/Core/Storage/BIP329Labels.swift */,
-				7DF42B687EFF484AB49F09EE /* PLUG/Core/Storage/BackupManager.swift */,
 				1C9C5C31F3974738BA667A84 /* PLUG/Core/Storage/BalanceCache.swift */,
 				2B233F55E61F41E2A2AFF92C /* PLUG/Core/Storage/BiometricStore.swift */,
 				D0DA97C15BF345878B198C42 /* PLUG/Core/Storage/BroadcastQueue.swift */,
@@ -342,6 +363,13 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				FE6988A2D35DF5DA0B2FB01C /* TorManager.swift in Sources */,
+				401EED307652255B45874971 /* UTXOManagerView.swift in Sources */,
+				5317DF9A4DA1D1D00A2741E5 /* QRScannerView.swift in Sources */,
+				E6348742CDBDDAC7E6D46C54 /* AtomicSwapView.swift in Sources */,
+				5CEDFC818BED984F457715D7 /* AtomicSwapVM.swift in Sources */,
+				CC4D1C56B0E1034A36DE1CC1 /* AtomicSwap.swift in Sources */,
+				8B4FA03C2D9E5F67B1C2D3E4 /* PLUG/Core/BalanceUnit.swift in Sources */,
 				F24911BF850F44F7958E041D /* PLUG/Core/Bitcoin/BatchSend.swift in Sources */,
 				4669F37AF23C43A9AEF6B579 /* PLUG/Core/Bitcoin/Bech32.swift in Sources */,
 				3B8CD0360F42400C8F43E6EA /* PLUG/Core/Bitcoin/CoinSelection.swift in Sources */,
@@ -372,7 +400,6 @@
 				E442AF81A7F84FA39F17E0E1 /* PLUG/Core/Network/WebSocketManager.swift in Sources */,
 				AE8906734E124AE6977254E1 /* PLUG/Core/Storage/AddressBook.swift in Sources */,
 				E4D1E371898640F9B5914DA0 /* PLUG/Core/Storage/BIP329Labels.swift in Sources */,
-				04A3CE3D343A4A5481ED116D /* PLUG/Core/Storage/BackupManager.swift in Sources */,
 				32855C550DA14DE4B6B290ED /* PLUG/Core/Storage/BalanceCache.swift in Sources */,
 				5FF57AFFAFE343C49EA3F70B /* PLUG/Core/Storage/BiometricStore.swift in Sources */,
 				94DD5D71A1454D36A507B166 /* PLUG/Core/Storage/BroadcastQueue.swift in Sources */,
@@ -418,6 +445,8 @@
 				AC388A292D52D40EC6C9D858 /* ContractSigner.swift in Sources */,
 				D8F2C6A4E71B43509B8E27A1 /* PLUG/Core/ContractSpendCoordinator.swift in Sources */,
 				10FCAF1D894B45216C0D03B5 /* PlugHeader.swift in Sources */,
+				D0FF437173F8D0E66EDE3E8B /* PLUG/ViewModels/ContractBubbleVM.swift in Sources */,
+				21182FC298E64EE98B5B8C54 /* PLUG/Views/BubbleMapView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -455,10 +484,9 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 4G9VAY9486;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = PLUG/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = PLUG;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.finance";
-				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "PLUG uses Bluetooth to communicate with your Ledger Nano X";
-				INFOPLIST_KEY_NSBluetoothPeripheralUsageDescription = "PLUG uses Bluetooth to communicate with your Ledger Nano X";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -473,7 +501,10 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.plug.bitcoin;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "PLUG/PLUG-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
+				HEADER_SEARCH_PATHS = "$(SRCROOT)/plug-tor/include";
+				OTHER_LDFLAGS = "-lsqlite3 -lz -framework Security -framework SystemConfiguration";
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Debug;
@@ -487,10 +518,9 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = 4G9VAY9486;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = PLUG/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = PLUG;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.finance";
-				INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription = "PLUG uses Bluetooth to communicate with your Ledger Nano X";
-				INFOPLIST_KEY_NSBluetoothPeripheralUsageDescription = "PLUG uses Bluetooth to communicate with your Ledger Nano X";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -505,7 +535,10 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.plug.bitcoin;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_OBJC_BRIDGING_HEADER = "PLUG/PLUG-Bridging-Header.h";
 				SWIFT_VERSION = 5.0;
+				HEADER_SEARCH_PATHS = "$(SRCROOT)/plug-tor/include";
+				OTHER_LDFLAGS = "-lsqlite3 -lz -framework Security -framework SystemConfiguration";
 				TARGETED_DEVICE_FAMILY = "1,2";
 			};
 			name = Release;

@@ -1,5 +1,6 @@
 import Foundation
 import Security
+import UIKit
 
 // MARK: - Keychain wrapper
 // Hardware-backed encryption with kSecAttrAccessibleWhenUnlockedThisDeviceOnly
@@ -32,7 +33,8 @@ final class KeychainStore {
             kSecAttrService as String: service,
             kSecAttrAccount as String: key,
             kSecValueData as String: data,
-            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
+            kSecAttrSynchronizable as String: kCFBooleanFalse as Any
         ]
 
         let status = SecItemAdd(query as CFDictionary, nil)
@@ -114,5 +116,18 @@ final class KeychainStore {
             kSecAttrService as String: service
         ]
         SecItemDelete(query as CFDictionary)
+    }
+}
+
+// MARK: - Secure Clipboard
+
+/// Copy string to clipboard with auto-clear after timeout.
+/// Use for sensitive data (preimages, scripts, PSBTs).
+func secureCopy(_ value: String, clearAfter seconds: TimeInterval = 30) {
+    UIPasteboard.general.string = value
+    DispatchQueue.main.asyncAfter(deadline: .now() + seconds) {
+        if UIPasteboard.general.string == value {
+            UIPasteboard.general.string = ""
+        }
     }
 }

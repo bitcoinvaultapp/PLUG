@@ -263,10 +263,18 @@ final class WalletVM: ObservableObject {
         }
 
         // Prevent re-entrant calls (Home + Wallet loading simultaneously)
-        guard !isLoading else { return }
+        guard !isLoading else {
+            #if DEBUG
+            print("[WalletVM] loadWallet() skipped — already loading")
+            #endif
+            return
+        }
 
         isLoading = true
         error = nil
+        #if DEBUG
+        print("[WalletVM] loadWallet() starting...")
+        #endif
 
         // Fetch current block height for fee sniping protection (nLockTime)
         do {
@@ -480,13 +488,20 @@ final class WalletVM: ObservableObject {
                 }
             }
         )
+        // Balance + UTXOs first (instant display)
+        let knownAddresses = Set(addrStrings)
+        let cleanUTXOs = result.utxos.filter { knownAddresses.contains($0.address) }
+        utxos = cleanUTXOs
+        totalBalance = cleanUTXOs.reduce(0) { $0 + $1.value }
         scanProgress = 1
         scanStatus = nil
+        #if DEBUG
+        print("[WalletVM] Balance: \(totalBalance) sats, \(cleanUTXOs.count) UTXOs, errors: \(result.fetchErrorCount)")
+        #endif
 
-        // Merge new transactions with existing (preserves history for spent addresses)
+        // Then merge transactions (heavier)
         let activeAddrSet = Set(result.activeAddresses)
         var mergedTxs = transactions.filter { tx in
-            // Keep old txs that DON'T involve active addresses (they weren't re-fetched)
             !tx.vout.contains { activeAddrSet.contains($0.scriptpubkeyAddress ?? "") }
             && !tx.vin.contains { activeAddrSet.contains($0.prevout?.scriptpubkeyAddress ?? "") }
         }
@@ -494,16 +509,9 @@ final class WalletVM: ObservableObject {
 
         var seen = Set<String>()
         let dedupedTxs = mergedTxs.filter { seen.insert($0.txid).inserted }
-
-        // Filter: only keep UTXOs on our derived addresses
-        let knownAddresses = Set(addrStrings)
-        let cleanUTXOs = result.utxos.filter { knownAddresses.contains($0.address) }
-
-        utxos = cleanUTXOs
         transactions = dedupedTxs.sorted { ($0.status.blockTime ?? Int.max) > ($1.status.blockTime ?? Int.max) }
-        totalBalance = cleanUTXOs.reduce(0) { $0 + $1.value }
 
-        // Fetch fee estimates
+        // Fetch fee estimates (non-blocking, clearnet)
         if let fees = try? await MempoolAPI.shared.getRecommendedFees() {
             feeEstimate = fees
         }

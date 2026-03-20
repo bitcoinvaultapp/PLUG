@@ -239,19 +239,21 @@ final class HomeVM: ObservableObject {
                 if phase == "utxos" {
                     self.scanProgress = Double(completed) / Double(total)
                     self.scanStatus = "Scanning addresses… \(completed)/\(total)"
-                    // Update balance live as UTXOs arrive
-                    self.totalBalance = self.utxos.reduce(0) { $0 + $1.value }
                 } else {
                     self.scanStatus = "Loading transactions…"
                 }
             }
         )
 
-        // Scan complete
+        // Balance + UTXOs first (instant display)
+        utxos = result.utxos
+        totalBalance = result.utxos.reduce(0) { $0 + $1.value }
+        walletAddresses = walletAddrs
         scanProgress = 1
         scanStatus = nil
+        lastBalanceRefresh = Date()
 
-        // Merge new transactions with existing (preserves history for spent addresses)
+        // Then merge transactions (heavier, can take a moment)
         let activeAddrSet = Set(result.activeAddresses)
         var mergedTxs = transactions.filter { tx in
             !tx.vout.contains { activeAddrSet.contains($0.scriptpubkeyAddress ?? "") }
@@ -261,12 +263,7 @@ final class HomeVM: ObservableObject {
 
         var seen = Set<String>()
         let dedupedTxs = mergedTxs.filter { seen.insert($0.txid).inserted }
-
-        walletAddresses = walletAddrs
-        utxos = result.utxos
         transactions = dedupedTxs.sorted { ($0.status.blockTime ?? Int.max) > ($1.status.blockTime ?? Int.max) }
-        totalBalance = result.utxos.reduce(0) { $0 + $1.value }
-        lastBalanceRefresh = Date()
 
         // Track sync errors — warn user if all fetches failed
         if result.fetchErrorCount > 0 && result.fetchSuccessCount == 0 {

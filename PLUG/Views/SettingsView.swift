@@ -11,32 +11,6 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
-                // Network
-                Section("Network") {
-                    Toggle("Testnet", isOn: Binding(
-                        get: { vm.isTestnet },
-                        set: { _ in vm.toggleNetwork() }
-                    ))
-
-                    HStack {
-                        Text("Active network")
-                        Spacer()
-                        Text(vm.isTestnet ? "Testnet" : "Mainnet")
-                            .foregroundStyle(.secondary)
-                    }
-
-                    if !vm.isTestnet {
-                        HStack(spacing: 8) {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .foregroundStyle(.red)
-                            Text("WARNING: Mainnet broadcast is disabled during testing")
-                                .font(.caption)
-                                .foregroundStyle(.red)
-                        }
-                        .padding(.vertical, 4)
-                    }
-                }
-
                 // Tor Privacy
                 Section {
                     TorSettingsRow()

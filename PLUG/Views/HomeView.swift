@@ -4,6 +4,7 @@ import SwiftUI
 
 struct HomeView: View {
     @StateObject private var vm = HomeVM()
+    @EnvironmentObject var walletVM: WalletVM
     @ObservedObject private var ledgerState = LedgerManager.shared
     @AppStorage("balance_unit") private var balanceUnit: String = BalanceUnit.btc.rawValue
 
@@ -21,6 +22,10 @@ struct HomeView: View {
         KeychainStore.shared.loadXpub(isTestnet: NetworkConfig.shared.isTestnet) != nil
     }
 
+    private var ledgerConnectedNoXpub: Bool {
+        ledgerState.state == .connected && !hasWallet
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -30,13 +35,13 @@ struct HomeView: View {
                     if hasWallet {
                         // Full dashboard
                         HomeBalanceCard(
-                            totalBalance: vm.totalBalance,
+                            totalBalance: walletVM.totalBalance,
                             btcPrice: vm.btcPrice,
-                            syncError: vm.syncError,
-                            scanProgress: vm.scanProgress,
-                            scanStatus: vm.scanStatus,
+                            syncError: walletVM.error,
+                            scanProgress: walletVM.scanProgress,
+                            scanStatus: walletVM.scanStatus,
                             balanceUnit: $balanceUnit,
-                            onRetry: { Task { await vm.refreshBalance() } }
+                            onRetry: { Task { await walletVM.refreshUTXOs() } }
                         )
                         HomeNetworkStatsCard(
                             blockHeight: vm.blockHeight,
@@ -44,35 +49,51 @@ struct HomeView: View {
                             feeEstimate: vm.feeEstimate,
                             btcPrice: vm.btcPrice,
                             activeContracts: vm.activeContracts,
-                            utxos: vm.utxos,
-                            dustUtxos: vm.dustUtxos
+                            utxos: walletVM.utxos,
+                            dustUtxos: walletVM.utxos.filter { $0.value < 546 }
                         )
                         HomeStatusSection(
-                            pendingTransactions: vm.pendingTransactions,
+                            pendingTransactions: walletVM.transactions.filter { !$0.status.confirmed },
                             alerts: vm.alerts,
-                            walletAddresses: vm.walletAddresses,
-                            transactions: vm.transactions,
-                            utxos: vm.utxos
+                            walletAddresses: walletVM.addresses,
+                            transactions: walletVM.transactions,
+                            utxos: walletVM.utxos
                         )
                         HomeDailyTipCard(tipIndex: tipIndex)
                         HomeQuickActionsSection(
-                            utxos: vm.utxos,
-                            walletAddresses: vm.walletAddresses,
-                            transactions: vm.transactions,
+                            utxos: walletVM.utxos,
+                            walletAddresses: walletVM.addresses,
+                            transactions: walletVM.transactions,
                             showBatchSend: $showBatchSend,
                             showBumpFee: $showBumpFee,
                             showConsolidate: $showConsolidate,
                             showCrowdfund: $showCrowdfund
                         )
-                        HomeRemindersSection(utxos: vm.utxos)
+                        HomeRemindersSection(utxos: walletVM.utxos)
                         HomeRecentAddressesSection(
-                            walletAddresses: vm.walletAddresses,
-                            transactions: vm.transactions,
+                            walletAddresses: walletVM.addresses,
+                            transactions: walletVM.transactions,
                             copiedAddress: $copiedAddress
                         )
 
+                    } else if ledgerConnectedNoXpub {
+                        // Ledger connected but no xpub — auto-fetch
+                        HomeFetchingWalletCard()
+                            .task {
+                                do {
+                                    let _ = try await LedgerManager.shared.getXpub(
+                                        path: [84 | 0x80000000, 1 | 0x80000000, 0 | 0x80000000]
+                                    )
+                                    // xpub saved → hasWallet becomes true → view re-renders to dashboard
+                                    await walletVM.loadWallet()
+                                } catch {
+                                    #if DEBUG
+                                    print("[Home] Auto xpub fetch failed: \(error)")
+                                    #endif
+                                }
+                            }
                     } else {
-                        // No wallet — need to connect Ledger first
+                        // No wallet, no Ledger — need to connect
                         HomeConnectLedgerCard(showLedgerFromCard: $showLedgerFromCard)
                         HomeNetworkStatsCard(
                             blockHeight: vm.blockHeight,
@@ -80,8 +101,8 @@ struct HomeView: View {
                             feeEstimate: vm.feeEstimate,
                             btcPrice: vm.btcPrice,
                             activeContracts: vm.activeContracts,
-                            utxos: vm.utxos,
-                            dustUtxos: vm.dustUtxos
+                            utxos: [],
+                            dustUtxos: []
                         )
                         HomeDailyTipCard(tipIndex: tipIndex)
                     }
@@ -92,17 +113,16 @@ struct HomeView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(.hidden, for: .navigationBar)
             .refreshable {
-                // Pull-to-refresh: only refresh network stats (price, fees, block height)
-                // Does NOT rescan addresses/UTXOs — use Settings > Rescan for that
                 await Task.detached { [vm] in
                     await vm.refresh()
                 }.value
             }
-            .task {
-                await vm.refresh()
-                await vm.refreshBalance()
-                await vm.refreshContractBalances()
-                vm.connectWebSocket()
+            .onAppear {
+                Task {
+                    await vm.refresh()
+                    await vm.refreshContractBalances()
+                    vm.connectWebSocket()
+                }
             }
         }
     }
@@ -118,41 +138,56 @@ struct HomeView: View {
 // MARK: - Connect Ledger Card
 // =====================================================================
 
+private struct HomeFetchingWalletCard: View {
+    var body: some View {
+        VStack(spacing: 20) {
+            Spacer()
+            ProgressView()
+                .controlSize(.regular)
+            Text("Fetching wallet...")
+                .font(.system(size: 17, weight: .medium))
+            Text("Reading xpub from your Ledger")
+                .font(.system(size: 13))
+                .foregroundStyle(.tertiary)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, minHeight: 200)
+    }
+}
+
 private struct HomeConnectLedgerCard: View {
     @Binding var showLedgerFromCard: Bool
 
     var body: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "wave.3.right")
-                .font(.system(size: 36))
-                .foregroundStyle(.orange)
-                .padding(.top, 8)
+        VStack(spacing: 20) {
+            Spacer()
 
-            VStack(spacing: 6) {
-                Text("Connect your Ledger")
-                    .font(.system(size: 18, weight: .semibold))
-                Text("Pair via Bluetooth to view your balance and sign transactions.")
-                    .font(.system(size: 13))
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 8)
-            }
+            Image(systemName: "lock.shield.fill")
+                .font(.system(size: 40, weight: .light))
+                .foregroundStyle(.secondary)
+
+            Text("Connect your Ledger")
+                .font(.system(size: 22, weight: .semibold))
+
+            Text("Pair via Bluetooth to get started")
+                .font(.system(size: 14))
+                .foregroundStyle(.tertiary)
 
             Button {
                 showLedgerFromCard = true
             } label: {
                 Text("Connect")
                     .font(.system(size: 15, weight: .semibold))
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 12)
-                    .background(Color.btcOrange, in: RoundedRectangle(cornerRadius: 12))
                     .foregroundStyle(.white)
+                    .padding(.horizontal, 36)
+                    .padding(.vertical, 10)
+                    .background(Color.btcOrange, in: Capsule())
             }
-            .padding(.horizontal, 8)
-            .padding(.bottom, 4)
+            .padding(.top, 4)
+
+            Spacer()
         }
-        .padding(16)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16))
+        .frame(maxWidth: .infinity, minHeight: 280)
         .sheet(isPresented: $showLedgerFromCard) {
             NavigationStack {
                 LedgerView()

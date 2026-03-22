@@ -7,7 +7,6 @@ struct PlugHeader: View {
 
     @ObservedObject private var ledger = LedgerManager.shared
     @ObservedObject private var tor = TorManager.shared
-    @ObservedObject private var networkConfig = NetworkConfig.shared
     @State private var showLedger = false
     @State private var showSettings = false
 
@@ -26,15 +25,6 @@ struct PlugHeader: View {
                     .font(.system(size: 20, weight: .black))
                     .foregroundStyle(.secondary)
 
-                if isHome {
-                    Text(NetworkConfig.shared.isTestnet ? "TESTNET" : "MAINNET")
-                        .font(.system(size: 10, weight: .bold, design: .monospaced))
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 4)
-                        .background(NetworkConfig.shared.isTestnet ? Color.btcOrange : Color.green, in: Capsule())
-                        .foregroundStyle(.black)
-                        .padding(.leading, 10)
-                }
             }
             .lineLimit(1)
             .padding(.leading, 8)

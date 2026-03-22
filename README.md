@@ -2,7 +2,7 @@
 
 **Programmable Locking UTXO Gateway**
 
-Bitcoin smart contracts signed by your Ledger. Not a wallet — a programmability tool. You keep custody. The Ledger signs. The blockchain enforces.
+Bitcoin smart contracts signed by your Ledger. Not a wallet, a programmability tool. You keep custody. The Ledger signs. The blockchain enforces.
 
 ## Contracts
 
@@ -33,7 +33,7 @@ iPhone
 
 Two modes:
 - **mempool.space** via Tor .onion (default)
-- **Personal node** — your own Bitcoin Core + Electrs, zero third-party exposure
+- **Personal node** your own Bitcoin Core + Electrs, zero third-party exposure
 
 ## Security
 

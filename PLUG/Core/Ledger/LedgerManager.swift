@@ -441,8 +441,8 @@ final class LedgerManager: NSObject, ObservableObject {
             print("[Ledger] Using cached device model: \(finalModel)")
             #endif
         } else {
-            // Last resort — BLE-only devices are Nano X or newer
-            let finalModel = bleName.isEmpty ? "Nano X" : "Nano X \(bleName)"
+            // Last resort — use BLE name directly, or default to "Nano X"
+            let finalModel = bleName.isEmpty ? "Nano X" : bleName
             DispatchQueue.main.async { [weak self] in self?.deviceModel = finalModel }
             #if DEBUG
             print("[Ledger] No cached model, defaulting to: \(finalModel)")

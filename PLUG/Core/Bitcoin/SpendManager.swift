@@ -505,7 +505,7 @@ struct SpendManager {
     // MARK: - Broadcast
 
     static func broadcast(txHex: String) async throws -> String {
-        if !NetworkConfig.shared.isTestnet { throw SpendError.mainnetDisabled }
+        // Mainnet broadcast enabled
         guard let txData = Data(hex: txHex) else { throw SpendError.invalidTransaction("Bad hex") }
         let v = validateTransaction(txData)
         guard v.valid else { throw SpendError.invalidTransaction(v.reason) }

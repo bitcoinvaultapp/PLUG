@@ -80,26 +80,6 @@ struct PoolView: View {
             ContractCreatedSheet(contract: vm.createdContract!, currentBlockHeight: 0, onDismiss: { showCreated = false; vm.createdContract = nil })
         }
         .navigationDestination(isPresented: $showImportPSBT) { importPSBTPage }
-        .alert("Delete contract?", isPresented: $showDeleteAlert) {
-            Button("Cancel", role: .cancel) { contractToDelete = nil }
-            Button("Delete", role: .destructive) {
-                if let c = contractToDelete {
-                    vm.delete(id: c.id)
-                    contractToDelete = nil
-                    showDetail = false
-                    selectedContract = nil
-                }
-            }
-        } message: {
-            if let c = contractToDelete {
-                let balance = vm.fundedAmount(for: c)
-                if balance > 0 {
-                    Text("This contract holds \(balance) sats! Ensure you have the address and witness script backed up.")
-                } else {
-                    Text("This action is irreversible.")
-                }
-            }
-        }
         .task {
             await vm.refresh()
         }
@@ -251,6 +231,26 @@ struct PoolView: View {
             }
         .navigationTitle("Pool Details")
         .navigationBarTitleDisplayMode(.inline)
+        .alert("Delete contract?", isPresented: $showDeleteAlert) {
+            Button("Cancel", role: .cancel) { contractToDelete = nil }
+            Button("Delete", role: .destructive) {
+                if let c = contractToDelete {
+                    vm.delete(id: c.id)
+                    contractToDelete = nil
+                    showDetail = false
+                    selectedContract = nil
+                }
+            }
+        } message: {
+            if let c = contractToDelete {
+                let balance = vm.fundedAmount(for: c)
+                if balance > 0 {
+                    Text("This contract holds \(balance) sats! Ensure you have the address and witness script backed up.")
+                } else {
+                    Text("This action is irreversible.")
+                }
+            }
+        }
     }
 
     // MARK: - Create Sheet

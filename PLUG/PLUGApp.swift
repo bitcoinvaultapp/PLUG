@@ -3,17 +3,9 @@ import SwiftUI
 @main
 struct PLUGApp: App {
     @StateObject private var walletVM = WalletVM()
-    @StateObject private var networkConfig = NetworkConfig.shared
     @AppStorage("onboarding_complete") private var onboardingComplete = false
 
     init() {
-        // Force testnet on first launch for safety
-        let hasLaunchedBefore = UserDefaults.standard.bool(forKey: "has_launched_before")
-        if !hasLaunchedBefore {
-            NetworkConfig.shared.isTestnet = true
-            UserDefaults.standard.set(true, forKey: "has_launched_before")
-        }
-
         // Keychain migration — iOS keychain persists across app deletion.
         // Only wipe wallet/Ledger data. NEVER wipe contracts — they contain
         // witness scripts and HMACs needed to spend locked funds.
@@ -40,14 +32,19 @@ struct PLUGApp: App {
                 TorBootstrapWrapper {
                     MainTabView()
                         .environmentObject(walletVM)
-                        .environmentObject(networkConfig)
                 }
                 .preferredColorScheme(.dark)
             } else {
                 OnboardingView(isComplete: $onboardingComplete)
                     .environmentObject(walletVM)
-                    .environmentObject(networkConfig)
                     .preferredColorScheme(.dark)
+            }
+        }
+        .onChange(of: onboardingComplete) { completed in
+            if completed {
+                // Onboarding just finished — xpub is now in Keychain, trigger scan
+                walletVM.hasLoadedOnce = false
+                Task { await walletVM.loadWallet() }
             }
         }
     }
@@ -238,6 +235,9 @@ struct MainTabView: View {
                     wasConnected = false
                 }
             }
+        }
+        .onAppear {
+            Task { await walletVM.loadWallet() }
         }
         .onReceive(NotificationCenter.default.publisher(for: .ledgerManualDisconnect)) { _ in
             walletVM.clearWalletData()

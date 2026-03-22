@@ -85,26 +85,6 @@ struct VaultView: View {
                 )
             }
         }
-        .alert("Delete contract?", isPresented: $showDeleteAlert) {
-            Button("Cancel", role: .cancel) { contractToDelete = nil }
-            Button("Delete", role: .destructive) {
-                if let c = contractToDelete {
-                    vm.delete(id: c.id)
-                    contractToDelete = nil
-                    showDetail = false
-                    selectedContract = nil
-                }
-            }
-        } message: {
-            if let c = contractToDelete {
-                let balance = vm.fundedAmount(for: c)
-                if balance > 0 {
-                    Text("This contract holds \(balance) sats! Make sure you have backed up the address and the witness script before deleting. Funds will be unrecoverable without this information.")
-                } else {
-                    Text("This action is irreversible.")
-                }
-            }
-        }
         .task {
             await vm.refresh()
         }
@@ -340,6 +320,26 @@ struct VaultView: View {
             }
         .navigationTitle("Vault Details")
         .navigationBarTitleDisplayMode(.inline)
+        .alert("Delete contract?", isPresented: $showDeleteAlert) {
+            Button("Cancel", role: .cancel) { contractToDelete = nil }
+            Button("Delete", role: .destructive) {
+                if let c = contractToDelete {
+                    vm.delete(id: c.id)
+                    contractToDelete = nil
+                    showDetail = false
+                    selectedContract = nil
+                }
+            }
+        } message: {
+            if let c = contractToDelete {
+                let balance = vm.fundedAmount(for: c)
+                if balance > 0 {
+                    Text("This contract holds \(balance) sats! Backup address and witness script before deleting.")
+                } else {
+                    Text("This action is irreversible.")
+                }
+            }
+        }
     }
 
     // MARK: - Create Sheet

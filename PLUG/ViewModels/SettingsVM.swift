@@ -3,22 +3,15 @@ import Foundation
 @MainActor
 final class SettingsVM: ObservableObject {
 
-    @Published var isTestnet: Bool
     @Published var hasXpub: Bool = false
     @Published var xpubDisplay: String = ""
     @Published var showClearConfirmation = false
 
-    init() {
-        isTestnet = NetworkConfig.shared.isTestnet
-        refresh()
-    }
+    init() { refresh() }
 
     func refresh() {
-        isTestnet = NetworkConfig.shared.isTestnet
-
-        if let xpub = KeychainStore.shared.loadXpub(isTestnet: isTestnet) {
+        if let xpub = KeychainStore.shared.loadXpub(isTestnet: false) {
             hasXpub = true
-            // Show only first/last 8 chars
             if xpub.count > 20 {
                 xpubDisplay = "\(xpub.prefix(8))...\(xpub.suffix(8))"
             } else {
@@ -30,16 +23,9 @@ final class SettingsVM: ObservableObject {
         }
     }
 
-    func toggleNetwork() {
-        isTestnet.toggle()
-        NetworkConfig.shared.isTestnet = isTestnet
-        refresh()
-    }
-
     func exportDescriptor() -> String? {
-        guard let xpub = KeychainStore.shared.loadXpub(isTestnet: isTestnet) else { return nil }
-        let prefix = isTestnet ? "84h/1h/0h" : "84h/0h/0h"
-        return "wpkh([\(prefix)]\(xpub)/0/*)"
+        guard let xpub = KeychainStore.shared.loadXpub(isTestnet: false) else { return nil }
+        return "wpkh([84h/0h/0h]\(xpub)/0/*)"
     }
 
     func clearAllData() {

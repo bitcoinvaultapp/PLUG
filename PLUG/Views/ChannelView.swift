@@ -77,26 +77,6 @@ struct ChannelView: View {
         }
         .navigationDestination(isPresented: $showClose) { closePage }
         .navigationDestination(isPresented: $showRefund) { refundPage }
-        .alert("Delete contract?", isPresented: $showDeleteAlert) {
-            Button("Cancel", role: .cancel) { contractToDelete = nil }
-            Button("Delete", role: .destructive) {
-                if let c = contractToDelete {
-                    vm.delete(id: c.id)
-                    contractToDelete = nil
-                    showDetail = false
-                    selectedContract = nil
-                }
-            }
-        } message: {
-            if let c = contractToDelete {
-                let balance = vm.fundedAmount(for: c)
-                if balance > 0 {
-                    Text("This contract contains \(balance) sats! Make sure you have saved the address and witness script.")
-                } else {
-                    Text("This action is irreversible.")
-                }
-            }
-        }
         .task {
             await vm.refresh()
         }
@@ -300,6 +280,26 @@ struct ChannelView: View {
             }
         .navigationTitle("Channel Details")
         .navigationBarTitleDisplayMode(.inline)
+        .alert("Delete contract?", isPresented: $showDeleteAlert) {
+            Button("Cancel", role: .cancel) { contractToDelete = nil }
+            Button("Delete", role: .destructive) {
+                if let c = contractToDelete {
+                    vm.delete(id: c.id)
+                    contractToDelete = nil
+                    showDetail = false
+                    selectedContract = nil
+                }
+            }
+        } message: {
+            if let c = contractToDelete {
+                let balance = vm.fundedAmount(for: c)
+                if balance > 0 {
+                    Text("This contract contains \(balance) sats! Make sure you have saved the address and witness script.")
+                } else {
+                    Text("This action is irreversible.")
+                }
+            }
+        }
     }
 
     private func statusIcon(for contract: Contract) -> String {

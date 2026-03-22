@@ -77,26 +77,6 @@ struct InheritanceView: View {
         .sheet(isPresented: $showCreated) {
             ContractCreatedSheet(contract: vm.createdContract!, currentBlockHeight: vm.currentBlockHeight, onDismiss: { showCreated = false; vm.createdContract = nil })
         }
-        .alert("Delete contract?", isPresented: $showDeleteAlert) {
-            Button("Cancel", role: .cancel) { contractToDelete = nil }
-            Button("Delete", role: .destructive) {
-                if let c = contractToDelete {
-                    vm.delete(id: c.id)
-                    contractToDelete = nil
-                    showDetail = false
-                    selectedContract = nil
-                }
-            }
-        } message: {
-            if let c = contractToDelete {
-                let balance = vm.fundedAmount(for: c)
-                if balance > 0 {
-                    Text("This contract holds \(balance) sats! Make sure you have backed up the address and the witness script before deleting.")
-                } else {
-                    Text("This action is irreversible.")
-                }
-            }
-        }
         .task {
             await vm.refresh()
         }
@@ -335,6 +315,26 @@ struct InheritanceView: View {
             }
         .navigationTitle("Inheritance Details")
         .navigationBarTitleDisplayMode(.inline)
+        .alert("Delete contract?", isPresented: $showDeleteAlert) {
+            Button("Cancel", role: .cancel) { contractToDelete = nil }
+            Button("Delete", role: .destructive) {
+                if let c = contractToDelete {
+                    vm.delete(id: c.id)
+                    contractToDelete = nil
+                    showDetail = false
+                    selectedContract = nil
+                }
+            }
+        } message: {
+            if let c = contractToDelete {
+                let balance = vm.fundedAmount(for: c)
+                if balance > 0 {
+                    Text("This contract holds \(balance) sats! Make sure you have backed up the address and the witness script before deleting.")
+                } else {
+                    Text("This action is irreversible.")
+                }
+            }
+        }
     }
 
     private static func relativeTime(from date: Date) -> String {

@@ -42,8 +42,7 @@ final class TorConfig: ObservableObject {
         if usePersonalNode, !personalNodeOnion.isEmpty {
             return (personalNodeOnion, "/api\(endpoint)")
         }
-        let prefix = NetworkConfig.shared.isTestnet ? "/testnet" : ""
-        return (onionAddress, "\(prefix)/api\(endpoint)")
+        return (onionAddress, "/api\(endpoint)")
     }
 
     func resetToDefaults() {

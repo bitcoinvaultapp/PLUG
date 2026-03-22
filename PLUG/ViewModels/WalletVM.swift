@@ -13,7 +13,7 @@ final class WalletVM: ObservableObject {
     @Published var error: String?
     @Published var scanProgress: Double = 0
     @Published var scanStatus: String?
-    private var hasLoadedOnce = false
+    var hasLoadedOnce = false
     @Published var selectedStrategy: CoinSelectionStrategy = .largestFirst
 
     // Send form
@@ -203,7 +203,9 @@ final class WalletVM: ObservableObject {
         currentReceiveIndex = 0
         addressStatuses.removeAll()
         cachedXpubString = nil
+        hasLoadedOnce = false
         error = nil
+        KeychainStore.shared.delete(forKey: KeychainStore.KeychainKey.walletAddresses.rawValue)
         #if DEBUG
         print("[WalletVM] Full wallet reset — xpub changed, will rescan")
         #endif
@@ -307,24 +309,33 @@ final class WalletVM: ObservableObject {
             forKey: KeychainStore.KeychainKey.walletAddresses.rawValue,
             type: [WalletAddress].self
         ), !cached.isEmpty, cachedXpubString == nil || cachedXpubString == currentXpubStr {
-            #if DEBUG
-            print("[WalletVM] Loaded \(cached.count) cached addresses — skipping gap scan")
-            #endif
-            addresses = cached
-            cachedXpubString = currentXpubStr
+            // Validate cache: P2WPKH addresses are 42-44 chars, P2WSH are 62+
+            // If cache contains wrong address types or is too large, discard it
+            let validCache = cached.count < 1000 && cached.allSatisfy { $0.address.count < 55 }
+            if validCache {
+                #if DEBUG
+                print("[WalletVM] Loaded \(cached.count) cached addresses — skipping gap scan")
+                #endif
+                addresses = cached
+                cachedXpubString = currentXpubStr
 
-            // Set receive address
-            if let firstUnused = cached.first(where: { !$0.isChange }) {
-                currentReceiveAddress = firstUnused.address
-                currentReceiveIndex = firstUnused.index
+                if let firstUnused = cached.first(where: { !$0.isChange }) {
+                    currentReceiveAddress = firstUnused.address
+                    currentReceiveIndex = firstUnused.index
+                }
+
+                await refreshUTXOs()
+                return
+            } else {
+                #if DEBUG
+                print("[WalletVM] Cache invalid (\(cached.count) addrs, types wrong) — clearing and rescanning")
+                #endif
+                KeychainStore.shared.delete(forKey: KeychainStore.KeychainKey.walletAddresses.rawValue)
             }
-
-            await refreshUTXOs()
-            return
         }
 
         #if DEBUG
-        print("[WalletVM] No cached addresses — starting full gap scan")
+        print("[WalletVM] No cached addresses — starting smart scan")
         #endif
 
         // xpub changed or first load — re-derive
@@ -334,10 +345,54 @@ final class WalletVM: ObservableObject {
         }
         cachedXpubString = currentXpubStr
 
-        // Gap limit scan: derive addresses in batches until we find 20
-        // consecutive unused addresses. This finds all funds regardless of index.
+        // Smart scan: start with a small probe (5 addresses).
+        // If all empty → new wallet, stop immediately.
+        // If any have activity → expand to full gap limit scan.
         let isTest = isTestnet
         let xpubCopy = xpub
+
+        // Phase 1: Quick probe — 5 receiving addresses
+        let probeCount: UInt32 = 5
+        let probeBatch = await Task.detached(priority: .userInitiated) {
+            AddressDerivation.deriveAddresses(
+                xpub: xpubCopy, change: 0, startIndex: 0, count: probeCount, isTestnet: isTest
+            )
+        }.value
+
+        let probeAddrs = probeBatch.map { $0.address }
+        let probeResult = await UTXOFetchService.fetchUTXOsAndTransactions(for: probeAddrs)
+        let hasActivity = !probeResult.utxos.isEmpty || !probeResult.transactions.isEmpty
+
+        if !hasActivity {
+            // New wallet — no history. Save the probe addresses + a few change.
+            #if DEBUG
+            print("[WalletVM] Smart scan: new wallet detected (0 activity in first \(probeCount) addresses)")
+            #endif
+            let changeProbe = await Task.detached(priority: .userInitiated) {
+                AddressDerivation.deriveAddresses(
+                    xpub: xpubCopy, change: 1, startIndex: 0, count: probeCount, isTestnet: isTest
+                )
+            }.value
+
+            addresses = probeBatch.map { WalletAddress(index: $0.index, address: $0.address, publicKey: $0.publicKey.hex, isChange: false) }
+                + changeProbe.map { WalletAddress(index: $0.index, address: $0.address, publicKey: $0.publicKey.hex, isChange: true) }
+
+            if let firstAddr = addresses.first(where: { !$0.isChange }) {
+                currentReceiveAddress = firstAddr.address
+                currentReceiveIndex = firstAddr.index
+            }
+
+            KeychainStore.shared.saveCodable(addresses, forKey: KeychainStore.KeychainKey.walletAddresses.rawValue)
+            totalBalance = 0
+            hasLoadedOnce = true
+            isLoading = false
+            return
+        }
+
+        // Phase 2: Wallet has activity — full gap limit scan
+        #if DEBUG
+        print("[WalletVM] Smart scan: activity found, expanding to full gap scan")
+        #endif
         let gapLimit = 20
         let batchSize: UInt32 = 20
 
@@ -350,13 +405,16 @@ final class WalletVM: ObservableObject {
         // Batched parallel queries instead of sequential (much faster over Tor)
         var consecutiveEmpty = 0
         var scanIndex: UInt32 = 0
+        var consecutiveErrors = 0
+        let maxConsecutiveErrors = 40 // Stop after 40 consecutive network errors
         let torActive = plug_tor_is_running()
         let fetchBatchSize = torActive ? 1 : 3  // Serial for Tor (Rust Mutex serializes anyway)
         #if DEBUG
         print("[WalletVM] Starting gap limit scan (gap=\(gapLimit), tor=\(torActive))...")
         #endif
 
-        while consecutiveEmpty < gapLimit {
+        let maxScanIndex: UInt32 = 500 // Hard cap — never scan beyond index 500
+        while consecutiveEmpty < gapLimit && scanIndex < maxScanIndex {
             let startIdx = scanIndex
             let batch = await Task.detached(priority: .userInitiated) {
                 AddressDerivation.deriveAddresses(
@@ -395,12 +453,20 @@ final class WalletVM: ObservableObject {
                     allReceiving.append(walletAddr)
 
                     if !success {
-                        // Network error — don't count as empty (avoids early gap termination)
+                        consecutiveErrors += 1
                         #if DEBUG
-                        print("[WalletVM] Skipping #\(index) due to error (not counting toward gap)")
+                        print("[WalletVM] Skipping #\(index) due to error (\(consecutiveErrors) consecutive)")
                         #endif
+                        if consecutiveErrors >= maxConsecutiveErrors {
+                            #if DEBUG
+                            print("[WalletVM] Too many consecutive errors (\(consecutiveErrors)), stopping scan")
+                            #endif
+                            consecutiveEmpty = gapLimit // force exit
+                        }
                         continue
                     }
+
+                    consecutiveErrors = 0 // reset on success
 
                     if utxos.isEmpty && txs.isEmpty {
                         consecutiveEmpty += 1
@@ -900,12 +966,20 @@ final class WalletVM: ObservableObject {
                             var spk = Data([0x00, 0x14]) // OP_0 + PUSH_20
                             spk.append(pubkeyHash)
 
+                            // Fetch previous transaction for NON_WITNESS_UTXO (BIP174)
+                            var prevTx: Data?
+                            if let rawHex = try? await MempoolAPI.shared.getRawTransaction(txid: utxo.txid),
+                               let raw = Data(hex: rawHex) {
+                                prevTx = raw
+                            }
+
                             inputAddressInfos.append(LedgerSigningV2.InputAddressInfo(
                                 change: walletAddr.isChange ? 1 : 0,
                                 index: walletAddr.index,
                                 publicKey: pubkeyData,
                                 value: utxo.value,
-                                scriptPubKey: spk
+                                scriptPubKey: spk,
+                                previousTx: prevTx
                             ))
                             #if DEBUG
                             print("[WalletVM] Input UTXO \(utxo.outpoint): \(utxo.value) sats, addr=\(walletAddr.address.prefix(20))... change=\(walletAddr.isChange ? 1 : 0) index=\(walletAddr.index)")
@@ -1015,13 +1089,37 @@ final class WalletVM: ObservableObject {
             broadcastTxid = txid
             sendStep = .broadcast
 
-            // Refresh wallet
-            await loadWallet()
+            // Refresh UTXOs after broadcast
+            await refreshUTXOs()
+
+            // Poll for confirmation in background
+            watchForConfirmation(txid: txid)
         } catch {
             sendError = error.localizedDescription
         }
 
         isSigning = false
+    }
+
+    /// Poll a transaction until confirmed, then refresh UTXOs
+    private func watchForConfirmation(txid: String) {
+        Task {
+            for _ in 0..<60 { // Max 30 minutes (60 × 30s)
+                try? await Task.sleep(nanoseconds: 30_000_000_000) // 30s
+                do {
+                    let tx = try await MempoolAPI.shared.getTransaction(txid: txid)
+                    if tx.status.confirmed {
+                        #if DEBUG
+                        print("[WalletVM] Tx \(txid.prefix(12)) confirmed at block \(tx.status.blockHeight ?? 0)")
+                        #endif
+                        await refreshUTXOs()
+                        return
+                    }
+                } catch {
+                    // Network error — keep polling
+                }
+            }
+        }
     }
 
     /// Reset send form

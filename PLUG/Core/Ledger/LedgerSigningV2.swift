@@ -244,7 +244,7 @@ struct LedgerSigningV2 {
 
         // Multi-round client command loop (same as signPSBT)
         var rounds = 0
-        while rounds < 500 {
+        while rounds < 2000 {
             rounds += 1
             if response.isEmpty { break }
 
@@ -404,7 +404,7 @@ struct LedgerSigningV2 {
         var response = try await LedgerManager.shared.sendAPDU(apdu, timeout: 120)
 
         var rounds = 0
-        while rounds < 500 {
+        while rounds < 2000 {
             rounds += 1
             if response.isEmpty { break }
 
@@ -655,7 +655,7 @@ struct LedgerSigningV2 {
 
         // Multi-round client command loop
         var rounds = 0
-        let maxRounds = 500
+        let maxRounds = 2000
 
         while rounds < maxRounds {
             rounds += 1

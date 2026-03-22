@@ -5,6 +5,7 @@ struct UTXOManagerPage: View {
     let walletAddresses: [WalletAddress]
     let transactions: [Transaction]
 
+    @ObservedObject private var frozenStore = FrozenUTXOStore.shared
     @State private var filter: UTXOFilter = .all
     @State private var sortOrder: UTXOSort = .amountHigh
     @State private var copiedOutpoint = ""

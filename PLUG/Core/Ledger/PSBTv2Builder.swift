@@ -62,9 +62,12 @@ extension LedgerSigningV2 {
             var keys: [Data] = []
             var values: [Data] = []
 
-            // TODO: Add NON_WITNESS_UTXO (key 0x00) with the full previous transaction
-            // for BIP-174 compliance. Ledger shows a warning without it for segwit v0.
-            // Required for P2WSH contract spending (Vault, Inheritance, etc.)
+            // NON_WITNESS_UTXO (0x00) — full previous transaction for BIP174 compliance.
+            // Ledger shows a warning for segwit v0 inputs without it.
+            if i < inputAddressInfos.count, let prevTx = inputAddressInfos[i].previousTx, !prevTx.isEmpty {
+                keys.append(Data([0x00]))
+                values.append(prevTx)
+            }
 
             // WITNESS_UTXO (0x01) — CRITICAL: Ledger needs this to validate input amount
             // Format: value(8 bytes LE) + scriptPubKey(varint_len + script)

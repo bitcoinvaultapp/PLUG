@@ -200,6 +200,7 @@ struct LedgerSigningV2 {
         let publicKey: Data  // 33-byte compressed pubkey
         let value: UInt64    // UTXO value in satoshis
         let scriptPubKey: Data // scriptPubKey of the UTXO being spent
+        var previousTx: Data? // full previous transaction (BIP174 NON_WITNESS_UTXO)
     }
 
     // MARK: - Wallet Policy Registration (V2)

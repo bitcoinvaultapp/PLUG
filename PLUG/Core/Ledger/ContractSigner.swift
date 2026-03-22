@@ -225,15 +225,33 @@ struct ContractSigner {
                 let spk = PSBTBuilder.scriptPubKeyFromAddress(contract.address, isTestnet: isTestnet) ?? Data()
 
                 // Get UTXOs to know input count and values
-                let utxos = (try? await MempoolAPI.shared.getAddressUTXOs(address: contract.address)) ?? []
-                resolvedInputInfos = utxos.map { utxo in
-                    LedgerSigningV2.InputAddressInfo(
+                let utxos: [UTXO]
+                do {
+                    utxos = try await MempoolAPI.shared.getAddressUTXOs(address: contract.address)
+                } catch {
+                    #if DEBUG
+                    print("[ContractSigner] Failed to fetch UTXOs: \(error.localizedDescription)")
+                    #endif
+                    throw SigningError.signingFailed("Cannot fetch UTXOs: \(error.localizedDescription)")
+                }
+
+                // Fetch previous transactions for BIP174 NON_WITNESS_UTXO
+                var inputInfos: [LedgerSigningV2.InputAddressInfo] = []
+                for utxo in utxos {
+                    var prevTx: Data?
+                    if let rawHex = try? await MempoolAPI.shared.getRawTransaction(txid: utxo.txid),
+                       let raw = Data(hex: rawHex) {
+                        prevTx = raw
+                    }
+                    inputInfos.append(LedgerSigningV2.InputAddressInfo(
                         change: 0, index: 0,
                         publicKey: derived.key,
                         value: utxo.value,
-                        scriptPubKey: spk
-                    )
+                        scriptPubKey: spk,
+                        previousTx: prevTx
+                    ))
                 }
+                resolvedInputInfos = inputInfos
                 // Fallback if no UTXOs found but PSBT has inputs
                 if resolvedInputInfos.isEmpty, let parsed = PSBTBuilder.parsePSBT(psbtData),
                    let tx = parsed.unsignedTx {
@@ -243,7 +261,8 @@ struct ContractSigner {
                             change: 0, index: 0,
                             publicKey: derived.key,
                             value: 0,
-                            scriptPubKey: spk
+                            scriptPubKey: spk,
+                            previousTx: nil
                         )
                     }
                 }

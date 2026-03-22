@@ -1,68 +1,32 @@
 import Foundation
 import CommonCrypto
 
-// MARK: - Mempool.space REST API client
-// TLS certificate pinning (SPKI SHA-256) via URLSessionDelegate
+// MARK: - Mempool.space / Personal Node REST API client
+// Two modes: clearnet (URLSession + TLS pinning) or Tor (plug_tor_fetch/post)
 
 final class MempoolAPI: NSObject, URLSessionDelegate {
 
     static let shared = MempoolAPI()
 
-    private lazy var clearnetSession: URLSession = {
+    /// Whether the user explicitly skipped Tor (allows clearnet address queries)
+    static var torSkipped = false
+
+    private lazy var session: URLSession = {
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 15
         config.timeoutIntervalForResource = 30
         return URLSession(configuration: config, delegate: self, delegateQueue: nil)
     }()
 
-    /// Active session — always clearnet for non-address queries (block height, fees, price).
-    /// Address queries use addressRequest() which tries Tor first.
-    private var session: URLSession {
-        clearnetSession
-    }
-
-    private var baseURL: String {
-        NetworkConfig.shared.mempoolBaseURL
-    }
+    private var baseURL: String { NetworkConfig.shared.mempoolBaseURL }
 
     // MARK: - TLS Certificate Pinning (SPKI SHA-256)
 
-    // -------------------------------------------------------------------------
-    // What: SPKI (Subject Public Key Info) SHA-256 hashes for mempool.space.
-    //       The leaf pin matches the current server certificate; the intermediate
-    //       CA pin acts as a backup so the app still connects if the leaf cert
-    //       is renewed but issued by the same CA. At least 2 pins should always
-    //       be present (leaf + backup/intermediate) to avoid bricking the app
-    //       on certificate rotation.
-    //
-    // Current leaf cert expires: 2026-09-28 (Sep 28 23:59:59 UTC 2026).
-    //       Rotate the leaf pin BEFORE this date.
-    //
-    // How to extract new pins (run from any machine with openssl):
-    //
-    //   # Leaf certificate SPKI pin:
+    // Leaf cert expires: 2026-09-28. Rotate BEFORE this date.
+    // Extract new pins:
     //   echo | openssl s_client -connect mempool.space:443 2>/dev/null \
-    //     | openssl x509 -pubkey -noout \
-    //     | openssl pkey -pubin -outform DER \
+    //     | openssl x509 -pubkey -noout | openssl pkey -pubin -outform DER \
     //     | openssl dgst -sha256 -binary | base64
-    //
-    //   # Intermediate CA SPKI pin (index 1 in the chain):
-    //   echo | openssl s_client -connect mempool.space:443 -showcerts 2>/dev/null \
-    //     | awk '/BEGIN CERT/{i++} i==2' \
-    //     | openssl x509 -pubkey -noout \
-    //     | openssl pkey -pubin -outform DER \
-    //     | openssl dgst -sha256 -binary | base64
-    //
-    //   # Check current cert expiry:
-    //   echo | openssl s_client -connect mempool.space:443 2>/dev/null \
-    //     | openssl x509 -noout -enddate
-    //
-    // After extracting new pins, replace the corresponding base64 string below
-    // and test that the app connects successfully before releasing.
-    // -------------------------------------------------------------------------
-
-    /// Pinned SPKI hashes for mempool.space — leaf + intermediate CA.
-    /// Rotate when mempool.space renews their certificate.
     private static let pinnedHashes: Set<String> = [
         "wV7micOM/PJtIxPpaZBTdQF0JnfIHXSGzrvsu7fzDdQ=", // leaf
         "KqkYYX5LYAYP7XGemqzbtPPIA8x7BS/BbOIcAXf3j2k=", // intermediate CA
@@ -80,7 +44,6 @@ final class MempoolAPI: NSObject, URLSessionDelegate {
             return
         }
 
-        // Verify at least one certificate in the chain matches a pinned SPKI hash
         guard let chain = SecTrustCopyCertificateChain(serverTrust) as? [SecCertificate] else {
             completionHandler(.cancelAuthenticationChallenge, nil)
             return
@@ -90,216 +53,242 @@ final class MempoolAPI: NSObject, URLSessionDelegate {
                   let pubKeyData = SecKeyCopyExternalRepresentation(pubKey, nil) as Data? else { continue }
             var hash = [UInt8](repeating: 0, count: Int(CC_SHA256_DIGEST_LENGTH))
             pubKeyData.withUnsafeBytes { _ = CC_SHA256($0.baseAddress, CC_LONG(pubKeyData.count), &hash) }
-            let pin = Data(hash).base64EncodedString()
-            if Self.pinnedHashes.contains(pin) {
+            if Self.pinnedHashes.contains(Data(hash).base64EncodedString()) {
                 completionHandler(.useCredential, URLCredential(trust: serverTrust))
                 return
             }
         }
 
-        // No pin matched — reject connection
         #if DEBUG
         print("[PLUG] TLS pin verification FAILED for \(challenge.protectionSpace.host)")
         #endif
         completionHandler(.cancelAuthenticationChallenge, nil)
     }
 
-    // MARK: - Generic request
+    // MARK: - Core transport (2 paths: Tor or clearnet)
 
-    private func request<T: Decodable>(_ endpoint: String, type: T.Type) async throws -> T {
-        guard let url = URL(string: "\(baseURL)\(endpoint)") else {
-            throw APIError.invalidURL
-        }
+    /// Fetch via Tor — direct Arti stream, serialized, 60s timeout in Rust.
+    /// Retries once on failure with 2s backoff.
+    private func torGET(_ endpoint: String) async throws -> String {
+        let (host, path) = TorConfig.shared.resolve(endpoint: endpoint)
 
-        let (data, response) = try await session.data(from: url)
+        for attempt in 0..<2 {
+            if attempt > 0 {
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                #if DEBUG
+                print("[Tor] Retry \(path)")
+                #endif
+            }
 
-        guard let httpResponse = response as? HTTPURLResponse,
-              (200...299).contains(httpResponse.statusCode) else {
-            throw APIError.httpError((response as? HTTPURLResponse)?.statusCode ?? 0)
-        }
-
-        return try JSONDecoder().decode(type, from: data)
-    }
-
-    /// Whether the user explicitly skipped Tor (allows clearnet address queries)
-    static var torSkipped = false
-
-    /// Address-specific request — REQUIRES Tor. Never leaks IP.
-    /// Uses plug_tor_fetch() directly — bypasses URLSession/SOCKS5, reuses HS circuits.
-    /// Blocks entirely if Tor is unavailable (unless user explicitly skipped).
-    private func addressRequest<T: Decodable>(_ endpoint: String, type: T.Type) async throws -> T {
-        if plug_tor_is_running() {
-            let isTestnet = NetworkConfig.shared.isTestnet
-            let prefix = isTestnet ? "/testnet" : ""
-            let path = "\(prefix)/api\(endpoint)"
-            let onionHost = TorConfig.shared.onionAddress
-
-            // Direct Arti fetch — no SOCKS5 proxy, no URLSession
-            // Runs on background thread since plug_tor_fetch blocks
-            let jsonString: String? = await Task.detached(priority: .userInitiated) {
-                guard let hostC = onionHost.cString(using: .utf8),
-                      let pathC = path.cString(using: .utf8) else { return nil as String? }
-                guard let resultPtr = plug_tor_fetch(hostC, 80, pathC) else { return nil as String? }
-                let result = String(cString: resultPtr)
-                plug_tor_free_string(resultPtr)
-                return result
+            let result: String? = await Task.detached(priority: .userInitiated) {
+                guard let h = host.cString(using: .utf8),
+                      let p = path.cString(using: .utf8),
+                      let ptr = plug_tor_fetch(h, 80, p) else { return nil as String? }
+                let s = String(cString: ptr)
+                plug_tor_free_string(ptr)
+                return s
             }.value
 
-            guard let json = jsonString, !json.isEmpty else {
-                throw APIError.torFetchFailed
-            }
-
-            guard let data = json.data(using: .utf8) else {
-                throw APIError.decodingError
-            }
-
-            return try JSONDecoder().decode(type, from: data)
+            if let s = result, !s.isEmpty { return s }
         }
-
-        // User explicitly chose "Skip — use clearnet"
-        if Self.torSkipped {
-            return try await request(endpoint, type: type)
-        }
-
-        // Tor not running and not skipped — block to protect privacy
-        throw APIError.torRequired
+        throw APIError.torFetchFailed
     }
 
-    private func requestRaw(_ endpoint: String) async throws -> Data {
+    /// POST via Tor — for broadcasting transactions.
+    /// 3 attempts with exponential backoff (0s, 2s, 4s).
+    private func torPOST(_ endpoint: String, body: String) async throws -> String {
+        let (host, path) = TorConfig.shared.resolve(endpoint: endpoint)
+        var lastError = "onion service unreachable"
+
+        for attempt in 0..<3 {
+            if attempt > 0 {
+                let delay = UInt64(pow(2.0, Double(attempt))) * 1_000_000_000
+                try? await Task.sleep(nanoseconds: delay)
+                #if DEBUG
+                print("[Tor] POST retry \(attempt + 1)/3")
+                #endif
+            }
+
+            let result: String? = await Task.detached(priority: .userInitiated) {
+                guard let h = host.cString(using: .utf8),
+                      let p = path.cString(using: .utf8),
+                      let b = body.cString(using: .utf8),
+                      let ptr = plug_tor_post(h, 80, p, b) else { return nil as String? }
+                let s = String(cString: ptr)
+                plug_tor_free_string(ptr)
+                return s
+            }.value
+
+            if let s = result?.trimmingCharacters(in: .whitespacesAndNewlines), !s.isEmpty {
+                return s
+            }
+            lastError = result ?? "onion service unreachable"
+        }
+        throw APIError.broadcastFailed("Tor failed after 3 attempts: \(lastError)")
+    }
+
+    /// Clearnet GET — URLSession with TLS pinning.
+    private func clearnetGET(_ endpoint: String) async throws -> Data {
         guard let url = URL(string: "\(baseURL)\(endpoint)") else {
             throw APIError.invalidURL
         }
-
         let (data, response) = try await session.data(from: url)
-
-        guard let httpResponse = response as? HTTPURLResponse,
-              (200...299).contains(httpResponse.statusCode) else {
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
             throw APIError.httpError((response as? HTTPURLResponse)?.statusCode ?? 0)
         }
-
         return data
     }
 
-    private func requestText(_ endpoint: String) async throws -> String {
-        let data = try await requestRaw(endpoint)
-        guard let text = String(data: data, encoding: .utf8) else {
-            throw APIError.decodingError
+    /// Smart GET — Tor if running, clearnet fallback if skipped.
+    /// For privacy-sensitive queries (addresses, transactions).
+    private func privateGET<T: Decodable>(_ endpoint: String, type: T.Type) async throws -> T {
+        if plug_tor_is_running() {
+            let raw = try await torGET(endpoint)
+            guard let data = raw.data(using: .utf8) else { throw APIError.decodingError }
+            return try JSONDecoder().decode(type, from: data)
         }
-        return text
+        if Self.torSkipped {
+            let data = try await clearnetGET(endpoint)
+            return try JSONDecoder().decode(type, from: data)
+        }
+        throw APIError.torRequired
     }
 
-    // MARK: - Price
+    /// Smart GET returning text — Tor if running, clearnet fallback.
+    private func privateText(_ endpoint: String) async throws -> String {
+        if plug_tor_is_running() {
+            return try await torGET(endpoint)
+        }
+        if Self.torSkipped {
+            let data = try await clearnetGET(endpoint)
+            guard let text = String(data: data, encoding: .utf8) else { throw APIError.decodingError }
+            return text
+        }
+        throw APIError.torRequired
+    }
+
+    /// Public GET — non-sensitive data (price, difficulty). Always clearnet.
+    private func publicGET<T: Decodable>(_ endpoint: String, type: T.Type) async throws -> T {
+        let data = try await clearnetGET(endpoint)
+        return try JSONDecoder().decode(type, from: data)
+    }
+
+    // MARK: - Price (public, non-sensitive)
 
     func getBTCPrice() async throws -> Double {
-        struct PriceResponse: Decodable {
-            let USD: Int
-        }
-        let response = try await request("/v1/prices", type: PriceResponse.self)
-        return Double(response.USD)
+        struct R: Decodable { let USD: Int }
+        return Double(try await publicGET("/v1/prices", type: R.self).USD)
     }
 
     // MARK: - Fees
 
     func getRecommendedFees() async throws -> FeeEstimate {
-        try await request("/v1/fees/recommended", type: FeeEstimate.self)
+        if plug_tor_is_running(), TorConfig.shared.usePersonalNode {
+            // Electrs: {"1": 87.882, "3": 50.5, ...}
+            let raw = try await torGET("/fee-estimates")
+            guard let data = raw.data(using: .utf8) else { throw APIError.decodingError }
+            let m = try JSONDecoder().decode([String: Double].self, from: data)
+            return FeeEstimate(
+                fastestFee: Int(m["1"] ?? m["2"] ?? 1),
+                halfHourFee: Int(m["3"] ?? m["6"] ?? 1),
+                hourFee: Int(m["6"] ?? m["12"] ?? 1),
+                economyFee: Int(m["12"] ?? m["24"] ?? 1),
+                minimumFee: Int(m["144"] ?? m["504"] ?? 1)
+            )
+        }
+        return try await publicGET("/v1/fees/recommended", type: FeeEstimate.self)
     }
 
     // MARK: - Blockchain info
 
     func getBlockHeight() async throws -> Int {
-        let text = try await requestText("/blocks/tip/height")
-        guard let height = Int(text.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+        let text = try await privateText("/blocks/tip/height")
+        guard let h = Int(text.trimmingCharacters(in: .whitespacesAndNewlines)) else {
             throw APIError.decodingError
         }
-        return height
+        return h
     }
 
     func getBlockHash(height: Int) async throws -> String {
-        try await requestText("/block-height/\(height)")
+        try await privateText("/block-height/\(height)")
     }
 
     func getDifficultyAdjustment() async throws -> DifficultyAdjustment {
-        try await request("/v1/difficulty-adjustment", type: DifficultyAdjustment.self)
+        // Not available on Electrs — always clearnet
+        try await publicGET("/v1/difficulty-adjustment", type: DifficultyAdjustment.self)
     }
 
-    // MARK: - Address
+    // MARK: - Address (private — always Tor)
 
     func getAddressUTXOs(address: String) async throws -> [UTXO] {
-        struct MempoolUTXO: Decodable {
-            let txid: String
-            let vout: Int
-            let value: UInt64
-            let status: UTXO.UTXOStatus
+        struct R: Decodable {
+            let txid: String; let vout: Int; let value: UInt64; let status: UTXO.UTXOStatus
         }
-
-        let utxos = try await addressRequest("/address/\(address)/utxo", type: [MempoolUTXO].self)
-        return utxos.map { utxo in
-            UTXO(
-                txid: utxo.txid,
-                vout: utxo.vout,
-                value: utxo.value,
-                address: address,
-                scriptPubKey: "",
-                status: utxo.status
-            )
+        return try await privateGET("/address/\(address)/utxo", type: [R].self).map {
+            UTXO(txid: $0.txid, vout: $0.vout, value: $0.value, address: address,
+                 scriptPubKey: "", status: $0.status)
         }
     }
 
     func getAddressTransactions(address: String) async throws -> [Transaction] {
-        try await addressRequest("/address/\(address)/txs", type: [Transaction].self)
+        try await privateGET("/address/\(address)/txs", type: [Transaction].self)
     }
 
     func hasTransactions(address: String) async throws -> Bool {
-        struct AddressInfo: Decodable {
-            let chainStats: ChainStats
-            let mempoolStats: ChainStats
-
-            struct ChainStats: Decodable {
-                let txCount: Int
-                enum CodingKeys: String, CodingKey {
-                    case txCount = "tx_count"
-                }
-            }
-
+        struct Stats: Decodable {
+            let txCount: Int
+            enum CodingKeys: String, CodingKey { case txCount = "tx_count" }
+        }
+        struct R: Decodable {
+            let chainStats: Stats; let mempoolStats: Stats
             enum CodingKeys: String, CodingKey {
-                case chainStats = "chain_stats"
-                case mempoolStats = "mempool_stats"
+                case chainStats = "chain_stats"; case mempoolStats = "mempool_stats"
             }
         }
-
-        let info = try await addressRequest("/address/\(address)", type: AddressInfo.self)
+        let info = try await privateGET("/address/\(address)", type: R.self)
         return info.chainStats.txCount > 0 || info.mempoolStats.txCount > 0
     }
 
     // MARK: - Transaction
 
     func getTransaction(txid: String) async throws -> Transaction {
-        try await request("/tx/\(txid)", type: Transaction.self)
+        try await privateGET("/tx/\(txid)", type: Transaction.self)
+    }
+
+    /// Fetch raw transaction hex (for BIP174 NON_WITNESS_UTXO)
+    func getRawTransaction(txid: String) async throws -> String {
+        try await privateText("/tx/\(txid)/hex")
     }
 
     func broadcastTransaction(hex: String) async throws -> String {
-        guard let url = URL(string: "\(baseURL)/tx") else {
-            throw APIError.invalidURL
+        if plug_tor_is_running() {
+            let txid = try await torPOST("/tx", body: hex)
+            guard isValidTxid(txid) else {
+                throw APIError.broadcastFailed("Invalid txid: \(txid)")
+            }
+            return txid
         }
 
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.httpBody = hex.data(using: .utf8)
-        request.setValue("text/plain", forHTTPHeaderField: "Content-Type")
+        // Clearnet fallback
+        guard let url = URL(string: "\(baseURL)/tx") else { throw APIError.invalidURL }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.httpBody = hex.data(using: .utf8)
+        req.setValue("text/plain", forHTTPHeaderField: "Content-Type")
 
-        let (data, response) = try await session.data(for: request)
-
-        guard let httpResponse = response as? HTTPURLResponse,
-              (200...299).contains(httpResponse.statusCode) else {
-            let errorText = String(data: data, encoding: .utf8) ?? "Unknown error"
-            throw APIError.broadcastFailed(errorText)
+        let (data, response) = try await session.data(for: req)
+        guard let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode) else {
+            throw APIError.broadcastFailed(String(data: data, encoding: .utf8) ?? "Unknown error")
         }
-
-        guard let txid = String(data: data, encoding: .utf8) else {
-            throw APIError.decodingError
+        guard let txid = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              isValidTxid(txid) else {
+            throw APIError.broadcastFailed("Invalid txid returned")
         }
+        return txid
+    }
 
-        return txid.trimmingCharacters(in: .whitespacesAndNewlines)
+    private func isValidTxid(_ txid: String) -> Bool {
+        txid.count == 64 && txid.allSatisfy(\.isHexDigit)
     }
 
     // MARK: - Errors

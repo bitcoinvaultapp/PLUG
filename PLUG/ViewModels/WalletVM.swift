@@ -476,6 +476,19 @@ final class WalletVM: ObservableObject {
         isLoading = false
     }
 
+    // MARK: - Lightweight refresh (pull-to-refresh: price + block height only)
+
+    func refreshMetadata() async {
+        do {
+            currentBlockHeight = try await MempoolAPI.shared.getBlockHeight()
+            btcPrice = try await MempoolAPI.shared.getBTCPrice()
+        } catch {
+            #if DEBUG
+            print("[WalletVM] refreshMetadata error: \(error.localizedDescription)")
+            #endif
+        }
+    }
+
     // MARK: - Refresh UTXOs only (no re-derivation)
 
     func refreshUTXOs() async {
@@ -1030,6 +1043,7 @@ final class WalletVM: ObservableObject {
 
     func toggleFreeze(outpoint: String) {
         FrozenUTXOStore.shared.toggle(outpoint: outpoint)
+        objectWillChange.send() // Trigger WalletView re-render
     }
 
     func isFrozen(outpoint: String) -> Bool {

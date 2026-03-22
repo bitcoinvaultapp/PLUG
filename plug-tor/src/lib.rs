@@ -218,8 +218,13 @@ pub extern "C" fn plug_tor_fetch(
 
     let rt = get_runtime();
     let t0 = std::time::Instant::now();
-    match rt.block_on(tor_http_get(client, &host_str, port, &path_str)) {
-        Ok(body) => {
+    match rt.block_on(async {
+        tokio::time::timeout(
+            std::time::Duration::from_secs(60),
+            tor_http_get(client, &host_str, port, &path_str)
+        ).await
+    }) {
+        Ok(Ok(body)) => {
             let dt = t0.elapsed().as_millis();
             eprintln!("[plug-tor] ✅ {} ({} bytes, {}ms)", path_str, body.len(), dt);
             match std::ffi::CString::new(body) {
@@ -227,15 +232,79 @@ pub extern "C" fn plug_tor_fetch(
                 Err(_) => std::ptr::null_mut(),
             }
         }
-        Err(e) => {
-            let dt = t0.elapsed().as_millis();
-            eprintln!("[plug-tor] ❌ {} ({}ms): {}", path_str, dt, e);
+        Ok(Err(e)) => {
+            eprintln!("[plug-tor] ❌ {} ({}ms): {}", path_str, t0.elapsed().as_millis(), e);
+            std::ptr::null_mut()
+        }
+        Err(_) => {
+            eprintln!("[plug-tor] ❌ {} timed out (60s)", path_str);
             std::ptr::null_mut()
         }
     }
 }
 
-/// Free a string returned by plug_tor_fetch.
+/// POST data through Tor (e.g. broadcast a transaction).
+/// SERIALIZED: shares the same Mutex as plug_tor_fetch.
+/// Returns the response body as a C string, or NULL on error.
+/// Caller must free with plug_tor_free_string().
+#[no_mangle]
+pub extern "C" fn plug_tor_post(
+    host: *const std::ffi::c_char,
+    port: u16,
+    path: *const std::ffi::c_char,
+    body: *const std::ffi::c_char,
+) -> *mut std::ffi::c_char {
+    let host_str = match unsafe { std::ffi::CStr::from_ptr(host) }.to_str() {
+        Ok(s) => s.to_string(),
+        Err(_) => return std::ptr::null_mut(),
+    };
+    let path_str = match unsafe { std::ffi::CStr::from_ptr(path) }.to_str() {
+        Ok(s) => s.to_string(),
+        Err(_) => return std::ptr::null_mut(),
+    };
+    let body_str = match unsafe { std::ffi::CStr::from_ptr(body) }.to_str() {
+        Ok(s) => s.to_string(),
+        Err(_) => return std::ptr::null_mut(),
+    };
+
+    let client = match TOR_CLIENT.get() {
+        Some(c) => c.clone(),
+        None => {
+            eprintln!("[plug-tor] post: no Tor client");
+            return std::ptr::null_mut();
+        }
+    };
+
+    let _guard = get_fetch_lock().lock().unwrap();
+
+    let rt = get_runtime();
+    let t0 = std::time::Instant::now();
+    match rt.block_on(async {
+        tokio::time::timeout(
+            std::time::Duration::from_secs(60),
+            tor_http_post(client, &host_str, port, &path_str, &body_str)
+        ).await
+    }) {
+        Ok(Ok(resp)) => {
+            let dt = t0.elapsed().as_millis();
+            eprintln!("[plug-tor] ✅ POST {} ({} bytes, {}ms)", path_str, resp.len(), dt);
+            match std::ffi::CString::new(resp) {
+                Ok(cs) => cs.into_raw(),
+                Err(_) => std::ptr::null_mut(),
+            }
+        }
+        Ok(Err(e)) => {
+            eprintln!("[plug-tor] ❌ POST {} ({}ms): {}", path_str, t0.elapsed().as_millis(), e);
+            std::ptr::null_mut()
+        }
+        Err(_) => {
+            eprintln!("[plug-tor] ❌ POST {} timed out (60s)", path_str);
+            std::ptr::null_mut()
+        }
+    }
+}
+
+/// Free a string returned by plug_tor_fetch / plug_tor_post.
 #[no_mangle]
 pub extern "C" fn plug_tor_free_string(s: *mut std::ffi::c_char) {
     if !s.is_null() {
@@ -243,22 +312,10 @@ pub extern "C" fn plug_tor_free_string(s: *mut std::ffi::c_char) {
     }
 }
 
-/// HTTP GET through Tor — direct connect, no SOCKS5, reuses HS circuits.
-async fn tor_http_get(
-    client: Arc<TorClient<PreferredRuntime>>,
-    host: &str,
-    port: u16,
-    path: &str,
+/// Read HTTP response from a Tor stream — handles chunked transfer encoding.
+async fn read_http_response(
+    stream: &mut (impl AsyncReadExt + Unpin),
 ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
-    let mut stream = client.connect((host, port)).await?;
-
-    let req = format!(
-        "GET {} HTTP/1.1\r\nHost: {}\r\nConnection: close\r\nAccept: application/json\r\n\r\n",
-        path, host
-    );
-    stream.write_all(req.as_bytes()).await?;
-    stream.flush().await?;
-
     let mut response = Vec::new();
     loop {
         let mut buf = [0u8; 8192];
@@ -284,6 +341,45 @@ async fn tor_http_get(
     } else {
         Err("No HTTP response body".into())
     }
+}
+
+/// HTTP GET through Tor — direct connect, no SOCKS5, reuses HS circuits.
+async fn tor_http_get(
+    client: Arc<TorClient<PreferredRuntime>>,
+    host: &str,
+    port: u16,
+    path: &str,
+) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+    let mut stream = client.connect((host, port)).await?;
+
+    let req = format!(
+        "GET {} HTTP/1.1\r\nHost: {}\r\nConnection: close\r\nAccept: application/json\r\n\r\n",
+        path, host
+    );
+    stream.write_all(req.as_bytes()).await?;
+    stream.flush().await?;
+
+    read_http_response(&mut stream).await
+}
+
+/// HTTP POST through Tor — for broadcasting transactions.
+async fn tor_http_post(
+    client: Arc<TorClient<PreferredRuntime>>,
+    host: &str,
+    port: u16,
+    path: &str,
+    body: &str,
+) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+    let mut stream = client.connect((host, port)).await?;
+
+    let req = format!(
+        "POST {} HTTP/1.1\r\nHost: {}\r\nConnection: close\r\nContent-Type: text/plain\r\nContent-Length: {}\r\n\r\n{}",
+        path, host, body.len(), body
+    );
+    stream.write_all(req.as_bytes()).await?;
+    stream.flush().await?;
+
+    read_http_response(&mut stream).await
 }
 
 /// Decode chunked transfer encoding

@@ -2,53 +2,79 @@
 
 **Programmable Locking UTXO Gateway**
 
-Bitcoin Script. Ledger signs.
-
----
-
-PLUG is a Bitcoin programmability tool — not a wallet. It lets you create complex smart contract transactions on the Bitcoin network. Your Ledger hardware wallet is always the signer — you keep custody of your funds.
+Bitcoin smart contracts signed by your Ledger. Not a wallet — a programmability tool. You keep custody. The Ledger signs. The blockchain enforces.
 
 ## Contracts
 
-| Contract | Type | Description |
-|----------|------|-------------|
-| **Vault** | `CLTV` | Time-locked vault — funds locked until a specific block height |
-| **Inheritance** | `CSV` | Inheritance — owner spends anytime, heir spends after relative delay |
-| **Pool** | `M-of-N` | Multisig pool — M signatures required out of N participants |
-| **HTLC** | `SHA256` | Hash Time-Lock — atomic swaps and conditional payments |
-| **Channel** | `2-of-2 + CLTV` | Payment channel with unilateral refund timeout |
+| Contract | Opcode | Description |
+|----------|--------|-------------|
+| **Vault** | `OP_CHECKLOCKTIMEVERIFY` | Lock sats until a future block height |
+| **Inheritance** | `OP_CHECKSEQUENCEVERIFY` | Heir access after relative timelock |
+| **HTLC** | `OP_SHA256 + CLTV` | Hash time-locked conditional payments |
+| **Channel** | `OP_CHECKMULTISIG + CLTV` | 2-of-2 with timeout refund |
+| **Pool** | `OP_CHECKMULTISIG` | M-of-N shared custody |
+| **Atomic Swap** | `HTLC x 2` | Trustless P2P exchange via paired HTLCs |
+| **CoinJoin** | `P2WPKH` | Serverless collaborative transactions |
+| **OP_RETURN** | `OP_RETURN` | Embed data on the blockchain |
 
-All contracts use **P2WSH** (Pay-to-Witness-Script-Hash) with miniscript descriptors that match the Ledger's compiler output byte-for-byte.
+P2WSH (SegWit v0) + P2TR (Taproot). All scripts match the Ledger's miniscript compiler byte-for-byte.
 
 ## Architecture
 
-- **Swift / SwiftUI** — iOS & macOS (MVVM + Swift Concurrency)
-- **Ledger V2 Protocol** — Merkleized PSBT signing (CLA=0xE1), wallet policy registration
-- **libsecp256k1** — All EC operations via Bitcoin Core's audited C library
-- **mempool.space** — Blockchain data with TLS certificate pinning
-
-## How it works
-
 ```
-You define the contract → PLUG builds the PSBT → Ledger signs → Broadcast to Bitcoin
+iPhone
+  |
+  | Arti (embedded Tor)
+  |
+  v
+.onion ─── Electrs REST ─── Bitcoin Core
+            (your VPS)        (full node)
 ```
 
-Private keys **never** leave the hardware device. PLUG only holds extended public keys (xpubs).
+Two modes:
+- **mempool.space** via Tor .onion (default)
+- **Personal node** — your own Bitcoin Core + Electrs, zero third-party exposure
+
+## Security
+
+| | |
+|---|---|
+| **Keys** | Zero on device. Only xpubs. Ledger signs everything. |
+| **Network** | All address queries via Tor. Broadcast via Tor with retry. |
+| **Storage** | Keychain hardened. AES-256-GCM encrypted backups. |
+| **Privacy** | CoinJoin, coin control, address rotation, UTXO shuffling. |
+| **Telemetry** | Zero. No analytics, no crash reporters, no tracking SDKs. |
+| **Dependencies** | One: `secp256k1.swift`. |
+
+## Stack
+
+| Layer | Technology |
+|-------|-----------|
+| App | Swift, SwiftUI, MVVM + Swift Concurrency |
+| Crypto | libsecp256k1 via GigaBitcoin/secp256k1.swift |
+| Signing | Ledger V2 merkleized PSBT (BLE, CLA=0xE1) |
+| Tor | Arti (Rust) → PlugTor.xcframework |
+| Node | Bitcoin Core + Electrs (Docker) |
+| Learn | Mastering Bitcoin 3rd Ed. (offline, bundled) |
+
+## BIP Compliance
+
+BIP32, BIP44, BIP65, BIP68, BIP84, BIP86, BIP112, BIP125, BIP141, BIP173, BIP174, BIP327, BIP340, BIP341, BIP342, BIP350, BIP371.
+
+All implementations audited. Zero violations.
 
 ## Build
 
 ```bash
+# iOS app
 xcodebuild -scheme PLUG -configuration Debug build
+
+# Tor library
+cd plug-tor && ./build-ios.sh
+
+# Personal node
+cd plug-node && docker compose up -d
 ```
-
-## Safety
-
-- Testnet-first — forces testnet on first launch
-- Dust output warnings (< 546 sats)
-- Absurd fee alerts (> 100 sat/vB)
-- Fee sniping defense (nLockTime)
-- HTLC preimage backup to keychain
-- Transaction pinning detection
 
 ## Links
 

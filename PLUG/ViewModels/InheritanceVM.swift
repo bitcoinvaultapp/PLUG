@@ -1,11 +1,11 @@
 import Foundation
 
 @MainActor
-final class InheritanceVM: ObservableObject {
+final class InheritanceVM: ObservableObject, ContractVM {
 
     @Published var name: String = ""
-    @Published var csvBlocks: String = "" // relative timelock in blocks
-    @Published var heirXpub: String = "" // heir's xpub or pubkey hex
+    @Published var csvBlocks: String = ""
+    @Published var heirXpub: String = ""
     @Published var amount: String = ""
     @Published var useTaproot: Bool = false
     @Published var keyIndex: UInt32 = 0
@@ -14,13 +14,8 @@ final class InheritanceVM: ObservableObject {
     @Published var isLoading = false
     @Published var error: String?
     @Published var createdContract: Contract?
-
-    /// Funded balances for each contract address (fetched on refresh)
-    @Published var fundedAmounts: [String: UInt64] = [:]  // address → balance in sats
-    /// Minimum confirmation count for each contract address
-    @Published var confirmations: [String: Int] = [:]  // address → min confirmations
-
-    // Spend properties
+    @Published var fundedAmounts: [String: UInt64] = [:]
+    @Published var confirmations: [String: Int] = [:]
     @Published var isSpending = false
     @Published var spendError: String?
     @Published var spendResult: String?
@@ -28,38 +23,11 @@ final class InheritanceVM: ObservableObject {
     @Published var heirClaimAddress: String = ""
     @Published var spendFeeRate: Double = 2.0
 
-    var isTestnet: Bool { NetworkConfig.shared.isTestnet }
-
-    var inheritances: [Contract] {
+    var filteredContracts: [Contract] {
         ContractStore.shared.inheritances.filter { $0.isTestnet == isTestnet }
     }
 
-    func refresh() async {
-        isLoading = true
-        do {
-            currentBlockHeight = try await MempoolAPI.shared.getBlockHeight()
-            contracts = inheritances
-            let result = await ContractSpendCoordinator.refreshBalances(
-                contracts: contracts, blockHeight: currentBlockHeight
-            )
-            fundedAmounts = result.amounts
-            confirmations = result.confirmations
-        } catch {
-            self.error = error.localizedDescription
-        }
-        isLoading = false
-    }
-
-    /// Get funded amount for a contract (0 if not yet fetched)
-    func fundedAmount(for contract: Contract) -> UInt64 {
-        fundedAmounts[contract.address] ?? 0
-    }
-
-    /// Progress toward target (0.0 to 1.0)
-    func progress(for contract: Contract) -> Double {
-        guard contract.amount > 0 else { return 0 }
-        return min(1.0, Double(fundedAmount(for: contract)) / Double(contract.amount))
-    }
+    func refresh() async { await refreshContracts() }
 
     /// Create a new inheritance contract
     func create() async {
@@ -177,17 +145,15 @@ final class InheritanceVM: ObservableObject {
 
         contract.keyIndex = keyIndex
 
-        // Check duplicate address
-        let existing = ContractStore.shared.contractsForNetwork(isTestnet: isTestnet)
-        if existing.contains(where: { $0.address == contract.address }) {
-            error = "A contract with this address already exists. Use a different key index or CSV value."
+        if isDuplicateAddress(contract.address) {
+            error = "A contract with this address already exists."
             isLoading = false
             return
         }
 
         ContractStore.shared.add(contract)
         createdContract = contract
-        contracts = inheritances
+        contracts = filteredContracts
 
         // Reset form
         self.name = ""
@@ -199,7 +165,7 @@ final class InheritanceVM: ObservableObject {
 
     func delete(id: String) {
         ContractStore.shared.delete(id: id)
-        contracts = inheritances
+        contracts = filteredContracts
     }
 
     // MARK: - Keep Alive (Owner)
@@ -232,7 +198,7 @@ final class InheritanceVM: ObservableObject {
             var updated = contract
             updated.lastKeptAlive = Date()
             ContractStore.shared.update(updated)
-            contracts = inheritances
+            contracts = filteredContracts
 
         } catch {
             spendError = error.localizedDescription

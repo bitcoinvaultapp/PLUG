@@ -7,6 +7,7 @@ struct KeyIndexPicker: View {
     @Binding var index: UInt32
     let maxIndex: UInt32
 
+    @ObservedObject private var networkConfig = NetworkConfig.shared
     @State private var status: WalletAddress.Status = .fresh
     @State private var isChecking = false
 

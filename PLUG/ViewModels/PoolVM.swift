@@ -1,59 +1,27 @@
 import Foundation
 
 @MainActor
-final class PoolVM: ObservableObject {
+final class PoolVM: ObservableObject, ContractVM {
 
     @Published var name: String = ""
-    @Published var m: String = "2" // threshold
-    @Published var pubkeys: [String] = ["", ""] // hex pubkeys or xpubs
+    @Published var m: String = "2"
+    @Published var pubkeys: [String] = ["", ""]
     @Published var amount: String = ""
     @Published var contracts: [Contract] = []
     @Published var currentBlockHeight: Int = 0
     @Published var isLoading = false
     @Published var error: String?
     @Published var createdContract: Contract?
-
-    /// Funded balances for each contract address (fetched on refresh)
-    @Published var fundedAmounts: [String: UInt64] = [:]  // address → balance in sats
-    /// Minimum confirmation count for each contract address
-    @Published var confirmations: [String: Int] = [:]  // address → min confirmations
-
-    // PSBT import for co-signing
+    @Published var fundedAmounts: [String: UInt64] = [:]
+    @Published var confirmations: [String: Int] = [:]
     @Published var importedPSBTBase64: String = ""
     @Published var parsedPSBT: PSBTBuilder.ParsedPSBT?
 
-    var isTestnet: Bool { NetworkConfig.shared.isTestnet }
-
-    var pools: [Contract] {
+    var filteredContracts: [Contract] {
         ContractStore.shared.pools.filter { $0.isTestnet == isTestnet }
     }
 
-    func refresh() async {
-        isLoading = true
-        do {
-            currentBlockHeight = try await MempoolAPI.shared.getBlockHeight()
-            contracts = pools
-            let result = await ContractSpendCoordinator.refreshBalances(
-                contracts: contracts, blockHeight: currentBlockHeight
-            )
-            fundedAmounts = result.amounts
-            confirmations = result.confirmations
-        } catch {
-            self.error = error.localizedDescription
-        }
-        isLoading = false
-    }
-
-    /// Get funded amount for a contract (0 if not yet fetched)
-    func fundedAmount(for contract: Contract) -> UInt64 {
-        fundedAmounts[contract.address] ?? 0
-    }
-
-    /// Progress toward target (0.0 to 1.0)
-    func progress(for contract: Contract) -> Double {
-        guard contract.amount > 0 else { return 0 }
-        return min(1.0, Double(fundedAmount(for: contract)) / Double(contract.amount))
-    }
+    func refresh() async { await refreshContracts() }
 
     func addPubkeyField() {
         pubkeys.append("")
@@ -144,8 +112,7 @@ final class PoolVM: ObservableObject {
             contract.multisigXpubs = xpubStrings
         }
 
-        let existing = ContractStore.shared.contractsForNetwork(isTestnet: isTestnet)
-        if existing.contains(where: { $0.address == contract.address }) {
+        if isDuplicateAddress(contract.address) {
             error = "A contract with this address already exists."
             isLoading = false
             return
@@ -153,7 +120,7 @@ final class PoolVM: ObservableObject {
 
         ContractStore.shared.add(contract)
         createdContract = contract
-        contracts = pools
+        contracts = filteredContracts
 
         // Reset
         self.name = ""
@@ -178,6 +145,6 @@ final class PoolVM: ObservableObject {
 
     func delete(id: String) {
         ContractStore.shared.delete(id: id)
-        contracts = pools
+        contracts = filteredContracts
     }
 }

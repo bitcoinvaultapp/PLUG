@@ -1,79 +1,55 @@
 import Foundation
 
 // MARK: - Tor Routing Configuration
-// SOCKS5 proxy configuration for .onion routing
 // Persisted in UserDefaults
 
 final class TorConfig: ObservableObject {
 
     static let shared = TorConfig()
 
-    private let enabledKey = "tor_enabled"
-    private let onionKey = "tor_onion_address"
-    private let portKey = "tor_socks_port"
-
     private static let defaultOnionAddress = "mempoolhqx4isw62xs7abwphsq7ldayuidyx2v2oethdhhj6mlo2r6ad.onion"
-    private static let defaultSocksPort = 9050
 
     @Published var isEnabled: Bool {
-        didSet {
-            UserDefaults.standard.set(isEnabled, forKey: enabledKey)
-        }
+        didSet { UserDefaults.standard.set(isEnabled, forKey: "tor_enabled") }
     }
 
     @Published var onionAddress: String {
-        didSet {
-            UserDefaults.standard.set(onionAddress, forKey: onionKey)
-        }
+        didSet { UserDefaults.standard.set(onionAddress, forKey: "tor_onion_address") }
     }
 
-    @Published var socksPort: Int {
-        didSet {
-            UserDefaults.standard.set(socksPort, forKey: portKey)
-        }
+    /// Personal Bitcoin node — routes all queries to user's own Electrs .onion
+    @Published var usePersonalNode: Bool {
+        didSet { UserDefaults.standard.set(usePersonalNode, forKey: "personal_node_enabled") }
+    }
+
+    @Published var personalNodeOnion: String {
+        didSet { UserDefaults.standard.set(personalNodeOnion, forKey: "personal_node_onion") }
     }
 
     init() {
-        self.isEnabled = UserDefaults.standard.bool(forKey: enabledKey)
-        self.onionAddress = UserDefaults.standard.string(forKey: onionKey) ?? TorConfig.defaultOnionAddress
-        self.socksPort = UserDefaults.standard.integer(forKey: portKey) == 0
-            ? TorConfig.defaultSocksPort
-            : UserDefaults.standard.integer(forKey: portKey)
+        self.isEnabled = UserDefaults.standard.bool(forKey: "tor_enabled")
+        self.onionAddress = UserDefaults.standard.string(forKey: "tor_onion_address")
+            ?? TorConfig.defaultOnionAddress
+        self.usePersonalNode = UserDefaults.standard.bool(forKey: "personal_node_enabled")
+        self.personalNodeOnion = UserDefaults.standard.string(forKey: "personal_node_onion") ?? ""
     }
 
-    // MARK: - URL routing
+    // MARK: - Routing
 
-    var mempoolBaseURL: String {
-        if isEnabled {
-            let isTestnet = NetworkConfig.shared.isTestnet
-            let prefix = isTestnet ? "/testnet" : ""
-            return "http://\(onionAddress)\(prefix)/api"
+    /// Resolve the .onion host and API path prefix for the current configuration.
+    /// Personal node: direct Electrs REST. Otherwise: mempool.space .onion.
+    func resolve(endpoint: String) -> (host: String, path: String) {
+        if usePersonalNode, !personalNodeOnion.isEmpty {
+            return (personalNodeOnion, "/api\(endpoint)")
         }
-        return NetworkConfig.shared.mempoolBaseURL
+        let prefix = NetworkConfig.shared.isTestnet ? "/testnet" : ""
+        return (onionAddress, "\(prefix)/api\(endpoint)")
     }
-
-    // MARK: - SOCKS5 proxy URLSession
-
-    func createTorSession() -> URLSession? {
-        guard isEnabled else { return nil }
-
-        let config = URLSessionConfiguration.default
-        config.connectionProxyDictionary = [
-            "SOCKSEnable": true,
-            "SOCKSProxy": "127.0.0.1",
-            "SOCKSPort": socksPort
-        ]
-        config.timeoutIntervalForRequest = 30
-        config.timeoutIntervalForResource = 60
-
-        return URLSession(configuration: config)
-    }
-
-    // MARK: - Reset
 
     func resetToDefaults() {
         onionAddress = TorConfig.defaultOnionAddress
-        socksPort = TorConfig.defaultSocksPort
         isEnabled = false
+        usePersonalNode = false
+        personalNodeOnion = ""
     }
 }

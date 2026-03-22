@@ -1,7 +1,7 @@
 import Foundation
 
 @MainActor
-final class VaultVM: ObservableObject {
+final class VaultVM: ObservableObject, ContractVM {
 
     @Published var name: String = ""
     @Published var lockBlockHeight: String = ""
@@ -14,11 +14,8 @@ final class VaultVM: ObservableObject {
     @Published var error: String?
     @Published var createdContract: Contract?
 
-    // Spend properties
-    /// Funded balances for each contract address (fetched on refresh)
-    @Published var fundedAmounts: [String: UInt64] = [:]  // address → balance in sats
-    /// Minimum confirmation count for each contract address
-    @Published var confirmations: [String: Int] = [:]  // address → min confirmations
+    @Published var fundedAmounts: [String: UInt64] = [:]
+    @Published var confirmations: [String: Int] = [:]
 
     @Published var spendAddress: String = ""
     @Published var spendFeeRate: Double = 2.0
@@ -28,43 +25,24 @@ final class VaultVM: ObservableObject {
     @Published var selectedContract: Contract?
     @Published var spendUTXOs: [UTXO] = []
     @Published var estimatedFee: UInt64 = 0
+    @Published var psbtForReview: String?
+    @Published var txForReview: String?
 
-    // Pre-broadcast review properties
-    @Published var psbtForReview: String?   // base64 PSBT for export
-    @Published var txForReview: String?     // hex transaction ready to broadcast
-
-    var isTestnet: Bool { NetworkConfig.shared.isTestnet }
-
-    var vaults: [Contract] {
+    var filteredContracts: [Contract] {
         ContractStore.shared.vaults.filter { $0.isTestnet == isTestnet }
     }
 
-    func refresh() async {
-        isLoading = true
-        do {
-            currentBlockHeight = try await MempoolAPI.shared.getBlockHeight()
-            contracts = vaults
-            let result = await ContractSpendCoordinator.refreshBalances(
-                contracts: contracts, blockHeight: currentBlockHeight
-            )
-            fundedAmounts = result.amounts
-            confirmations = result.confirmations
-        } catch {
-            self.error = error.localizedDescription
-        }
-        isLoading = false
+    var spendableBalance: UInt64 {
+        guard let c = selectedContract else { return 0 }
+        return fundedAmount(for: c)
     }
 
-    /// Get funded amount for a contract (0 if not yet fetched)
-    func fundedAmount(for contract: Contract) -> UInt64 {
-        fundedAmounts[contract.address] ?? 0
+    var netSpendAmount: UInt64 {
+        let bal = spendableBalance
+        return bal > estimatedFee ? bal - estimatedFee : 0
     }
 
-    /// Progress toward target (0.0 to 1.0)
-    func progress(for contract: Contract) -> Double {
-        guard contract.amount > 0 else { return 0 }
-        return min(1.0, Double(fundedAmount(for: contract)) / Double(contract.amount))
-    }
+    func refresh() async { await refreshContracts() }
 
     func blocksRemaining(for contract: Contract) -> Int {
         guard let lockHeight = contract.lockBlockHeight else { return 0 }
@@ -140,7 +118,7 @@ final class VaultVM: ObservableObject {
         finalContract.keyIndex = keyIndex
         ContractStore.shared.add(finalContract)
         createdContract = finalContract
-        contracts = vaults
+        contracts = filteredContracts
 
         // Reset form
         self.name = ""
@@ -151,7 +129,7 @@ final class VaultVM: ObservableObject {
 
     func delete(id: String) {
         ContractStore.shared.delete(id: id)
-        contracts = vaults
+        contracts = filteredContracts
     }
 
     // MARK: - Spend
@@ -183,15 +161,6 @@ final class VaultVM: ObservableObject {
             outputCount: 1,
             feeRate: spendFeeRate
         )
-    }
-
-    var spendableBalance: UInt64 {
-        spendUTXOs.reduce(0) { $0 + $1.value }
-    }
-
-    var netSpendAmount: UInt64 {
-        let balance = spendableBalance
-        return balance > estimatedFee ? balance - estimatedFee : 0
     }
 
     /// Spend from a vault contract.
@@ -354,7 +323,7 @@ final class VaultVM: ObservableObject {
                 contract.isUnlocked = true
                 contract.txid = txid
                 ContractStore.shared.update(contract)
-                contracts = vaults
+                contracts = filteredContracts
             }
         } catch {
             spendError = error.localizedDescription

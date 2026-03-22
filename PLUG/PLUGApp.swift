@@ -58,6 +58,9 @@ struct PLUGApp: App {
 struct TorBootstrapWrapper<Content: View>: View {
     @ObservedObject private var tor = TorManager.shared
     @State private var skipTor = false
+    @State private var hasEnteredApp = false
+    @State private var elapsedSeconds = 0
+    @State private var timer: Timer?
     let content: () -> Content
 
     init(@ViewBuilder content: @escaping () -> Content) {
@@ -66,20 +69,35 @@ struct TorBootstrapWrapper<Content: View>: View {
 
     private var statusText: String {
         switch tor.state {
-        case .connecting: return "Connecting to Tor network..."
-        case .warmingUp: return "Establishing private route..."
+        case .connecting: return "Downloading consensus..."
+        case .warmingUp: return "Building hidden service circuit..."
         case .error(let msg): return msg
         default: return "Protecting your privacy..."
         }
     }
 
+    private var timerText: String {
+        let s = elapsedSeconds
+        if s < 60 { return "\(s)s" }
+        return "\(s / 60)m \(s % 60)s"
+    }
+
     var body: some View {
-        if case .connected = tor.state {
+        if hasEnteredApp {
             content()
+        } else if case .connected = tor.state {
+            content()
+                .onAppear {
+                    hasEnteredApp = true
+                    timer?.invalidate()
+                }
         } else if skipTor {
             content()
+                .onAppear {
+                    hasEnteredApp = true
+                    timer?.invalidate()
+                }
         } else {
-            // Bootstrap + warmup screen
             VStack(spacing: 20) {
                 Spacer()
 
@@ -95,12 +113,28 @@ struct TorBootstrapWrapper<Content: View>: View {
                     .foregroundStyle(.secondary)
                     .animation(.easeInOut, value: tor.state)
 
-                ProgressView()
-                    .controlSize(.regular)
-                    .padding(.top, 8)
+                // Timer + progress
+                VStack(spacing: 8) {
+                    ProgressView()
+                        .controlSize(.regular)
+
+                    Text(timerText)
+                        .font(.system(size: 24, weight: .light, design: .monospaced))
+                        .foregroundStyle(.purple.opacity(0.7))
+                        .contentTransition(.numericText())
+                        .animation(.easeInOut(duration: 0.3), value: elapsedSeconds)
+
+                    if elapsedSeconds > 15 {
+                        Text("First connect takes ~60s")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+                .padding(.top, 8)
 
                 if case .error = tor.state {
                     Button {
+                        elapsedSeconds = 0
                         tor.start()
                     } label: {
                         Text("Retry")
@@ -122,8 +156,14 @@ struct TorBootstrapWrapper<Content: View>: View {
                 }
                 .padding(.bottom, 40)
             }
-            .task {
+            .onAppear {
                 tor.start()
+                timer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { _ in
+                    elapsedSeconds += 1
+                }
+            }
+            .onDisappear {
+                timer?.invalidate()
             }
         }
     }

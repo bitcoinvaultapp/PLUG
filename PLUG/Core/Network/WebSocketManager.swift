@@ -1,8 +1,7 @@
 import Foundation
-import Combine
 
 // MARK: - WebSocket Manager
-// Real-time updates from Mempool.space
+// Real-time updates from Mempool.space (mainnet clearnet only)
 
 final class WebSocketManager: ObservableObject {
 
@@ -25,6 +24,14 @@ final class WebSocketManager: ObservableObject {
         if NetworkConfig.shared.isTestnet {
             #if DEBUG
             print("[WS] WebSocket disabled for testnet4")
+            #endif
+            return
+        }
+
+        // Block WebSocket when Tor is active — clearnet WS leaks IP
+        if plug_tor_is_running() {
+            #if DEBUG
+            print("[WS] WebSocket disabled — Tor active (clearnet WS would leak IP)")
             #endif
             return
         }

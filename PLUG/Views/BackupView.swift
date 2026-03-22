@@ -4,6 +4,7 @@ import CoreImage.CIFilterBuiltins
 
 struct BackupView: View {
     @StateObject private var vm = BackupVM()
+    @ObservedObject private var contractStore = ContractStore.shared
     @State private var showShareAll = false
     @State private var showShareSingle = false
     @State private var singleExportData: Data?

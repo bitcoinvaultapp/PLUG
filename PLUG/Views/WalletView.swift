@@ -4,6 +4,7 @@ import CoreImage.CIFilterBuiltins
 struct WalletView: View {
     @EnvironmentObject var vm: WalletVM
     @ObservedObject private var ledger = LedgerManager.shared
+    @ObservedObject private var contractStore = ContractStore.shared
     @State private var showSend = false
     @State private var showReceive = false
     @State private var showCoinJoin = false
@@ -22,7 +23,7 @@ struct WalletView: View {
             let btc = Double(vm.totalBalance) / 100_000_000
             return String(format: "%.8f", btc)
         case .sats:
-            return HomeVM.formatSats(vm.totalBalance)
+            return BalanceUnit.formatSats(vm.totalBalance)
         case .usd:
             let btc = Double(vm.totalBalance) / 100_000_000
             let usd = btc * vm.btcPrice
@@ -38,19 +39,8 @@ struct WalletView: View {
         }
     }
 
-    /// Format any sats amount using the global unit preference
     private func formatAmount(_ sats: UInt64) -> String {
-        switch currentUnit {
-        case .btc:
-            let btc = Double(sats) / 100_000_000
-            return String(format: "%.8f BTC", btc)
-        case .sats:
-            return "\(HomeVM.formatSats(sats)) sats"
-        case .usd:
-            let btc = Double(sats) / 100_000_000
-            let usd = btc * vm.btcPrice
-            return vm.btcPrice > 0 ? String(format: "$%.2f", usd) : "\(HomeVM.formatSats(sats)) sats"
-        }
+        BalanceUnit.format(sats, btcPrice: vm.btcPrice)
     }
     @State private var selectedTx: Transaction?
     @State private var labelText: String = ""
@@ -69,8 +59,10 @@ struct WalletView: View {
             .navigationTitle("")
             .toolbar(.hidden, for: .navigationBar)
             .refreshable {
+                // Pull-to-refresh: only refresh block height + price (lightweight)
+                // Does NOT rescan UTXOs — use Settings > Rescan for that
                 await Task.detached { [vm] in
-                    await vm.refreshUTXOs()
+                    await vm.refreshMetadata()
                 }.value
             }
             .task { await vm.loadWallet() }

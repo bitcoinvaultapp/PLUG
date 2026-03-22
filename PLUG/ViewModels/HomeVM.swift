@@ -33,6 +33,14 @@ final class HomeVM: ObservableObject {
 
     var isTestnet: Bool { NetworkConfig.shared.isTestnet }
 
+    init() {
+        // Re-publish when ContractStore changes so computed properties (activeContracts, vaults, etc.) update
+        ContractStore.shared.objectWillChange
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.objectWillChange.send() }
+            .store(in: &cancellables)
+    }
+
     // MARK: - Balance computations
 
     var walletBalance: UInt64 { totalBalance }

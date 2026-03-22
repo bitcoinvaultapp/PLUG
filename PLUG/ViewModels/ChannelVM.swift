@@ -1,7 +1,7 @@
 import Foundation
 
 @MainActor
-final class ChannelVM: ObservableObject {
+final class ChannelVM: ObservableObject, ContractVM {
 
     @Published var name: String = ""
     @Published var receiverPubkey: String = ""
@@ -13,13 +13,8 @@ final class ChannelVM: ObservableObject {
     @Published var isLoading = false
     @Published var error: String?
     @Published var createdContract: Contract?
-
-    /// Funded balances for each contract address (fetched on refresh)
-    @Published var fundedAmounts: [String: UInt64] = [:]  // address → balance in sats
-    /// Minimum confirmation count for each contract address
-    @Published var confirmations: [String: Int] = [:]  // address → min confirmations
-
-    // Spend properties
+    @Published var fundedAmounts: [String: UInt64] = [:]
+    @Published var confirmations: [String: Int] = [:]
     @Published var isSpending = false
     @Published var spendError: String?
     @Published var spendResult: String?
@@ -31,27 +26,11 @@ final class ChannelVM: ObservableObject {
     @Published var closeReceiverAddress: String = ""
     @Published var spendFeeRate: Double = 2.0
 
-    var isTestnet: Bool { NetworkConfig.shared.isTestnet }
-
-    var channels: [Contract] {
+    var filteredContracts: [Contract] {
         ContractStore.shared.channels.filter { $0.isTestnet == isTestnet }
     }
 
-    func refresh() async {
-        isLoading = true
-        do {
-            currentBlockHeight = try await MempoolAPI.shared.getBlockHeight()
-            contracts = channels
-            let result = await ContractSpendCoordinator.refreshBalances(
-                contracts: contracts, blockHeight: currentBlockHeight
-            )
-            fundedAmounts = result.amounts
-            confirmations = result.confirmations
-        } catch {
-            self.error = error.localizedDescription
-        }
-        isLoading = false
-    }
+    func refresh() async { await refreshContracts() }
 
     /// Get funded amount for a contract (0 if not yet fetched)
     func fundedAmount(for contract: Contract) -> UInt64 {
@@ -150,8 +129,7 @@ final class ChannelVM: ObservableObject {
             contract.receiverXpub = receiverInput
         }
 
-        let existing = ContractStore.shared.contractsForNetwork(isTestnet: isTestnet)
-        if existing.contains(where: { $0.address == contract.address }) {
+        if isDuplicateAddress(contract.address) {
             error = "A contract with this address already exists."
             isLoading = false
             return
@@ -159,7 +137,7 @@ final class ChannelVM: ObservableObject {
 
         ContractStore.shared.add(contract)
         createdContract = contract
-        contracts = channels
+        contracts = filteredContracts
 
         // Reset form
         self.name = ""
@@ -171,7 +149,7 @@ final class ChannelVM: ObservableObject {
 
     func delete(id: String) {
         ContractStore.shared.delete(id: id)
-        contracts = channels
+        contracts = filteredContracts
     }
 
     // MARK: - Cooperative Close

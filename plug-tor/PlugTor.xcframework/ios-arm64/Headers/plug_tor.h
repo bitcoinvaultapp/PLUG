@@ -25,11 +25,19 @@ uint16_t plug_tor_port(void);
 
 /// Fetch a URL through Tor directly (no SOCKS5 proxy, reuses HS circuits).
 /// SERIALIZED: only one request at a time (prevents circuit exhaustion).
+/// 60s global timeout — prevents Mutex deadlock on unresponsive hosts.
 /// Returns a C string with the HTTP response body, or NULL on error.
 /// Caller must free the returned string with plug_tor_free_string().
 char* plug_tor_fetch(const char* host, uint16_t port, const char* path);
 
-/// Free a string returned by plug_tor_fetch.
+/// POST data through Tor (e.g. broadcast a transaction).
+/// SERIALIZED: shares the same Mutex as plug_tor_fetch.
+/// 60s global timeout.
+/// Returns the response body as a C string, or NULL on error.
+/// Caller must free the returned string with plug_tor_free_string().
+char* plug_tor_post(const char* host, uint16_t port, const char* path, const char* body);
+
+/// Free a string returned by plug_tor_fetch / plug_tor_post.
 void plug_tor_free_string(char* s);
 
 #endif /* PLUG_TOR_H */

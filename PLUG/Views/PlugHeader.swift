@@ -7,6 +7,7 @@ struct PlugHeader: View {
 
     @ObservedObject private var ledger = LedgerManager.shared
     @ObservedObject private var tor = TorManager.shared
+    @ObservedObject private var networkConfig = NetworkConfig.shared
     @State private var showLedger = false
     @State private var showSettings = false
 

@@ -46,6 +46,15 @@ struct SettingsView: View {
                     Text("Routes wallet address queries through the Tor network. Prevents your IP from being linked to your addresses.")
                 }
 
+                // Personal Node
+                Section {
+                    PersonalNodeSettingsRow()
+                } header: {
+                    Text("Personal Node")
+                } footer: {
+                    Text("Connect to your own Bitcoin Core + Electrs server via Tor. All address, UTXO, fee, and block queries stay on your infrastructure. Requires Tor to be connected.")
+                }
+
                 // Wallet
                 Section("Wallet") {
                     if vm.hasXpub {
@@ -229,7 +238,7 @@ struct TorSettingsRow: View {
                 Spacer()
 
                 if torManager.isRunning {
-                    Text("SOCKS5 ::\(torManager.socksPort)")
+                    Text("Arti")
                         .font(.system(size: 9, design: .monospaced))
                         .foregroundStyle(.tertiary)
                 }
@@ -259,6 +268,121 @@ struct TorSettingsRow: View {
         case .warmingUp: return "Warming up"
         case .connected: return "Connected"
         case .error: return "Error"
+        }
+    }
+}
+
+// MARK: - Personal Node Settings Row
+
+struct PersonalNodeSettingsRow: View {
+    @ObservedObject private var torConfig = TorConfig.shared
+    @ObservedObject private var torManager = TorManager.shared
+    @State private var onionInput: String = ""
+    @State private var checkStatus: NodeCheckStatus = .idle
+
+    enum NodeCheckStatus: Equatable {
+        case idle, checking, reachable(Int), unreachable
+    }
+
+    var body: some View {
+        VStack(spacing: 12) {
+            Toggle("Use personal node", isOn: $torConfig.usePersonalNode)
+                .disabled(!torManager.isRunning)
+
+            if torConfig.usePersonalNode {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(".onion address")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
+
+                    TextField("abc...xyz.onion", text: $onionInput)
+                        .font(.system(size: 13, design: .monospaced))
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .onAppear { onionInput = torConfig.personalNodeOnion }
+                        .onChange(of: onionInput) { _ in
+                            torConfig.personalNodeOnion = onionInput.trimmingCharacters(in: .whitespacesAndNewlines)
+                            checkStatus = .idle
+                        }
+
+                    HStack {
+                        Button {
+                            checkNode()
+                        } label: {
+                            HStack(spacing: 6) {
+                                if case .checking = checkStatus {
+                                    ProgressView()
+                                        .controlSize(.small)
+                                } else {
+                                    Image(systemName: "antenna.radiowaves.left.and.right")
+                                        .font(.system(size: 12))
+                                }
+                                Text("Test connection")
+                                    .font(.system(size: 12, weight: .medium))
+                            }
+                            .foregroundStyle(.orange)
+                        }
+                        .disabled(onionInput.isEmpty || !torManager.isRunning || checkStatus == .checking)
+
+                        Spacer()
+
+                        switch checkStatus {
+                        case .reachable(let height):
+                            HStack(spacing: 4) {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundStyle(.green)
+                                Text("Block \(height)")
+                                    .foregroundStyle(.green)
+                            }
+                            .font(.system(size: 11, weight: .medium))
+                        case .unreachable:
+                            HStack(spacing: 4) {
+                                Image(systemName: "xmark.circle.fill")
+                                    .foregroundStyle(.red)
+                                Text("Unreachable")
+                                    .foregroundStyle(.red)
+                            }
+                            .font(.system(size: 11, weight: .medium))
+                        default:
+                            EmptyView()
+                        }
+                    }
+                }
+            }
+
+            if !torManager.isRunning && torConfig.usePersonalNode {
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundStyle(.orange)
+                    Text("Tor must be connected to reach your node")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    private func checkNode() {
+        checkStatus = .checking
+        let host = torConfig.personalNodeOnion
+        Task.detached(priority: .userInitiated) {
+            guard let hostC = host.cString(using: .utf8),
+                  let pathC = "/api/blocks/tip/height".cString(using: .utf8) else {
+                await MainActor.run { checkStatus = .unreachable }
+                return
+            }
+            guard let resultPtr = plug_tor_fetch(hostC, 80, pathC) else {
+                await MainActor.run { checkStatus = .unreachable }
+                return
+            }
+            let result = String(cString: resultPtr)
+            plug_tor_free_string(resultPtr)
+
+            if let height = Int(result.trimmingCharacters(in: .whitespacesAndNewlines)) {
+                await MainActor.run { checkStatus = .reachable(height) }
+            } else {
+                await MainActor.run { checkStatus = .unreachable }
+            }
         }
     }
 }

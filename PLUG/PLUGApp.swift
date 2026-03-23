@@ -47,9 +47,8 @@ struct PLUGApp: App {
         }
         .onChange(of: onboardingComplete) { completed in
             if completed {
-                // Onboarding just finished — xpub is now in Keychain, trigger scan
+                // Reset so MainTabView.onAppear triggers the scan after Tor is ready
                 walletVM.hasLoadedOnce = false
-                Task { await walletVM.loadWallet() }
             }
         }
     }

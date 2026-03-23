@@ -11,6 +11,8 @@ struct PlugHeader: View {
     @State private var showLedger = false
     @State private var showSettings = false
     @State private var isRefreshing = false
+    @State private var toastMessage: String?
+    @State private var showToast = false
 
     private var isHome: Bool { pageName == "Home" }
 
@@ -37,10 +39,16 @@ struct PlugHeader: View {
                 Button {
                     guard !isRefreshing else { return }
                     isRefreshing = true
+                    showToastMessage("Refreshing...")
                     Task {
                         await walletVM.quickRefresh()
                         await HomeVM.shared.refresh()
                         isRefreshing = false
+                        if walletVM.error != nil {
+                            showToastMessage("Node unreachable")
+                        } else {
+                            showToastMessage("Updated")
+                        }
                     }
                 } label: {
                     Image(systemName: "arrow.triangle.2.circlepath")
@@ -93,6 +101,26 @@ struct PlugHeader: View {
                         }
                     }
             }
+        }
+        .overlay(alignment: .bottom) {
+            if showToast, let msg = toastMessage {
+                Text(msg)
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .background(Color(.systemGray3).opacity(0.9), in: Capsule())
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .offset(y: 40)
+            }
+        }
+    }
+
+    private func showToastMessage(_ message: String) {
+        toastMessage = message
+        withAnimation(.easeOut(duration: 0.2)) { showToast = true }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+            withAnimation(.easeIn(duration: 0.3)) { showToast = false }
         }
     }
 

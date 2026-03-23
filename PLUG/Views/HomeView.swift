@@ -26,13 +26,20 @@ struct HomeView: View {
         ledgerState.state == .connected && !hasWallet
     }
 
+    private var nodeConfigured: Bool {
+        TorConfig.shared.isNodeConfigured
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 20) {
                     headerBar
 
-                    if hasWallet {
+                    if !nodeConfigured {
+                        // No personal node — guide the user
+                        HomeSetupNodeCard()
+                    } else if hasWallet {
                         // Full dashboard
                         HomeBalanceCard(
                             totalBalance: walletVM.totalBalance,
@@ -247,6 +254,131 @@ struct HomeView: View {
 // =====================================================================
 // MARK: - Connect Ledger Card
 // =====================================================================
+
+private struct HomeSetupNodeCard: View {
+    @ObservedObject private var torConfig = TorConfig.shared
+    @ObservedObject private var torManager = TorManager.shared
+    @State private var onionInput = ""
+    @State private var checkStatus: NodeCheckStatus = .idle
+
+    enum NodeCheckStatus: Equatable {
+        case idle, checking, reachable(Int), unreachable
+    }
+
+    var body: some View {
+        VStack(spacing: 24) {
+            Spacer()
+
+            Image(systemName: "server.rack")
+                .font(.system(size: 40, weight: .light))
+                .foregroundStyle(.secondary)
+
+            Text("Set up your node")
+                .font(.system(size: 22, weight: .semibold))
+
+            Text("PLUG requires your own Bitcoin node.\nDeploy Bitcoin Core + Electrs on a VPS\nand paste your .onion address below.")
+                .font(.system(size: 14))
+                .foregroundStyle(.tertiary)
+                .multilineTextAlignment(.center)
+
+            VStack(alignment: .leading, spacing: 8) {
+                TextField("abc...xyz.onion", text: $onionInput)
+                    .font(.system(size: 14, design: .monospaced))
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .padding(12)
+                    .background(Color(.systemGray6).opacity(0.2), in: RoundedRectangle(cornerRadius: 10))
+                    .onChange(of: onionInput) { _ in
+                        torConfig.personalNodeOnion = onionInput.trimmingCharacters(in: .whitespacesAndNewlines)
+                        checkStatus = .idle
+                    }
+
+                HStack {
+                    Button {
+                        testConnection()
+                    } label: {
+                        HStack(spacing: 6) {
+                            if case .checking = checkStatus {
+                                ProgressView().controlSize(.small)
+                            } else {
+                                Image(systemName: "antenna.radiowaves.left.and.right")
+                                    .font(.system(size: 12))
+                            }
+                            Text("Test connection")
+                                .font(.system(size: 13, weight: .semibold))
+                        }
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 10)
+                        .background(Color.btcOrange, in: Capsule())
+                    }
+                    .disabled(onionInput.isEmpty || !torManager.isRunning || checkStatus == .checking)
+
+                    Spacer()
+
+                    switch checkStatus {
+                    case .reachable(let height):
+                        HStack(spacing: 4) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundStyle(.green)
+                            Text("Block \(height)")
+                                .foregroundStyle(.green)
+                        }
+                        .font(.system(size: 12, weight: .medium))
+                    case .unreachable:
+                        HStack(spacing: 4) {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundStyle(.red)
+                            Text("Unreachable")
+                                .foregroundStyle(.red)
+                        }
+                        .font(.system(size: 12, weight: .medium))
+                    default:
+                        EmptyView()
+                    }
+                }
+            }
+
+            Button {
+                if let url = URL(string: "https://github.com/bitcoinvaultapp/PLUG#2-deploy-your-bitcoin-node") {
+                    UIApplication.shared.open(url)
+                }
+            } label: {
+                Text("How to deploy a node")
+                    .font(.system(size: 13))
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, minHeight: 400)
+        .onAppear { onionInput = torConfig.personalNodeOnion }
+    }
+
+    private func testConnection() {
+        checkStatus = .checking
+        let host = torConfig.personalNodeOnion
+        Task.detached(priority: .userInitiated) {
+            guard let hostC = host.cString(using: .utf8),
+                  let pathC = "/blocks/tip/height".cString(using: .utf8) else {
+                await MainActor.run { checkStatus = .unreachable }
+                return
+            }
+            guard let resultPtr = plug_tor_fetch(hostC, 80, pathC) else {
+                await MainActor.run { checkStatus = .unreachable }
+                return
+            }
+            let result = String(cString: resultPtr)
+            plug_tor_free_string(resultPtr)
+
+            if let height = Int(result.trimmingCharacters(in: .whitespacesAndNewlines)) {
+                await MainActor.run { checkStatus = .reachable(height) }
+            } else {
+                await MainActor.run { checkStatus = .unreachable }
+            }
+        }
+    }
+}
 
 private struct HomeFetchingWalletCard: View {
     var body: some View {

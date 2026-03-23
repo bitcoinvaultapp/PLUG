@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 56;
+	objectVersion = 70;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -63,6 +63,7 @@
 		AE8906734E124AE6977254E1 /* PLUG/Core/Storage/AddressBook.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FF9582133F94D54B8EB2C88 /* PLUG/Core/Storage/AddressBook.swift */; };
 		B19C4E72D85A3F06C7E6A1D4 /* PLUG/Core/Ledger/PSBTv2Builder.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2F68D13E94B7C50B3D15A28 /* PLUG/Core/Ledger/PSBTv2Builder.swift */; };
 		B2B8CA73C1FD41FFB31B09EE /* PLUG/Core/Storage/FrozenUTXOStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02321F0298FC47929A895DEF /* PLUG/Core/Storage/FrozenUTXOStore.swift */; };
+		B8C9D0E1F2A3B4C5D6E7F8A9 /* bitcoin.pdf in Resources */ = {isa = PBXBuildFile; fileRef = A7B8C9D0E1F2A3B4C5D6E7F8 /* bitcoin.pdf */; };
 		BAD331A86F5A4FC19AF10D6D /* PLUG/Core/Network/TorConfig.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9CB27DF542C646A09821F3A2 /* PLUG/Core/Network/TorConfig.swift */; };
 		C55C8F633F3547BDA290FCF1 /* PLUG/Core/Storage/ContractStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B82807B07804640B0EE0CEA /* PLUG/Core/Storage/ContractStore.swift */; };
 		C90D5BAD68B94EA6B358A327 /* PLUG/Core/Ledger/LedgerSigningV2.swift in Sources */ = {isa = PBXBuildFile; fileRef = DB32A89F415A45D68D854856 /* PLUG/Core/Ledger/LedgerSigningV2.swift */; };
@@ -86,7 +87,6 @@
 		E7A3B21F4C6D8E09A5F17B3C /* PLUG/Core/Ledger/MerkleTree.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4D829A06B3E1C75D8A24E91 /* PLUG/Core/Ledger/MerkleTree.swift */; };
 		F21F025938B546BEB40DDC12 /* PLUG/Views/SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87D26F8A2AE4454AA4F9912C /* PLUG/Views/SettingsView.swift */; };
 		F2E1D0C9B8A7F6E5D4C3B2A1 /* PLUG/Core/ColorTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D4E5F6A7B8C9D0E1F2 /* PLUG/Core/ColorTheme.swift */; };
-		B8C9D0E1F2A3B4C5D6E7F8A9 /* bitcoin.pdf in Resources */ = {isa = PBXBuildFile; fileRef = A7B8C9D0E1F2A3B4C5D6E7F8 /* bitcoin.pdf */; };
 		F6A7B8C9D0E1F2A3B4C5D6E7 /* bitcoinbook in Resources */ = {isa = PBXBuildFile; fileRef = E5F6A7B8C9D0E1F2A3B4C5D6 /* bitcoinbook */; };
 		FE6988A2D35DF5DA0B2FB01C /* PLUG/Core/Network/TorManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86A32D30DB27693279DFD1D1 /* PLUG/Core/Network/TorManager.swift */; };
 		KEYIDX01B000000000000002 /* PLUG/Views/KeyIndexPicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = KEYIDX01A000000000000001 /* PLUG/Views/KeyIndexPicker.swift */; };
@@ -95,9 +95,20 @@
 		UTXO0001A000000000000001 /* PLUG/Core/Network/UTXOFetchService.swift in Sources */ = {isa = PBXBuildFile; fileRef = UTXO0001B000000000000001 /* PLUG/Core/Network/UTXOFetchService.swift */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		0FA7B5642F71D06F0081CDEB /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = B2CF6F1B69804794A9548151 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 50E07F845A884205B98F7146;
+			remoteInfo = PLUG;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
 		02321F0298FC47929A895DEF /* PLUG/Core/Storage/FrozenUTXOStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/Core/Storage/FrozenUTXOStore.swift; sourceTree = SOURCE_ROOT; };
 		076420C949DA47D0AD5D755B /* PLUG/Views/InheritanceView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/Views/InheritanceView.swift; sourceTree = SOURCE_ROOT; };
+		0FA7B5602F71D06F0081CDEB /* PLUGTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PLUGTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		129ED9B211F84620A3BD6400 /* PLUG/Core/Bitcoin/ScriptBuilder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/Core/Bitcoin/ScriptBuilder.swift; sourceTree = SOURCE_ROOT; };
 		167C53634494444EAA10CCDE /* PLUG/Core/Bitcoin/PaymentChannel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/Core/Bitcoin/PaymentChannel.swift; sourceTree = SOURCE_ROOT; };
 		1818831F5C3E4F578B779D4A /* PLUG/Core/Storage/BIP329Labels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/Core/Storage/BIP329Labels.swift; sourceTree = SOURCE_ROOT; };
@@ -145,6 +156,7 @@
 		A2F68D13E94B7C50B3D15A28 /* PLUG/Core/Ledger/PSBTv2Builder.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/Core/Ledger/PSBTv2Builder.swift; sourceTree = SOURCE_ROOT; };
 		A407FE6284EB3CC477B1D716 /* BlockDurationPicker.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = BlockDurationPicker.swift; path = PLUG/Views/BlockDurationPicker.swift; sourceTree = SOURCE_ROOT; };
 		A683E7B0DA204321AF79BB83 /* PLUG/Assets/Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = PLUG/Assets/Assets.xcassets; sourceTree = SOURCE_ROOT; };
+		A7B8C9D0E1F2A3B4C5D6E7F8 /* bitcoin.pdf */ = {isa = PBXFileReference; lastKnownFileType = image.pdf; path = bitcoin.pdf; sourceTree = SOURCE_ROOT; };
 		A9E19A67CE12B403917993E5 /* ContractSigner.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ContractSigner.swift; path = PLUG/Core/Ledger/ContractSigner.swift; sourceTree = SOURCE_ROOT; };
 		B2C3D4E5F6A7B8C9D0E1F2A3 /* PLUG/ViewModels/ContractVM.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/ViewModels/ContractVM.swift; sourceTree = SOURCE_ROOT; };
 		B7E4A31D5C9F48E2A1D063F8 /* PLUG/Core/ContractSpendCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/Core/ContractSpendCoordinator.swift; sourceTree = SOURCE_ROOT; };
@@ -170,7 +182,6 @@
 		DFB459EAC1FD4DE5A6ABE280 /* PLUG/ViewModels/PoolVM.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/ViewModels/PoolVM.swift; sourceTree = SOURCE_ROOT; };
 		E04387B9381A48B69FA5213E /* PLUG/ViewModels/VaultVM.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/ViewModels/VaultVM.swift; sourceTree = SOURCE_ROOT; };
 		E59436B3F3FD4201B2146A21 /* PLUG/ViewModels/SettingsVM.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/ViewModels/SettingsVM.swift; sourceTree = SOURCE_ROOT; };
-		A7B8C9D0E1F2A3B4C5D6E7F8 /* bitcoin.pdf */ = {isa = PBXFileReference; lastKnownFileType = file; path = bitcoin.pdf; sourceTree = SOURCE_ROOT; };
 		E5F6A7B8C9D0E1F2A3B4C5D6 /* bitcoinbook */ = {isa = PBXFileReference; lastKnownFileType = folder; path = bitcoinbook; sourceTree = SOURCE_ROOT; };
 		EB07BC9029134FCCB6DC44AF /* PLUG/Core/Bitcoin/OpReturn.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/Core/Bitcoin/OpReturn.swift; sourceTree = SOURCE_ROOT; };
 		ED3B65833A0343F8888B9579 /* PLUG.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = PLUG.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -184,7 +195,18 @@
 		UTXO0001B000000000000001 /* PLUG/Core/Network/UTXOFetchService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PLUG/Core/Network/UTXOFetchService.swift; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		0FA7B5612F71D06F0081CDEB /* PLUGTests */ = {isa = PBXFileSystemSynchronizedRootGroup; explicitFileTypes = {}; explicitFolders = (); path = PLUGTests; sourceTree = "<group>"; };
+/* End PBXFileSystemSynchronizedRootGroup section */
+
 /* Begin PBXFrameworksBuildPhase section */
+		0FA7B55D2F71D06F0081CDEB /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		121AC1CD444A4AEDAB9DCD6C /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -215,6 +237,7 @@
 			isa = PBXGroup;
 			children = (
 				ED3B65833A0343F8888B9579 /* PLUG.app */,
+				0FA7B5602F71D06F0081CDEB /* PLUGTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -295,6 +318,7 @@
 				D1A783BF0EF943799E191B60 /* PLUG/Views/VaultView.swift */,
 				D43439F0925B47D9887979A8 /* PLUG/Views/WalletView.swift */,
 				A683E7B0DA204321AF79BB83 /* PLUG/Assets/Assets.xcassets */,
+				0FA7B5612F71D06F0081CDEB /* PLUGTests */,
 				36FADF2DB870432C97DD3D1D /* Products */,
 				A407FE6284EB3CC477B1D716 /* BlockDurationPicker.swift */,
 				C0380AE678FAC82C6BFC889D /* ContractCreatedSheet.swift */,
@@ -308,6 +332,29 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		0FA7B55F2F71D06F0081CDEB /* PLUGTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 0FA7B5682F71D06F0081CDEB /* Build configuration list for PBXNativeTarget "PLUGTests" */;
+			buildPhases = (
+				0FA7B55C2F71D06F0081CDEB /* Sources */,
+				0FA7B55D2F71D06F0081CDEB /* Frameworks */,
+				0FA7B55E2F71D06F0081CDEB /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				0FA7B5652F71D06F0081CDEB /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				0FA7B5612F71D06F0081CDEB /* PLUGTests */,
+			);
+			name = PLUGTests;
+			packageProductDependencies = (
+			);
+			productName = PLUGTests;
+			productReference = 0FA7B5602F71D06F0081CDEB /* PLUGTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 		50E07F845A884205B98F7146 /* PLUG */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 507D515ABD4746E7A41FF3F2 /* Build configuration list for PBXNativeTarget "PLUG" */;
@@ -335,8 +382,14 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = 1;
-				LastSwiftUpdateCheck = 1500;
+				LastSwiftUpdateCheck = 2620;
 				LastUpgradeCheck = 1500;
+				TargetAttributes = {
+					0FA7B55F2F71D06F0081CDEB = {
+						CreatedOnToolsVersion = 26.2;
+						TestTargetID = 50E07F845A884205B98F7146;
+					};
+				};
 			};
 			buildConfigurationList = AD384B6996C643C58E5F8C3A /* Build configuration list for PBXProject "PLUG" */;
 			compatibilityVersion = "Xcode 14.0";
@@ -355,11 +408,19 @@
 			projectRoot = "";
 			targets = (
 				50E07F845A884205B98F7146 /* PLUG */,
+				0FA7B55F2F71D06F0081CDEB /* PLUGTests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		0FA7B55E2F71D06F0081CDEB /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		5839DA0987B144748E6F83C5 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -373,6 +434,13 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		0FA7B55C2F71D06F0081CDEB /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		D3D3BBA8D2A34D29969EA548 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -463,7 +531,140 @@
 		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXTargetDependency section */
+		0FA7B5652F71D06F0081CDEB /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 50E07F845A884205B98F7146 /* PLUG */;
+			targetProxy = 0FA7B5642F71D06F0081CDEB /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
 /* Begin XCBuildConfiguration section */
+		0FA7B5662F71D06F0081CDEB /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 4G9VAY9486;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.6;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MARKETING_VERSION = 1.0;
+				MTL_FAST_MATH = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = footmatchl.PLUGTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/PLUG.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/PLUG";
+			};
+			name = Debug;
+		};
+		0FA7B5672F71D06F0081CDEB /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 4G9VAY9486;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 18.6;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MARKETING_VERSION = 1.0;
+				MTL_FAST_MATH = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = footmatchl.PLUGTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/PLUG.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/PLUG";
+			};
+			name = Release;
+		};
 		60B8BCF6A7BA4DADB46CF1FD /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -588,6 +789,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		0FA7B5682F71D06F0081CDEB /* Build configuration list for PBXNativeTarget "PLUGTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				0FA7B5662F71D06F0081CDEB /* Debug */,
+				0FA7B5672F71D06F0081CDEB /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		507D515ABD4746E7A41FF3F2 /* Build configuration list for PBXNativeTarget "PLUG" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

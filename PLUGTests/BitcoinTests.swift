@@ -799,10 +799,10 @@ final class BitcoinTests: XCTestCase {
 
     func testTxidToInternalOrder() {
         let txid = "0102030405060708091011121314151617181920212223242526272829303132"
-        let internal = SpendManager.txidToInternalOrder(txid)
-        XCTAssertEqual(internal.count, 32)
+        let reversed = SpendManager.txidToInternalOrder(txid)
+        XCTAssertEqual(reversed.count, 32)
         // Internal order is reversed
-        XCTAssertEqual(internal[0], 0x32)
-        XCTAssertEqual(internal[31], 0x01)
+        XCTAssertEqual(reversed[0], 0x32)
+        XCTAssertEqual(reversed[31], 0x01)
     }
 }

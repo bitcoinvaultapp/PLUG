@@ -69,6 +69,19 @@ struct HomeView: View {
                             showConsolidate: $showConsolidate,
                             showCrowdfund: $showCrowdfund
                         )
+                        // Recent Transactions
+                        if !walletVM.transactions.isEmpty {
+                            VStack(alignment: .leading, spacing: 12) {
+                                Text("Recent Transactions")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundStyle(.secondary)
+
+                                ForEach(walletVM.transactions.prefix(5)) { tx in
+                                    homeTransactionRow(tx)
+                                }
+                            }
+                        }
+
                         HomeRemindersSection(utxos: walletVM.utxos)
                         HomeRecentAddressesSection(
                             walletAddresses: walletVM.addresses,
@@ -82,7 +95,7 @@ struct HomeView: View {
                             .task {
                                 do {
                                     let _ = try await LedgerManager.shared.getXpub(
-                                        path: [84 | 0x80000000, 1 | 0x80000000, 0 | 0x80000000]
+                                        path: [84 | 0x80000000, 0 | 0x80000000, 0 | 0x80000000]
                                     )
                                     // xpub saved → hasWallet becomes true → view re-renders to dashboard
                                     await walletVM.loadWallet()
@@ -128,6 +141,111 @@ struct HomeView: View {
     }
 
     // MARK: - Header
+
+    private func homeTransactionRow(_ tx: Transaction) -> some View {
+        let myAddresses = Set(walletVM.addresses.map(\.address))
+        let isSend = tx.vin.contains { input in
+            input.prevout?.scriptpubkeyAddress.map { myAddresses.contains($0) } ?? false
+        }
+        var received: UInt64 = 0
+        var sent: UInt64 = 0
+        for output in tx.vout {
+            if let addr = output.scriptpubkeyAddress, myAddresses.contains(addr) { received += output.value }
+        }
+        for input in tx.vin {
+            if let addr = input.prevout?.scriptpubkeyAddress, myAddresses.contains(addr) { sent += input.prevout?.value ?? 0 }
+        }
+        let amount = sent > received ? sent - received : received - sent
+
+        // Detect address type badge
+        let txBadge = homeTxBadge(tx)
+
+        return HStack(spacing: 10) {
+            Image(systemName: isSend ? "arrow.up.right" : "arrow.down.left")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(isSend ? .orange : .green)
+                .frame(width: 24, height: 24)
+                .background((isSend ? Color.orange : Color.green).opacity(0.12), in: Circle())
+
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 4) {
+                    Text(String(tx.txid.prefix(10)) + "..." + String(tx.txid.suffix(4)))
+                        .font(.system(size: 11, design: .monospaced))
+                    if let badge = txBadge {
+                        Text(badge.label)
+                            .font(.system(size: 7, weight: .bold, design: .monospaced))
+                            .foregroundStyle(badge.color)
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 1.5)
+                            .background(badge.color.opacity(0.12), in: Capsule())
+                    }
+                }
+                if tx.status.confirmed {
+                    if let blockTime = tx.status.blockTime {
+                        Text(Date(timeIntervalSince1970: TimeInterval(blockTime)), style: .relative)
+                            .font(.system(size: 9))
+                            .foregroundStyle(.tertiary)
+                    }
+                } else {
+                    Text("Pending")
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundStyle(.orange)
+                }
+            }
+
+            Spacer()
+
+            Text("\(isSend ? "-" : "+")\(BalanceUnit.format(amount, btcPrice: vm.btcPrice))")
+                .font(.system(size: 11, weight: .medium, design: .monospaced))
+                .foregroundStyle(isSend ? .orange : .green)
+        }
+        .padding(.vertical, 4)
+    }
+
+    /// Detect badge for a transaction: contract type or address type
+    private func homeTxBadge(_ tx: Transaction) -> (label: String, color: Color)? {
+        let contracts = ContractStore.shared.contractsForNetwork(isTestnet: false)
+        let contractAddrs = Dictionary(uniqueKeysWithValues: contracts.map { ($0.address, $0) })
+
+        // Check if any output goes to a contract address
+        for output in tx.vout {
+            if let addr = output.scriptpubkeyAddress, let contract = contractAddrs[addr] {
+                switch contract.type {
+                case .vault: return ("CLTV", .orange)
+                case .inheritance: return ("CSV", .purple)
+                case .htlc: return ("HTLC", .teal)
+                case .channel: return ("CHANNEL", .green)
+                case .pool: return ("MULTI", .blue)
+                }
+            }
+        }
+        // Check inputs too (spending from contract)
+        for input in tx.vin {
+            if let addr = input.prevout?.scriptpubkeyAddress, let contract = contractAddrs[addr] {
+                switch contract.type {
+                case .vault: return ("CLTV", .orange)
+                case .inheritance: return ("CSV", .purple)
+                case .htlc: return ("HTLC", .teal)
+                case .channel: return ("CHANNEL", .green)
+                case .pool: return ("MULTI", .blue)
+                }
+            }
+        }
+
+        // Address type badge from the primary output
+        let destOutput = tx.vout.first { output in
+            let myAddrs = Set(walletVM.addresses.map(\.address))
+            guard let addr = output.scriptpubkeyAddress else { return false }
+            return !myAddrs.contains(addr)
+        } ?? tx.vout.first
+
+        if let addr = destOutput?.scriptpubkeyAddress {
+            if addr.hasPrefix("bc1p") || addr.hasPrefix("tb1p") { return ("P2TR", .cyan) }
+            if addr.count > 55 { return ("P2WSH", .indigo) }
+        }
+
+        return nil
+    }
 
     private var headerBar: some View {
         PlugHeader(pageName: "Home")
@@ -525,10 +643,19 @@ private struct HomeStatusSection: View {
                 Divider().padding(.leading, 40).opacity(0.2)
             }
 
-            // Pending transactions
+            // Pending transactions — tap to view on mempool.space
             if pendingCount > 0 {
-                statusRow(icon: "clock.fill", iconColor: .orange,
-                          title: "\(pendingCount) tx pending", subtitle: "Waiting for confirmation")
+                if let firstPending = pendingTransactions.first {
+                    Button {
+                        if let url = URL(string: "https://mempool.space/tx/\(firstPending.txid)") {
+                            UIApplication.shared.open(url)
+                        }
+                    } label: {
+                        statusRow(icon: "clock.fill", iconColor: .orange,
+                                  title: "\(pendingCount) tx pending", subtitle: "Tap to view on mempool.space")
+                    }
+                    .buttonStyle(.plain)
+                }
                 Divider().padding(.leading, 40).opacity(0.2)
             }
         }

@@ -875,13 +875,19 @@ final class WalletVM: ObservableObject {
             return
         }
 
-        // 5. Build PSBT
-        guard let psbt = buildSendPSBT() else {
-            sendError = "Error building PSBT"
+        // 5. Build PSBT (Stonewall or standard)
+        let psbt: Data?
+        if stonewallEnabled {
+            psbt = buildStonewallPSBT()
+        } else {
+            psbt = buildSendPSBT()
+        }
+        guard let builtPSBT = psbt else {
+            if sendError == nil { sendError = "Error building PSBT" }
             return
         }
 
-        builtPSBTBase64 = psbt.base64EncodedString()
+        builtPSBTBase64 = builtPSBT.base64EncodedString()
         sendStep = .built
     }
 
@@ -1120,6 +1126,122 @@ final class WalletVM: ObservableObject {
                 }
             }
         }
+    }
+
+    // MARK: - RBF Fee Bump
+
+    /// Pre-fill the send form to replace a pending transaction with higher fee
+    func bumpFee(transaction: Transaction) {
+        guard !transaction.status.confirmed else { return }
+
+        // Find the destination output (not our address)
+        let myAddresses = Set(addresses.map(\.address))
+        let destOutput = transaction.vout.first { output in
+            guard let addr = output.scriptpubkeyAddress else { return false }
+            return !myAddresses.contains(addr)
+        }
+
+        // If all outputs are ours (self-transfer), use the first output as destination
+        let dest = destOutput ?? transaction.vout.first
+        sendAddress = dest?.scriptpubkeyAddress ?? ""
+        sendAmount = dest.map { String(Double($0.value) / 100_000_000) } ?? ""
+
+        // Suggest 2x the original fee rate
+        let originalVsize = max(transaction.weight / 4, 1)
+        let originalFeeRate = Double(transaction.fee) / Double(originalVsize)
+        sendFeeRate = max(originalFeeRate * 2, originalFeeRate + 1)
+
+        sendStep = .form
+        sendError = nil
+        builtPSBTBase64 = nil
+        signedTxHex = nil
+        broadcastTxid = nil
+    }
+
+    // MARK: - Stonewall (Fake CoinJoin)
+
+    @Published var stonewallEnabled = false
+
+    /// Build a Stonewall transaction: 2 equal outputs (destination + decoy to self)
+    /// Makes the transaction look like a CoinJoin to blockchain observers
+    func buildStonewallPSBT() -> Data? {
+        guard let preview = sendPreview,
+              let destScript = PSBTBuilder.scriptPubKeyFromAddress(sendAddress, isTestnet: isTestnet),
+              let paymentAmount = UInt64(sendAmount) else { return nil }
+
+        // Need at least 2 UTXOs for Stonewall
+        guard preview.selectedUTXOs.count >= 2 else {
+            sendError = "Stonewall requires at least 2 UTXOs"
+            return nil
+        }
+
+        // Need enough balance for payment + equal decoy
+        let totalInput = preview.totalInput
+        let fee = preview.fee
+        guard totalInput >= paymentAmount * 2 + fee else {
+            sendError = "Stonewall requires balance >= 2x payment amount"
+            return nil
+        }
+
+        let masterFP = KeychainStore.shared.load(forKey: KeychainStore.KeychainKey.ledgerMasterFingerprint.rawValue) ?? Data([0x00, 0x00, 0x00, 0x00])
+        let psbtCoinType = UInt32(KeychainStore.shared.loadString(forKey: KeychainStore.KeychainKey.ledgerCoinType.rawValue) ?? "0") ?? 0
+
+        // Build inputs (same as normal send)
+        var inputs: [PSBTBuilder.TxInput] = []
+        for utxo in preview.selectedUTXOs {
+            guard let txidData = Data(hex: utxo.txid) else { continue }
+            let txidInternal = Data(txidData.reversed())
+            let walletAddr = addresses.first(where: { $0.address == utxo.address })
+            let pubkeyData = walletAddr.flatMap { Data(hex: $0.publicKey) }
+            let change: UInt32 = walletAddr?.isChange == true ? 1 : 0
+            let addrIndex: UInt32 = walletAddr?.index ?? 0
+
+            var witnessUtxoOutput: PSBTBuilder.TxOutput? = nil
+            if let pk = pubkeyData {
+                let pubkeyHash = Crypto.hash160(pk)
+                var spk = Data([0x00, 0x14])
+                spk.append(pubkeyHash)
+                witnessUtxoOutput = PSBTBuilder.TxOutput(value: utxo.value, scriptPubKey: spk)
+            }
+
+            var bip32: [(pubkey: Data, fingerprint: Data, path: [UInt32])]? = nil
+            if let pk = pubkeyData {
+                bip32 = [(pubkey: pk, fingerprint: masterFP,
+                          path: [UInt32(84) | 0x80000000, psbtCoinType | 0x80000000, UInt32(0) | 0x80000000, change, addrIndex])]
+            }
+
+            inputs.append(PSBTBuilder.TxInput(
+                txid: txidInternal, vout: UInt32(utxo.vout), sequence: 0xFFFFFFFD,
+                witnessUtxo: witnessUtxoOutput, bip32Derivation: bip32
+            ))
+        }
+
+        // Build outputs: 2 equal amounts (destination + decoy) + optional change
+        var outputs: [PSBTBuilder.TxOutput] = []
+
+        // 1. Payment to destination
+        outputs.append(PSBTBuilder.TxOutput(value: paymentAmount, scriptPubKey: destScript))
+
+        // 2. Decoy equal output to fresh change address (looks like second participant's output)
+        guard let decoyAddr = nextFreshChangeAddress()?.address else { return nil }
+        if let decoyScript = PSBTBuilder.scriptPubKeyFromAddress(decoyAddr, isTestnet: isTestnet) {
+            outputs.append(PSBTBuilder.TxOutput(value: paymentAmount, scriptPubKey: decoyScript))
+        }
+
+        // 3. Real change (if any left after 2x payment + fee)
+        let remaining = totalInput - (paymentAmount * 2) - fee
+        if remaining >= 546 {
+            if let changeAddr = nextFreshChangeAddress()?.address,
+               let changeScript = PSBTBuilder.scriptPubKeyFromAddress(changeAddr, isTestnet: isTestnet) {
+                outputs.append(PSBTBuilder.TxOutput(value: remaining, scriptPubKey: changeScript))
+            }
+        }
+
+        // Shuffle outputs for privacy (BIP69 alternative — random order)
+        outputs.shuffle()
+
+        let locktime = UInt32(currentBlockHeight > 0 ? currentBlockHeight : 0)
+        return PSBTBuilder.buildPSBT(inputs: inputs, outputs: outputs, locktime: locktime)
     }
 
     /// Reset send form

@@ -107,26 +107,39 @@ final class HomeVM: ObservableObject {
         isLoading = true
         error = nil
 
-        do {
-            async let priceTask = MempoolAPI.shared.getBTCPrice()
-            async let heightTask = MempoolAPI.shared.getBlockHeight()
-            async let feesTask = MempoolAPI.shared.getRecommendedFees()
-            async let diffTask = MempoolAPI.shared.getDifficultyAdjustment()
-
-            btcPrice = try await priceTask
-            let newHeight = try await heightTask
-            if newHeight != blockHeight {
-                lastBlockTime = Int(Date().timeIntervalSince1970)
-            }
-            blockHeight = newHeight
-            feeEstimate = try await feesTask
-            difficulty = try await diffTask
-
-            updateAlerts()
-        } catch {
-            self.error = error.localizedDescription
+        // Fetch independently — one failure doesn't block the others
+        do { btcPrice = try await MempoolAPI.shared.getBTCPrice() }
+        catch {
+            #if DEBUG
+            print("[HomeVM] Price fetch failed: \(error.localizedDescription)")
+            #endif
         }
 
+        do {
+            let newHeight = try await MempoolAPI.shared.getBlockHeight()
+            if newHeight != blockHeight { lastBlockTime = Int(Date().timeIntervalSince1970) }
+            blockHeight = newHeight
+        } catch {
+            #if DEBUG
+            print("[HomeVM] Block height fetch failed: \(error.localizedDescription)")
+            #endif
+        }
+
+        do { feeEstimate = try await MempoolAPI.shared.getRecommendedFees() }
+        catch {
+            #if DEBUG
+            print("[HomeVM] Fee fetch failed: \(error.localizedDescription)")
+            #endif
+        }
+
+        do { difficulty = try await MempoolAPI.shared.getDifficultyAdjustment() }
+        catch {
+            #if DEBUG
+            print("[HomeVM] Difficulty fetch failed: \(error.localizedDescription)")
+            #endif
+        }
+
+        updateAlerts()
         isLoading = false
     }
 

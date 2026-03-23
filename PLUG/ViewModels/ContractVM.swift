@@ -20,20 +20,30 @@ extension ContractVM {
 
     var isTestnet: Bool { NetworkConfig.shared.isTestnet }
 
-    /// Refresh contracts: fetch block height, update list, refresh balances.
+    /// Refresh contracts: show list immediately, fetch balances in background.
     func refreshContracts() async {
+        // Show contracts instantly from cache
+        contracts = filteredContracts
         isLoading = true
+
+        // Fetch block height
         do {
             currentBlockHeight = try await MempoolAPI.shared.getBlockHeight()
-            contracts = filteredContracts
+        } catch {
+            #if DEBUG
+            print("[ContractVM] Block height fetch failed: \(error.localizedDescription)")
+            #endif
+        }
+
+        // Fetch balances in background (doesn't block UI)
+        if !contracts.isEmpty {
             let result = await ContractSpendCoordinator.refreshBalances(
                 contracts: contracts, blockHeight: currentBlockHeight
             )
             fundedAmounts = result.amounts
             confirmations = result.confirmations
-        } catch {
-            self.error = error.localizedDescription
         }
+
         isLoading = false
     }
 

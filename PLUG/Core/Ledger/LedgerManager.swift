@@ -420,7 +420,7 @@ final class LedgerManager: NSObject, ObservableObject {
 
                 // Cache for future connections when Bitcoin app is open
                 UserDefaults.standard.set(model, forKey: "ledger_device_model")
-                let finalModel = bleName.isEmpty ? model : "\(model) \(bleName)"
+                let finalModel = bleName.isEmpty ? model : bleName
                 DispatchQueue.main.async { [weak self] in self?.deviceModel = finalModel }
                 #if DEBUG
                 print("[Ledger] Device model detected: \(finalModel) (targetId: \(String(format: "0x%08X", targetId)))")
@@ -435,7 +435,7 @@ final class LedgerManager: NSObject, ObservableObject {
 
         // Fallback: use cached model from previous successful detection
         if let cached = UserDefaults.standard.string(forKey: "ledger_device_model") {
-            let finalModel = bleName.isEmpty ? cached : "\(cached) \(bleName)"
+            let finalModel = bleName.isEmpty ? cached : bleName
             DispatchQueue.main.async { [weak self] in self?.deviceModel = finalModel }
             #if DEBUG
             print("[Ledger] Using cached device model: \(finalModel)")

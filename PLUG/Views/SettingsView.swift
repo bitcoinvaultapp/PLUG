@@ -82,6 +82,18 @@ struct SettingsView: View {
                         }
                 }
 
+                // Appearance
+                Section("Appearance") {
+                    Picker("Theme", selection: Binding(
+                        get: { UserDefaults.standard.string(forKey: "app_appearance") ?? "dark" },
+                        set: { UserDefaults.standard.set($0, forKey: "app_appearance") }
+                    )) {
+                        Text("System").tag(AppAppearance.system.rawValue)
+                        Text("Light").tag(AppAppearance.light.rawValue)
+                        Text("Dark").tag(AppAppearance.dark.rawValue)
+                    }
+                }
+
                 // Display
                 Section("Display") {
                     Picker("Balance unit", selection: $balanceUnit) {

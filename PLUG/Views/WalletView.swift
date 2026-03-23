@@ -351,7 +351,11 @@ struct WalletView: View {
             // Transactions
             WalletTransactionsSection(
                 formatAmount: formatAmount,
-                selectedTx: $selectedTx
+                selectedTx: $selectedTx,
+                onBumpFee: { tx in
+                    vm.bumpFee(transaction: tx)
+                    showSend = true
+                }
             )
         }
         .sheet(item: $selectedAddress) { addr in
@@ -595,7 +599,24 @@ struct WalletView: View {
                     }
                 }
 
-                // Preview
+                // Stonewall (Fake CoinJoin)
+                Divider().padding(.vertical, 4)
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Stonewall")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(.secondary)
+                        Text("Makes your tx look like a CoinJoin")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.tertiary)
+                    }
+                    Spacer()
+                    Toggle("", isOn: $vm.stonewallEnabled)
+                        .labelsHidden()
+                        .tint(.purple)
+                }
+
+                // Preview + Transaction Diagram
                 if let preview = vm.sendPreview {
                     VStack(spacing: 6) {
                         sendDetailRow("Inputs", value: "\(preview.selectedUTXOs.count)")
@@ -603,7 +624,21 @@ struct WalletView: View {
                         if preview.hasChange {
                             sendDetailRow("Change", value: formatAmount(preview.change))
                         }
+                        if vm.stonewallEnabled {
+                            sendDetailRow("Type", value: "Stonewall")
+                        }
                     }
+
+                    // Transaction diagram
+                    TransactionDiagramView(
+                        inputs: preview.selectedUTXOs,
+                        destinationAddress: vm.sendAddress,
+                        destinationAmount: UInt64(vm.sendAmount) ?? 0,
+                        changeAmount: preview.change,
+                        fee: preview.fee,
+                        isStonewall: vm.stonewallEnabled
+                    )
+                    .padding(.vertical, 8)
                 }
 
                 // Error
@@ -1266,6 +1301,7 @@ private struct WalletTransactionsSection: View {
 
     let formatAmount: (UInt64) -> String
     @Binding var selectedTx: Transaction?
+    var onBumpFee: ((Transaction) -> Void)?
 
     var body: some View {
         if !vm.transactions.isEmpty {
@@ -1343,6 +1379,13 @@ private struct WalletTransactionsSection: View {
         }
         .padding(.vertical, 6)
         .contextMenu {
+            if !tx.status.confirmed && txIsSend(tx) {
+                Button {
+                    onBumpFee?(tx)
+                } label: {
+                    Label("Bump Fee (RBF)", systemImage: "bolt.fill")
+                }
+            }
             Button { selectedTx = tx } label: {
                 Label("Add Label", systemImage: "tag")
             }
@@ -1413,6 +1456,126 @@ private struct WalletTransactionsSection: View {
             return sent - received
         }
         return received - sent
+    }
+}
+
+// MARK: - Transaction Diagram
+
+struct TransactionDiagramView: View {
+    let inputs: [UTXO]
+    let destinationAddress: String
+    let destinationAmount: UInt64
+    let changeAmount: UInt64
+    let fee: UInt64
+    let isStonewall: Bool
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Text("Transaction Flow")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .padding(.bottom, 12)
+
+            HStack(alignment: .center, spacing: 0) {
+                // Inputs (left)
+                VStack(alignment: .trailing, spacing: 6) {
+                    ForEach(inputs.prefix(5)) { utxo in
+                        HStack(spacing: 4) {
+                            Text(BalanceUnit.formatSats(utxo.value))
+                                .font(.system(size: 9, design: .monospaced))
+                            Circle()
+                                .fill(Color.orange)
+                                .frame(width: 6, height: 6)
+                        }
+                    }
+                    if inputs.count > 5 {
+                        Text("+\(inputs.count - 5) more")
+                            .font(.system(size: 8))
+                            .foregroundStyle(.tertiary)
+                    }
+                }
+                .frame(minWidth: 80)
+
+                // Arrow
+                VStack(spacing: 2) {
+                    Rectangle()
+                        .fill(Color.btcOrange.opacity(0.4))
+                        .frame(width: 40, height: 1)
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 8))
+                        .foregroundStyle(Color.btcOrange.opacity(0.6))
+                }
+
+                // Outputs (right)
+                VStack(alignment: .leading, spacing: 6) {
+                    // Destination
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(Color.green)
+                            .frame(width: 6, height: 6)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(BalanceUnit.formatSats(destinationAmount))
+                                .font(.system(size: 9, design: .monospaced))
+                            Text(String(destinationAddress.prefix(10)) + "...")
+                                .font(.system(size: 7, design: .monospaced))
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
+
+                    // Stonewall decoy
+                    if isStonewall {
+                        HStack(spacing: 4) {
+                            Circle()
+                                .fill(Color.purple)
+                                .frame(width: 6, height: 6)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(BalanceUnit.formatSats(destinationAmount))
+                                    .font(.system(size: 9, design: .monospaced))
+                                Text("decoy (self)")
+                                    .font(.system(size: 7))
+                                    .foregroundStyle(.purple)
+                            }
+                        }
+                    }
+
+                    // Change
+                    if changeAmount >= 546 {
+                        HStack(spacing: 4) {
+                            Circle()
+                                .fill(Color.gray)
+                                .frame(width: 6, height: 6)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(BalanceUnit.formatSats(changeAmount))
+                                    .font(.system(size: 9, design: .monospaced))
+                                Text("change")
+                                    .font(.system(size: 7))
+                                    .foregroundStyle(.tertiary)
+                            }
+                        }
+                    }
+
+                    // Fee
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(Color.red.opacity(0.6))
+                            .frame(width: 6, height: 6)
+                        Text("\(fee) sat fee")
+                            .font(.system(size: 8, design: .monospaced))
+                            .foregroundStyle(.red.opacity(0.7))
+                    }
+                }
+                .frame(minWidth: 100)
+            }
+
+            if isStonewall {
+                Text("Stonewall: observers cannot tell which output is the real payment")
+                    .font(.system(size: 8))
+                    .foregroundStyle(.purple.opacity(0.7))
+                    .padding(.top, 10)
+            }
+        }
+        .padding(16)
+        .background(Color(.systemGray6).opacity(0.1), in: RoundedRectangle(cornerRadius: 12))
     }
 }
 

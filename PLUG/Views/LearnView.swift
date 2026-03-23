@@ -335,10 +335,10 @@ struct ChapterView: View {
             loadError = "Unable to read chapter"
             return
         }
-        htmlContent = wrapInDarkTheme(AsciidocParser.toHTML(content))
+        htmlContent = wrapInTheme(AsciidocParser.toHTML(content))
     }
 
-    private func wrapInDarkTheme(_ body: String) -> String {
+    private func wrapInTheme(_ body: String) -> String {
         """
         <!DOCTYPE html>
         <html>
@@ -347,90 +347,57 @@ struct ChapterView: View {
         <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
         <style>
             * { box-sizing: border-box; }
+            :root {
+                color-scheme: light dark;
+                --bg: #FFFFFF; --text: #1C1C1E; --text2: #6B7280;
+                --code-bg: #F5F5F7; --border: #E5E5EA; --heading: #000000;
+                --pre-text: #1C1C1E; --td-even: #FAFAFA; --td-odd: #F2F2F7;
+            }
+            @media (prefers-color-scheme: dark) {
+                :root {
+                    --bg: #0D1117; --text: #D1D5DB; --text2: #9CA3AF;
+                    --code-bg: #161B22; --border: #21262D; --heading: #FFFFFF;
+                    --pre-text: #E6EDF3; --td-even: #0D1117; --td-odd: #161B22;
+                }
+            }
             body {
                 font-family: 'New York', 'Georgia', serif;
-                background: #0D1117;
-                color: #D1D5DB;
-                padding: 20px 24px 80px 24px;
-                margin: 0;
-                font-size: 17px;
-                line-height: 1.8;
+                background: var(--bg); color: var(--text);
+                padding: 20px 24px 80px 24px; margin: 0;
+                font-size: 17px; line-height: 1.8;
                 -webkit-text-size-adjust: 100%;
             }
             h1, h2, h3, h4, h5 {
                 font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-                color: #FFFFFF;
-                font-weight: 700;
-                margin-top: 32px;
-                margin-bottom: 12px;
+                color: var(--heading); font-weight: 700;
+                margin-top: 32px; margin-bottom: 12px;
             }
-            h1 { font-size: 28px; border-bottom: 1px solid #21262D; padding-bottom: 8px; }
-            h2 { font-size: 23px; border-bottom: 1px solid #21262D; padding-bottom: 6px; }
-            h3 { font-size: 19px; }
-            h4 { font-size: 16px; }
+            h1 { font-size: 28px; border-bottom: 1px solid var(--border); padding-bottom: 8px; }
+            h2 { font-size: 23px; border-bottom: 1px solid var(--border); padding-bottom: 6px; }
+            h3 { font-size: 19px; } h4 { font-size: 16px; }
             p { margin: 14px 0; }
             a { color: #F7931A; text-decoration: none; }
             a:active { opacity: 0.7; }
-            code, pre code {
-                font-family: 'SF Mono', 'Menlo', monospace;
-                font-size: 14px;
-            }
-            code {
-                background: #161B22;
-                padding: 2px 6px;
-                border-radius: 4px;
-                color: #F7931A;
-            }
-            pre {
-                background: #161B22;
-                border: 1px solid #21262D;
-                border-radius: 10px;
-                padding: 16px;
-                overflow-x: auto;
-                -webkit-overflow-scrolling: touch;
-            }
-            pre code { background: none; padding: 0; color: #E6EDF3; }
-            ul, ol { padding-left: 24px; }
-            li { margin: 6px 0; }
+            code, pre code { font-family: 'SF Mono', 'Menlo', monospace; font-size: 14px; }
+            code { background: var(--code-bg); padding: 2px 6px; border-radius: 4px; color: #F7931A; }
+            pre { background: var(--code-bg); border: 1px solid var(--border); border-radius: 10px; padding: 16px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+            pre code { background: none; padding: 0; color: var(--pre-text); }
+            ul, ol { padding-left: 24px; } li { margin: 6px 0; }
             li::marker { color: #F7931A; }
-            em { font-style: italic; }
-            strong { color: #FFFFFF; }
-            table {
-                border-collapse: collapse;
-                width: 100%;
-                margin: 16px 0;
-                font-size: 14px;
-            }
-            th, td {
-                border: 1px solid #21262D;
-                padding: 10px 12px;
-                text-align: left;
-            }
-            th { background: #161B22; color: #F7931A; font-weight: 600; }
-            td { color: #C9D1D9; }
-            tr:nth-child(even) td { background: #0D1117; }
-            tr:nth-child(odd) td { background: #161B22; }
-            blockquote {
-                border-left: 3px solid #F7931A;
-                margin: 20px 0;
-                padding: 12px 20px;
-                color: #9CA3AF;
-                background: #161B22;
-                border-radius: 0 10px 10px 0;
-                font-style: italic;
-            }
+            em { font-style: italic; } strong { color: var(--heading); }
+            table { border-collapse: collapse; width: 100%; margin: 16px 0; font-size: 14px; }
+            th, td { border: 1px solid var(--border); padding: 10px 12px; text-align: left; }
+            th { background: var(--code-bg); color: #F7931A; font-weight: 600; }
+            td { color: var(--text); }
+            tr:nth-child(even) td { background: var(--td-even); }
+            tr:nth-child(odd) td { background: var(--td-odd); }
+            blockquote { border-left: 3px solid #F7931A; margin: 20px 0; padding: 12px 20px; color: var(--text2); background: var(--code-bg); border-radius: 0 10px 10px 0; font-style: italic; }
             blockquote strong { color: #F7931A; font-style: normal; }
-            hr { border: none; border-top: 1px solid #21262D; margin: 28px 0; }
+            hr { border: none; border-top: 1px solid var(--border); margin: 28px 0; }
             img { max-width: 100%; border-radius: 10px; margin: 12px 0; }
             figure { margin: 16px 0; text-align: center; }
-            figcaption {
-                font-size: 13px; color: #6B7280; margin-top: 6px;
-                font-family: -apple-system, BlinkMacSystemFont, sans-serif;
-            }
-            .figure-title {
-                font-size: 14px; color: #9CA3AF; font-style: italic;
-                margin-bottom: 4px;
-            }
+            figcaption { font-size: 13px; color: var(--text2); margin-top: 6px; font-family: -apple-system, BlinkMacSystemFont, sans-serif; }
+            .figure-title { font-size: 14px; color: var(--text2); font-style: italic; margin-bottom: 4px; }
             .anchor, .octicon, svg { display: none; }
         </style>
         <script>
@@ -464,8 +431,8 @@ struct ChapterWebView: UIViewRepresentable {
 
         let webView = WKWebView(frame: .zero, configuration: config)
         webView.isOpaque = false
-        webView.backgroundColor = UIColor(red: 0.05, green: 0.07, blue: 0.09, alpha: 1)
-        webView.scrollView.backgroundColor = UIColor(red: 0.05, green: 0.07, blue: 0.09, alpha: 1)
+        webView.backgroundColor = .systemBackground
+        webView.scrollView.backgroundColor = .systemBackground
         webView.scrollView.indicatorStyle = .white
 
         // Load once here — not in updateUIView to avoid reload loops
@@ -534,7 +501,7 @@ struct PDFViewer: UIViewRepresentable {
         pdfView.autoScales = true
         pdfView.displayMode = .singlePageContinuous
         pdfView.displayDirection = .vertical
-        pdfView.backgroundColor = UIColor(red: 0.05, green: 0.07, blue: 0.09, alpha: 1)
+        pdfView.backgroundColor = .systemBackground
         pdfView.pageBreakMargins = UIEdgeInsets(top: 8, left: 0, bottom: 8, right: 0)
         return pdfView
     }

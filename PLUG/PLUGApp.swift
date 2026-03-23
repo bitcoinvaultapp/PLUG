@@ -4,6 +4,11 @@ import SwiftUI
 struct PLUGApp: App {
     @StateObject private var walletVM = WalletVM()
     @AppStorage("onboarding_complete") private var onboardingComplete = false
+    @AppStorage("app_appearance") private var appearanceRaw: String = AppAppearance.dark.rawValue
+
+    private var appearance: AppAppearance {
+        AppAppearance(rawValue: appearanceRaw) ?? .dark
+    }
 
     init() {
         // Keychain migration — iOS keychain persists across app deletion.
@@ -33,11 +38,11 @@ struct PLUGApp: App {
                     MainTabView()
                         .environmentObject(walletVM)
                 }
-                .preferredColorScheme(.dark)
+                .preferredColorScheme(appearance.colorScheme)
             } else {
                 OnboardingView(isComplete: $onboardingComplete)
                     .environmentObject(walletVM)
-                    .preferredColorScheme(.dark)
+                    .preferredColorScheme(appearance.colorScheme)
             }
         }
         .onChange(of: onboardingComplete) { completed in
@@ -298,8 +303,7 @@ struct ContractsHubView: View {
                     .font(.system(size: 12))
                     .foregroundStyle(.tertiary)
                 if !contracts.isEmpty {
-                    let totalLocked = contracts.reduce(UInt64(0)) { $0 + $1.amount }
-                    Text("\(contracts.count) active · \(BalanceUnit.format(totalLocked)) locked")
+                    Text("\(contracts.count) active")
                         .font(.system(size: 11, design: .monospaced))
                         .foregroundStyle(.secondary)
                 }

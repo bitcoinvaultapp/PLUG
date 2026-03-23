@@ -849,6 +849,19 @@ final class WalletVM: ObservableObject {
             return
         }
 
+        // 3b. Fee rate validation — protect against accidental overpayment
+        if let fees = feeEstimate {
+            let maxReasonable = Double(max(fees.fastestFee * 3, 100))
+            if sendFeeRate > maxReasonable {
+                sendError = "Fee rate \(Int(sendFeeRate)) sat/vB is abnormally high (fastest: \(fees.fastestFee) sat/vB). Reduce to avoid overpaying."
+                return
+            }
+        }
+        if sendFeeRate > 500 {
+            sendError = "Fee rate \(Int(sendFeeRate)) sat/vB exceeds safety limit (500 sat/vB). This would waste funds."
+            return
+        }
+
         // 4. Coin selection
         previewSend()
         guard let preview = sendPreview else {

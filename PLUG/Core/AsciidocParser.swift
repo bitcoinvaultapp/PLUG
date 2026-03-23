@@ -78,6 +78,12 @@ enum AsciidocParser {
                 continue
             }
 
+            // Skip passthrough delimiters (++++), horizontal rules (''''), and comment lines (//)
+            if cleaned.hasPrefix("++++") || cleaned.hasPrefix("''''") || cleaned.hasPrefix("//") {
+                i += 1
+                continue
+            }
+
             // Skip source/role markers like [source,bash] or [.result]
             if cleaned.hasPrefix("[") && cleaned.hasSuffix("]") && !cleaned.hasPrefix("[TIP") && !cleaned.hasPrefix("[NOTE") && !cleaned.hasPrefix("[WARN") && !cleaned.hasPrefix("[IMP") && !cleaned.hasPrefix("[CAUT") {
                 i += 1
@@ -150,6 +156,10 @@ enum AsciidocParser {
         s = s.replacingOccurrences(of: "\\(\\(\\(\"[^\"]*\"\\)\\)\\)", with: "", options: .regularExpression)
         s = s.replacingOccurrences(of: "\\(\\(\\([^)]*\\)\\)\\)", with: "", options: .regularExpression)
 
+        // Cross-references FIRST (before < > get interpreted as HTML)
+        s = s.replacingOccurrences(of: "<<([^,>]+),\\s*([^>]+)>>", with: "<em>$2</em>", options: .regularExpression)
+        s = s.replacingOccurrences(of: "<<([^>]+)>>", with: "<em>$1</em>", options: .regularExpression)
+
         // Inline code: `code` or +code+
         s = s.replacingOccurrences(of: "`([^`]+)`", with: "<code>$1</code>", options: .regularExpression)
         s = s.replacingOccurrences(of: "\\+([^+]+)\\+", with: "<code>$1</code>", options: .regularExpression)
@@ -160,12 +170,9 @@ enum AsciidocParser {
         // Italic: _text_
         s = s.replacingOccurrences(of: "(?<![_])_([^_]+)_(?![_])", with: "<em>$1</em>", options: .regularExpression)
 
-        // Links: link:url[text]
+        // Links: link:url[text] and https://url[text]
         s = s.replacingOccurrences(of: "link:([^\\[]+)\\[([^\\]]+)\\]", with: "<a href=\"$1\">$2</a>", options: .regularExpression)
-
-        // Cross-references: <<anchor, text>> or <<anchor>>
-        s = s.replacingOccurrences(of: "<<([^,>]+),\\s*([^>]+)>>", with: "<em>$2</em>", options: .regularExpression)
-        s = s.replacingOccurrences(of: "<<([^>]+)>>", with: "<em>$1</em>", options: .regularExpression)
+        s = s.replacingOccurrences(of: "(https?://[^\\[\\s]+)\\[([^\\]]+)\\]", with: "<a href=\"$1\">$2</a>", options: .regularExpression)
 
         return s
     }

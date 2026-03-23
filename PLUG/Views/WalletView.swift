@@ -59,11 +59,7 @@ struct WalletView: View {
             .navigationTitle("")
             .toolbar(.hidden, for: .navigationBar)
             .refreshable {
-                // Pull-to-refresh: only refresh block height + price (lightweight)
-                // Does NOT rescan UTXOs — use Settings > Rescan for that
-                await Task.detached { [vm] in
-                    await vm.refreshMetadata()
-                }.value
+                await vm.refreshMetadata()
             }
             .task { await vm.loadWallet() }
             .navigationDestination(isPresented: $showSend) { sendPage }

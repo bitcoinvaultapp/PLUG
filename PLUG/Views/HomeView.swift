@@ -126,9 +126,7 @@ struct HomeView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(.hidden, for: .navigationBar)
             .refreshable {
-                await Task.detached { [vm] in
-                    await vm.refresh()
-                }.value
+                await vm.refresh()
             }
             .onAppear {
                 Task {

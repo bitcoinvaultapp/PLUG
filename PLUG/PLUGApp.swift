@@ -338,38 +338,11 @@ struct ContractsHubView: View {
             }
             .listRowBackground(Color.clear)
 
-            NavigationLink(destination: ChannelView()) {
-                contractHubRow(
-                    icon: "bolt.horizontal.circle.fill", color: .green,
-                    title: "Payment Channel", desc: "2-of-2 with timeout refund",
-                    opcode: "OP_CHECKMULTISIG + CLTV", count: count(for: .channel)
-                )
-            }
-            .listRowBackground(Color.clear)
-
             NavigationLink(destination: PoolView()) {
                 contractHubRow(
                     icon: "person.3.sequence.fill", color: .blue,
                     title: "Multisig Pool", desc: "M-of-N shared custody",
                     opcode: "OP_CHECKMULTISIG", count: count(for: .pool)
-                )
-            }
-            .listRowBackground(Color.clear)
-
-            NavigationLink(destination: AtomicSwapView()) {
-                contractHubRow(
-                    icon: "arrow.triangle.swap", color: .cyan,
-                    title: "Atomic Swap", desc: "Trustless P2P exchange via paired HTLCs",
-                    opcode: "HTLC \u{00D7} 2", count: 0
-                )
-            }
-            .listRowBackground(Color.clear)
-
-            NavigationLink(destination: OpReturnView()) {
-                contractHubRow(
-                    icon: "doc.text.below.ecg.fill", color: .indigo,
-                    title: "OP_RETURN", desc: "Embed data on the blockchain",
-                    opcode: "OP_RETURN", count: 0
                 )
             }
             .listRowBackground(Color.clear)

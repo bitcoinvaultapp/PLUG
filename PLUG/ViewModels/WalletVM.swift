@@ -8,7 +8,7 @@ final class WalletVM: ObservableObject {
     @Published var addresses: [WalletAddress] = []
     @Published var utxos: [UTXO] = []
     @Published var transactions: [Transaction] = []
-    @Published var totalBalance: UInt64 = 0
+    @Published var totalBalance: UInt64 = UInt64(UserDefaults.standard.integer(forKey: "cached_balance"))
     @Published var isLoading = false
     @Published var error: String?
     @Published var scanProgress: Double = 0
@@ -234,6 +234,7 @@ final class WalletVM: ObservableObject {
         utxos.removeAll()
         transactions.removeAll()
         totalBalance = 0
+        UserDefaults.standard.removeObject(forKey: "cached_balance")
         currentReceiveAddress = ""
         currentReceiveIndex = 0
         addressStatuses.removeAll()
@@ -269,6 +270,19 @@ final class WalletVM: ObservableObject {
         guard let xpub = xpub else {
             error = "No xpub found. Connect your Ledger."
             return
+        }
+
+        // Fetch Taproot xpub if missing (one-time migration)
+        if taprootXpub == nil && LedgerManager.shared.state == .connected {
+            let coinType = KeychainStore.shared.loadString(forKey: KeychainStore.KeychainKey.ledgerCoinType.rawValue) ?? "0"
+            let ct = UInt32(coinType) ?? 0
+            let trPath: [UInt32] = [86 | 0x80000000, ct | 0x80000000, 0 | 0x80000000]
+            if let (trXpubStr, _) = try? await LedgerManager.shared.getXpub(path: trPath, display: false) {
+                KeychainStore.shared.saveString(trXpubStr, forKey: KeychainStore.KeychainKey.ledgerTaprootXpub.rawValue)
+                #if DEBUG
+                print("[WalletVM] Taproot xpub fetched: \(trXpubStr.prefix(20))...")
+                #endif
+            }
         }
 
         // Only load once per app session — use "Rescan" in Settings to force
@@ -560,6 +574,7 @@ final class WalletVM: ObservableObject {
         utxos = cleanUTXOs
         transactions = dedupedTxs.sorted { ($0.status.blockTime ?? Int.max) > ($1.status.blockTime ?? Int.max) }
         totalBalance = cleanUTXOs.reduce(0) { $0 + $1.value }
+        UserDefaults.standard.set(Int(totalBalance), forKey: "cached_balance")
 
         // Track address lifecycle (fresh / funded / used)
         updateAddressStatuses()
@@ -610,6 +625,7 @@ final class WalletVM: ObservableObject {
         let cleanUTXOs = result.utxos.filter { knownAddresses.contains($0.address) }
         utxos = cleanUTXOs
         totalBalance = cleanUTXOs.reduce(0) { $0 + $1.value }
+        UserDefaults.standard.set(Int(totalBalance), forKey: "cached_balance")
         scanProgress = 1
         scanStatus = nil
 

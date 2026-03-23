@@ -480,6 +480,13 @@ struct VaultView: View {
 
                     if let txid = vm.spendResult {
                         Section("Transaction broadcast") {
+                            HStack {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundStyle(.green)
+                                Text("Success")
+                                    .font(.headline)
+                                    .foregroundStyle(.green)
+                            }
                             Text(txid)
                                 .font(.system(.caption2, design: .monospaced))
                                 .textSelection(.enabled)
@@ -487,6 +494,17 @@ struct VaultView: View {
                                 UIPasteboard.general.string = txid
                             }
                             .font(.caption)
+
+                            Button("Done") {
+                                vm.spendResult = nil
+                                showSpend = false
+                            }
+                            .font(.headline)
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 10)
+                            .background(Color.green, in: RoundedRectangle(cornerRadius: 10))
+                            .padding(.top, 8)
                         }
                     } else if let txHex = vm.txForReview {
                         Section("Transaction ready") {

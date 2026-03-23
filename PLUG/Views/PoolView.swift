@@ -195,6 +195,31 @@ struct PoolView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
 
+                    // Spend (export PSBT for co-signers)
+                    if funded > 0 {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Spend").font(.caption.bold()).foregroundStyle(.secondary)
+                            Text("Create a PSBT, sign with your key, then share with co-signers.")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.tertiary)
+
+                            NavigationLink {
+                                PoolSpendPage(contract: contract, vm: vm)
+                            } label: {
+                                HStack {
+                                    Image(systemName: "signature")
+                                    Text("Create Spend Transaction")
+                                }
+                                .font(.caption.bold())
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 10)
+                                .background(Color.blue.opacity(0.15), in: RoundedRectangle(cornerRadius: 10))
+                                .foregroundStyle(.blue)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+
                     // Actions
                     VStack(spacing: 10) {
                         Button {
@@ -399,29 +424,172 @@ struct PoolView: View {
     // MARK: - Import PSBT Sheet
 
     private var importPSBTPage: some View {
-            Form {
-                Section("PSBT Base64") {
-                    TextEditor(text: $vm.importedPSBTBase64)
-                        .font(.system(.caption, design: .monospaced))
-                        .frame(minHeight: 120)
+        Form {
+            Section("PSBT Base64") {
+                TextEditor(text: $vm.importedPSBTBase64)
+                    .font(.system(.caption, design: .monospaced))
+                    .frame(minHeight: 120)
+            }
+
+            Button("Import & Validate") {
+                vm.importPSBT()
+            }
+
+            if vm.parsedPSBT != nil {
+                Section("Imported PSBT") {
+                    Text("Valid PSBT")
+                        .foregroundStyle(.green)
+                    Text("Share this PSBT with co-signers or sign with your Ledger.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+
+                    Button("Copy PSBT") {
+                        UIPasteboard.general.string = vm.importedPSBTBase64
+                    }
+                    .font(.caption)
+                }
+            }
+
+            if let error = vm.error {
+                Section { Text(error).foregroundStyle(.red) }
+            }
+        }
+        .navigationTitle("Import PSBT")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+// MARK: - Pool Spend Page
+
+private struct PoolSpendPage: View {
+    let contract: Contract
+    @ObservedObject var vm: PoolVM
+    @State private var destination = ""
+    @State private var amount = ""
+    @State private var feeRate: Double = 2.0
+    @State private var isBuilding = false
+    @State private var psbtBase64: String?
+    @State private var error: String?
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 16) {
+                // Balance
+                VStack(spacing: 4) {
+                    Text("Available")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Text(BalanceUnit.format(vm.fundedAmount(for: contract)))
+                        .font(.system(size: 24, weight: .bold, design: .monospaced))
                 }
 
-                Button("Import") {
-                    vm.importPSBT()
+                // Destination
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Destination address")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
+                    TextField("bc1q...", text: $destination)
+                        .font(.system(size: 14, design: .monospaced))
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
                 }
 
-                if vm.parsedPSBT != nil {
-                    Section("Imported PSBT") {
-                        Text("Valid PSBT")
+                // Amount
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Amount (sats)")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.secondary)
+                    TextField("0", text: $amount)
+                        .font(.system(size: 20, weight: .bold, design: .monospaced))
+                        .keyboardType(.numberPad)
+                }
+
+                // Fee
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack {
+                        Text("Fee rate")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(.secondary)
+                        Spacer()
+                        Text("\(Int(feeRate)) sat/vB")
+                            .font(.system(size: 12, design: .monospaced))
+                    }
+                    Slider(value: $feeRate, in: 1...200, step: 1)
+                        .tint(Color.btcOrange)
+                }
+
+                // Build PSBT
+                Button {
+                    buildPSBT()
+                } label: {
+                    HStack {
+                        if isBuilding {
+                            ProgressView().controlSize(.small)
+                        }
+                        Text("Build PSBT")
+                            .font(.system(size: 15, weight: .semibold))
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(Color.blue, in: RoundedRectangle(cornerRadius: 12))
+                    .foregroundStyle(.white)
+                }
+                .disabled(destination.isEmpty || amount.isEmpty || isBuilding)
+
+                // Result
+                if let psbt = psbtBase64 {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("PSBT Ready")
+                            .font(.caption.bold())
                             .foregroundStyle(.green)
+                        Text("Share this PSBT with co-signers. Each signer adds their signature, then the last one broadcasts.")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                        Text(psbt.prefix(60) + "...")
+                            .font(.system(size: 9, design: .monospaced))
+                            .foregroundStyle(.tertiary)
+
+                        Button("Copy PSBT") {
+                            UIPasteboard.general.string = psbt
+                        }
+                        .font(.caption.bold())
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 10)
+                        .background(Color.blue.opacity(0.15), in: RoundedRectangle(cornerRadius: 10))
+                        .foregroundStyle(.blue)
                     }
                 }
 
-                if let error = vm.error {
-                    Section { Text(error).foregroundStyle(.red) }
+                if let err = error {
+                    Text(err).font(.caption).foregroundStyle(.red)
                 }
             }
-            .navigationTitle("Import PSBT")
-            .navigationBarTitleDisplayMode(.inline)
+            .padding()
+        }
+        .navigationTitle("Spend Pool")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    private func buildPSBT() {
+        isBuilding = true
+        error = nil
+        Task {
+            defer { isBuilding = false }
+            do {
+                guard let amt = UInt64(amount) else { error = "Invalid amount"; return }
+                let utxos = try await MempoolAPI.shared.getAddressUTXOs(address: contract.address)
+                guard !utxos.isEmpty else { error = "No UTXOs"; return }
+
+                let psbtData = try SpendManager.buildPoolSpendPSBT(
+                    contract: contract, utxos: utxos,
+                    destinationAddress: destination.trimmingCharacters(in: .whitespacesAndNewlines),
+                    amount: amt, feeRate: feeRate,
+                    isTestnet: NetworkConfig.shared.isTestnet
+                )
+                psbtBase64 = psbtData.base64EncodedString()
+            } catch {
+                self.error = error.localizedDescription
+            }
+        }
     }
 }

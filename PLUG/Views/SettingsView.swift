@@ -272,10 +272,7 @@ struct PersonalNodeSettingsRow: View {
 
     var body: some View {
         VStack(spacing: 12) {
-            Toggle("Use personal node", isOn: $torConfig.usePersonalNode)
-                .disabled(!torManager.isRunning)
-
-            if torConfig.usePersonalNode {
+            // Personal node is required — no toggle
                 VStack(alignment: .leading, spacing: 8) {
                     Text(".onion address")
                         .font(.system(size: 12, weight: .medium))
@@ -334,9 +331,8 @@ struct PersonalNodeSettingsRow: View {
                         }
                     }
                 }
-            }
 
-            if !torManager.isRunning && torConfig.usePersonalNode {
+            if !torManager.isRunning {
                 HStack(spacing: 6) {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .foregroundStyle(.orange)

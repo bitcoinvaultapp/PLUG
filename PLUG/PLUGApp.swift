@@ -58,7 +58,6 @@ struct PLUGApp: App {
 
 struct TorBootstrapWrapper<Content: View>: View {
     @ObservedObject private var tor = TorManager.shared
-    @State private var skipTor = false
     @State private var hasEnteredApp = false
     @State private var elapsedSeconds = 0
     @State private var timer: Timer?
@@ -87,12 +86,6 @@ struct TorBootstrapWrapper<Content: View>: View {
         if hasEnteredApp {
             content()
         } else if case .connected = tor.state {
-            content()
-                .onAppear {
-                    hasEnteredApp = true
-                    timer?.invalidate()
-                }
-        } else if skipTor {
             content()
                 .onAppear {
                     hasEnteredApp = true
@@ -146,16 +139,6 @@ struct TorBootstrapWrapper<Content: View>: View {
                 }
 
                 Spacer()
-
-                Button {
-                    MempoolAPI.torSkipped = true
-                    skipTor = true
-                } label: {
-                    Text("Skip — use clearnet")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.bottom, 40)
             }
             .onAppear {
                 tor.start()

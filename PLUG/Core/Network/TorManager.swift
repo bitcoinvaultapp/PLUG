@@ -40,10 +40,13 @@ final class TorManager: ObservableObject {
                 self.state = .warmingUp
             }
 
-            // Phase 2: Warm up HS circuit (~15-30s)
+            // Phase 2: Warm up HS circuit (bounded by Rust — max 180s)
+            // plug_tor_warmup returns false on timeout, true on success
             let (host, _) = TorConfig.shared.resolve(endpoint: "/blocks/tip/height")
-            host.withCString { plug_tor_warmup($0, 80) }
+            let _ = host.withCString { plug_tor_warmup($0, 80) }
 
+            // Always transition to connected — Tor is running even if warmup failed
+            // Subsequent requests will build the circuit on demand
             await MainActor.run {
                 self.state = .connected
             }

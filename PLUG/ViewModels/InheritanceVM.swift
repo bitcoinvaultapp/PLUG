@@ -173,6 +173,7 @@ final class InheritanceVM: ObservableObject, ContractVM {
     /// Owner spends back to the same address to reset the CSV timer.
     func keepAlive(contract: Contract) async {
         isSpending = true
+        defer { isSpending = false }
         spendError = nil
         spendResult = nil
 
@@ -204,7 +205,6 @@ final class InheritanceVM: ObservableObject, ContractVM {
             spendError = error.localizedDescription
         }
 
-        isSpending = false
     }
 
     // MARK: - Heir Claim
@@ -217,6 +217,7 @@ final class InheritanceVM: ObservableObject, ContractVM {
         }
 
         isSpending = true
+        defer { isSpending = false }
         spendError = nil
         spendResult = nil
 
@@ -244,6 +245,5 @@ final class InheritanceVM: ObservableObject, ContractVM {
             spendError = error.localizedDescription
         }
 
-        isSpending = false
     }
 }

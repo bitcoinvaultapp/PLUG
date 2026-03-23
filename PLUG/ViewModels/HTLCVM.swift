@@ -189,6 +189,7 @@ final class HTLCVM: ObservableObject, ContractVM {
         }
 
         isSpending = true
+        defer { isSpending = false }
         spendError = nil
         spendResult = nil
 
@@ -218,7 +219,6 @@ final class HTLCVM: ObservableObject, ContractVM {
             spendError = error.localizedDescription
         }
 
-        isSpending = false
     }
 
     // MARK: - Refund (Sender)
@@ -235,6 +235,7 @@ final class HTLCVM: ObservableObject, ContractVM {
         }
 
         isSpending = true
+        defer { isSpending = false }
         spendError = nil
         spendResult = nil
 
@@ -262,6 +263,5 @@ final class HTLCVM: ObservableObject, ContractVM {
             spendError = error.localizedDescription
         }
 
-        isSpending = false
     }
 }

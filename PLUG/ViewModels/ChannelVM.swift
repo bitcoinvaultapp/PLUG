@@ -169,6 +169,7 @@ final class ChannelVM: ObservableObject, ContractVM {
         }
 
         isSpending = true
+        defer { isSpending = false }
         spendError = nil
         spendResult = nil
 
@@ -243,7 +244,6 @@ final class ChannelVM: ObservableObject, ContractVM {
             spendError = error.localizedDescription
         }
 
-        isSpending = false
     }
 
     // MARK: - Unilateral Refund
@@ -260,6 +260,7 @@ final class ChannelVM: ObservableObject, ContractVM {
         }
 
         isSpending = true
+        defer { isSpending = false }
         spendError = nil
         spendResult = nil
 
@@ -287,6 +288,5 @@ final class ChannelVM: ObservableObject, ContractVM {
             spendError = error.localizedDescription
         }
 
-        isSpending = false
     }
 }

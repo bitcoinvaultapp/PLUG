@@ -601,7 +601,10 @@ final class WalletVM: ObservableObject {
     // MARK: - Refresh UTXOs only (no re-derivation)
 
     func refreshUTXOs() async {
-        guard !addresses.isEmpty else { return }
+        guard !addresses.isEmpty else {
+            isLoading = false
+            return
+        }
         isLoading = true
         scanProgress = 0
         scanStatus = "Scanning addresses..."
@@ -662,11 +665,11 @@ final class WalletVM: ObservableObject {
         // Track sync errors — warn user if all fetches failed
         if result.fetchErrorCount > 0 && result.fetchSuccessCount == 0 {
             error = "Network error — balance may be outdated"
-        } else if result.fetchErrorCount == 0 {
-            error = nil
+            // Don't set hasLoadedOnce — allow retry
+        } else {
+            if result.fetchErrorCount == 0 { error = nil }
+            hasLoadedOnce = true
         }
-
-        hasLoadedOnce = true
         isLoading = false
     }
 
@@ -1138,13 +1141,15 @@ final class WalletVM: ObservableObject {
 
     // MARK: - Broadcast
 
+    @Published var isBroadcasting = false
+
     func broadcastTransaction() async {
         guard let txHex = signedTxHex else {
             sendError = "No transaction to broadcast"
             return
         }
 
-        isSigning = true
+        isBroadcasting = true
         sendError = nil
 
         do {
@@ -1152,8 +1157,8 @@ final class WalletVM: ObservableObject {
             broadcastTxid = txid
             sendStep = .broadcast
 
-            // Refresh UTXOs after broadcast
-            await refreshUTXOs()
+            // Refresh UTXOs after broadcast (ignore errors — tx already sent)
+            try? await refreshUTXOs()
 
             // Poll for confirmation in background
             watchForConfirmation(txid: txid)
@@ -1161,7 +1166,7 @@ final class WalletVM: ObservableObject {
             sendError = error.localizedDescription
         }
 
-        isSigning = false
+        isBroadcasting = false
     }
 
     /// Poll a transaction until confirmed, then refresh UTXOs once
@@ -1190,8 +1195,8 @@ final class WalletVM: ObservableObject {
     /// Pre-fill the send form to replace a pending transaction with higher fee
     func bumpFee(transaction: Transaction) {
         guard !transaction.status.confirmed else { return }
+        resetSend()
 
-        // Find the destination output (not our address)
         let myAddresses = Set(addresses.map(\.address))
         let destOutput = transaction.vout.first { output in
             guard let addr = output.scriptpubkeyAddress else { return false }

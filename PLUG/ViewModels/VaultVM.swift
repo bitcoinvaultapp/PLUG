@@ -181,6 +181,7 @@ final class VaultVM: ObservableObject, ContractVM {
         }
 
         isSpending = true
+        defer { isSpending = false }
         spendError = nil
         spendResult = nil
         txForReview = nil
@@ -317,7 +318,5 @@ final class VaultVM: ObservableObject, ContractVM {
         } catch {
             spendError = error.localizedDescription
         }
-
-        isSpending = false
     }
 }

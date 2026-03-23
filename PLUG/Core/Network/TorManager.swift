@@ -41,8 +41,9 @@ final class TorManager: ObservableObject {
             }
 
             // Phase 2: Warm up HS circuit (bounded by Rust — max 180s)
-            // plug_tor_warmup returns false on timeout, true on success
-            let (host, _) = TorConfig.shared.resolve(endpoint: "/blocks/tip/height")
+            // Always warm up against mempool.space .onion (always available)
+            // Personal node warmup happens on first real request
+            let (host, _) = TorConfig.shared.resolveMempoolSpace(endpoint: "/v1/fees/recommended")
             let _ = host.withCString { plug_tor_warmup($0, 80) }
 
             // Always transition to connected — Tor is running even if warmup failed

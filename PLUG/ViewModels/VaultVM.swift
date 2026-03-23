@@ -237,16 +237,24 @@ final class VaultVM: ObservableObject, ContractVM {
                 // P2WSH: OP_0 <SHA256(witnessScript)>
                 spk = PSBTBuilder.p2wshScriptPubKey(scriptHash: Crypto.sha256(witnessScriptData))
             }
-            let inputInfos = utxos.map { utxo in
-                LedgerSigningV2.InputAddressInfo(
+            // Fetch previous transactions for NON_WITNESS_UTXO (eliminates Ledger warning)
+            var inputInfos: [LedgerSigningV2.InputAddressInfo] = []
+            for utxo in utxos {
+                var prevTx: Data?
+                if let rawHex = try? await MempoolAPI.shared.getRawTransaction(txid: utxo.txid),
+                   let raw = Data(hex: rawHex) {
+                    prevTx = raw
+                }
+                inputInfos.append(LedgerSigningV2.InputAddressInfo(
                     change: 0, index: UInt32(keyIdx),
                     publicKey: pubkey,
                     value: utxo.value,
-                    scriptPubKey: spk
-                )
+                    scriptPubKey: spk,
+                    previousTx: prevTx
+                ))
             }
 
-            // Sign + finalize but do NOT broadcast (2-stage review)
+            // Sign + finalize + broadcast in one step
             let txHex: String
             let updatedContract: Contract
 
@@ -294,38 +302,18 @@ final class VaultVM: ObservableObject, ContractVM {
                 selectedContract = updatedContract
             }
 
-            txForReview = txHex
-
-        } catch {
-            spendError = error.localizedDescription
-        }
-
-        isSpending = false
-    }
-
-    /// Broadcast the previously signed transaction after user confirmation.
-    func confirmBroadcast() async {
-        guard let txHex = txForReview else {
-            spendError = "No transaction to broadcast"
-            return
-        }
-
-        isSpending = true
-        spendError = nil
-
-        do {
+            // Broadcast immediately after signing
             let txid = try await SpendManager.broadcast(txHex: txHex)
             spendResult = txid
-            txForReview = nil
-            psbtForReview = nil
 
             // Update contract state
-            if var contract = selectedContract {
-                contract.isUnlocked = true
-                contract.txid = txid
-                ContractStore.shared.update(contract)
-                contracts = filteredContracts
-            }
+            var updated = updatedContract
+            updated.isUnlocked = true
+            updated.txid = txid
+            ContractStore.shared.update(updated)
+            contracts = filteredContracts
+            selectedContract = updated
+
         } catch {
             spendError = error.localizedDescription
         }

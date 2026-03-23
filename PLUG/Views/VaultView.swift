@@ -517,15 +517,7 @@ struct VaultView: View {
                                     .foregroundStyle(.secondary)
                             }
 
-                            Button("Broadcast") {
-                                Task { await vm.confirmBroadcast() }
-                            }
-                            .font(.headline)
-                            .foregroundStyle(.white)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 8)
-                            .background(Color.green, in: RoundedRectangle(cornerRadius: 8))
-                            .disabled(vm.isSpending)
+                            // Broadcast happens automatically after signing
 
                             if let psbt = vm.psbtForReview {
                                 Button("Export PSBT") {

@@ -246,6 +246,11 @@ struct LedgerSigningV2 {
         var rounds = 0
         while rounds < 2000 {
             rounds += 1
+
+            guard LedgerManager.shared.state == .connected else {
+                throw SignError.ledgerError("Ledger disconnected during registration")
+            }
+
             if response.isEmpty { break }
 
             guard let cmdResponse = interpreter.handleCommand(response) else {
@@ -346,7 +351,13 @@ struct LedgerSigningV2 {
 
         // Build PSBTv2 maps
         let globalMap = buildPSBTv2GlobalMap(txInfo: txInfo)
-        let isTaproot = walletPolicy.descriptorTemplate.hasPrefix("tr(")
+        // Validate descriptor before choosing signing path
+        let desc = walletPolicy.descriptorTemplate
+        guard desc.contains("wsh(") || desc.contains("tr(") || desc.contains("wpkh(") else {
+            throw SignError.invalidPSBT
+        }
+
+        let isTaproot = desc.hasPrefix("tr(")
         let inputMaps: [MerkleMap]
         if isTaproot {
             inputMaps = buildPSBTv2InputMapsForP2TR(
@@ -406,6 +417,12 @@ struct LedgerSigningV2 {
         var rounds = 0
         while rounds < 2000 {
             rounds += 1
+
+            // Check Ledger is still connected
+            guard LedgerManager.shared.state == .connected else {
+                throw SignError.ledgerError("Ledger disconnected during signing")
+            }
+
             if response.isEmpty { break }
 
             guard let cmdResponse = interpreter.handleCommand(response) else {
@@ -660,8 +677,11 @@ struct LedgerSigningV2 {
         while rounds < maxRounds {
             rounds += 1
 
+            guard LedgerManager.shared.state == .connected else {
+                throw SignError.ledgerError("Ledger disconnected during signing")
+            }
+
             if response.isEmpty {
-                // 0x9000 with empty data = done
                 #if DEBUG
                 print("[LedgerSign] Complete after \(rounds) rounds")
                 #endif

@@ -88,6 +88,11 @@ final class LedgerManager: NSObject, ObservableObject {
     }
 
     private func cleanup() {
+        // Resume any pending APDU continuation so the signing loop doesn't hang
+        if let cont = responseContinuation {
+            cont.resume(throwing: LedgerError.notConnected)
+            responseContinuation = nil
+        }
         writeCharacteristic = nil
         notifyCharacteristic = nil
         connectedDevice = nil

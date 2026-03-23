@@ -241,9 +241,13 @@ struct ContractSigner {
                 var inputInfos: [LedgerSigningV2.InputAddressInfo] = []
                 for utxo in utxos {
                     var prevTx: Data?
-                    if let rawHex = try? await MempoolAPI.shared.getRawTransaction(txid: utxo.txid),
-                       let raw = Data(hex: rawHex) {
-                        prevTx = raw
+                    do {
+                        let rawHex = try await MempoolAPI.shared.getRawTransaction(txid: utxo.txid)
+                        if let raw = Data(hex: rawHex) { prevTx = raw }
+                    } catch {
+                        #if DEBUG
+                        print("[ContractSigner] WARNING: Failed to fetch previous tx \(utxo.txid.prefix(12)): \(error.localizedDescription). Ledger may show 'Unverified inputs'.")
+                        #endif
                     }
                     inputInfos.append(LedgerSigningV2.InputAddressInfo(
                         change: 0, index: UInt32(addrIndex),
@@ -376,12 +380,17 @@ struct ContractSigner {
             )
 
         case .poolSpend:
+            let allXpubs = contract.multisigXpubs ?? contract.multisigPubkeys ?? []
+            let m = contract.multisigM ?? 2
+            guard allXpubs.count >= m else {
+                fatalError("[ContractSigner] Pool: M(\(m)) > N(\(allXpubs.count))")
+            }
             return WalletPolicyBuilder.poolPolicy(
-                m: contract.multisigM ?? 2,
+                m: m,
                 masterFP: masterFP, keyOrigin: keyOrigin,
                 internalXpub: xpub,
                 internalKeyIndex: 0,
-                allXpubs: contract.multisigXpubs ?? contract.multisigPubkeys ?? []
+                allXpubs: allXpubs
             )
 
         case .taprootKeyPath:

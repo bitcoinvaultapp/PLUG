@@ -3,7 +3,7 @@ import SwiftUI
 // MARK: - HomeView
 
 struct HomeView: View {
-    @StateObject private var vm = HomeVM()
+    @ObservedObject private var vm = HomeVM.shared
     @EnvironmentObject var walletVM: WalletVM
     @ObservedObject private var ledgerState = LedgerManager.shared
     @AppStorage("balance_unit") private var balanceUnit: String = BalanceUnit.btc.rawValue
@@ -128,13 +128,7 @@ struct HomeView: View {
             .refreshable {
                 await vm.refresh()
             }
-            .onAppear {
-                Task {
-                    await vm.refresh()
-                    await vm.refreshContractBalances()
-                    vm.connectWebSocket()
-                }
-            }
+            // Initialization handled by MainTabView.bootstrap()
         }
     }
 

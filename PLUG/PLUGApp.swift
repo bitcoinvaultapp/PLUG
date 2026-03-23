@@ -223,12 +223,29 @@ struct MainTabView: View {
                 }
             }
         }
-        .onAppear {
-            Task { await walletVM.loadWallet() }
+        .task {
+            await bootstrap()
         }
         .onReceive(NotificationCenter.default.publisher(for: .ledgerManualDisconnect)) { _ in
             walletVM.clearWalletData()
         }
+    }
+
+    /// Single initialization pipeline — runs once after Tor is ready.
+    /// Order: metadata → wallet scan → done. No scattered onAppear calls.
+    private func bootstrap() async {
+        // 1. Fetch metadata (price, block height, fees, difficulty)
+        //    These go to mempool.space .onion — independent of personal node
+        let homeVM = HomeVM.shared
+        await homeVM.refresh()
+        homeVM.connectWebSocket()
+
+        // 2. Wallet scan (addresses, UTXOs, transactions)
+        //    Goes to personal node via Tor
+        await walletVM.loadWallet()
+
+        // 3. Contract balances
+        await homeVM.refreshContractBalances()
     }
 
     private var disconnectBanner: some View {

@@ -4,6 +4,8 @@ import Combine
 @MainActor
 final class HomeVM: ObservableObject {
 
+    static let shared = HomeVM()
+
     @Published var btcPrice: Double = 0
     @Published var blockHeight: Int = 0
     @Published var lastBlockTime: Int = 0

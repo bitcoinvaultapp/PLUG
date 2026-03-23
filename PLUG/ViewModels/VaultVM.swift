@@ -213,12 +213,13 @@ final class VaultVM: ObservableObject, ContractVM {
 
             // Build input address info for BIP32 derivation in PSBT
             let witnessScriptData = Data(hex: contract.script) ?? Data()
+            let keyIdx = contract.keyIndex ?? 0
             let pubkey: Data
             if let xpubStr = KeychainStore.shared.loadXpub(isTestnet: isTestnet),
                let epk = ExtendedPublicKey.fromBase58(xpubStr),
                let child0 = epk.deriveChild(index: 0),
-               let child00 = child0.deriveChild(index: 0) {
-                pubkey = child00.key
+               let derived = child0.deriveChild(index: UInt32(keyIdx)) {
+                pubkey = derived.key
             } else {
                 pubkey = Data()
             }
@@ -238,7 +239,7 @@ final class VaultVM: ObservableObject, ContractVM {
             }
             let inputInfos = utxos.map { utxo in
                 LedgerSigningV2.InputAddressInfo(
-                    change: 0, index: 0,
+                    change: 0, index: UInt32(keyIdx),
                     publicKey: pubkey,
                     value: utxo.value,
                     scriptPubKey: spk

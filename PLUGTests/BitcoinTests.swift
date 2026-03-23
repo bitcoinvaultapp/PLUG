@@ -625,9 +625,9 @@ final class BitcoinTests: XCTestCase {
 
     func testCoinSelectionLargestFirst() {
         let utxos = [
-            UTXO(txid: "aa", vout: 0, value: 1000, address: "addr1", scriptPubKey: "", status: .init(confirmed: true, blockHeight: 1, blockTime: nil)),
-            UTXO(txid: "bb", vout: 0, value: 5000, address: "addr2", scriptPubKey: "", status: .init(confirmed: true, blockHeight: 1, blockTime: nil)),
-            UTXO(txid: "cc", vout: 0, value: 3000, address: "addr3", scriptPubKey: "", status: .init(confirmed: true, blockHeight: 1, blockTime: nil)),
+            UTXO(txid: "aa", vout: 0, value: 1000, address: "addr1", scriptPubKey: "", status: .init(confirmed: true, blockHeight: 1, blockHash: nil)),
+            UTXO(txid: "bb", vout: 0, value: 5000, address: "addr2", scriptPubKey: "", status: .init(confirmed: true, blockHeight: 1, blockHash: nil)),
+            UTXO(txid: "cc", vout: 0, value: 3000, address: "addr3", scriptPubKey: "", status: .init(confirmed: true, blockHeight: 1, blockHash: nil)),
         ]
         let result = CoinSelection.select(from: utxos, target: 4000, feeRate: 1.0, strategy: .largestFirst)
         XCTAssertNotNil(result, "Should find selection for 4000 sats")
@@ -636,9 +636,9 @@ final class BitcoinTests: XCTestCase {
 
     func testCoinSelectionSmallestFirst() {
         let utxos = [
-            UTXO(txid: "aa", vout: 0, value: 1000, address: "addr1", scriptPubKey: "", status: .init(confirmed: true, blockHeight: 1, blockTime: nil)),
-            UTXO(txid: "bb", vout: 0, value: 5000, address: "addr2", scriptPubKey: "", status: .init(confirmed: true, blockHeight: 1, blockTime: nil)),
-            UTXO(txid: "cc", vout: 0, value: 3000, address: "addr3", scriptPubKey: "", status: .init(confirmed: true, blockHeight: 1, blockTime: nil)),
+            UTXO(txid: "aa", vout: 0, value: 1000, address: "addr1", scriptPubKey: "", status: .init(confirmed: true, blockHeight: 1, blockHash: nil)),
+            UTXO(txid: "bb", vout: 0, value: 5000, address: "addr2", scriptPubKey: "", status: .init(confirmed: true, blockHeight: 1, blockHash: nil)),
+            UTXO(txid: "cc", vout: 0, value: 3000, address: "addr3", scriptPubKey: "", status: .init(confirmed: true, blockHeight: 1, blockHash: nil)),
         ]
         let result = CoinSelection.select(from: utxos, target: 2000, feeRate: 1.0, strategy: .smallestFirst)
         XCTAssertNotNil(result)
@@ -647,7 +647,7 @@ final class BitcoinTests: XCTestCase {
 
     func testCoinSelectionInsufficientFunds() {
         let utxos = [
-            UTXO(txid: "aa", vout: 0, value: 500, address: "addr1", scriptPubKey: "", status: .init(confirmed: true, blockHeight: 1, blockTime: nil)),
+            UTXO(txid: "aa", vout: 0, value: 500, address: "addr1", scriptPubKey: "", status: .init(confirmed: true, blockHeight: 1, blockHash: nil)),
         ]
         let result = CoinSelection.select(from: utxos, target: 10000, feeRate: 1.0)
         XCTAssertNil(result, "Should fail with insufficient funds")
@@ -655,8 +655,8 @@ final class BitcoinTests: XCTestCase {
 
     func testCoinSelectionDustFiltered() {
         let utxos = [
-            UTXO(txid: "aa", vout: 0, value: 100, address: "addr1", scriptPubKey: "", status: .init(confirmed: true, blockHeight: 1, blockTime: nil)),
-            UTXO(txid: "bb", vout: 0, value: 5000, address: "addr2", scriptPubKey: "", status: .init(confirmed: true, blockHeight: 1, blockTime: nil)),
+            UTXO(txid: "aa", vout: 0, value: 100, address: "addr1", scriptPubKey: "", status: .init(confirmed: true, blockHeight: 1, blockHash: nil)),
+            UTXO(txid: "bb", vout: 0, value: 5000, address: "addr2", scriptPubKey: "", status: .init(confirmed: true, blockHeight: 1, blockHash: nil)),
         ]
         let result = CoinSelection.select(from: utxos, target: 1000, feeRate: 1.0)
         XCTAssertNotNil(result)
@@ -666,8 +666,8 @@ final class BitcoinTests: XCTestCase {
 
     func testCoinSelectionFrozenFiltered() {
         let utxos = [
-            UTXO(txid: "aa", vout: 0, value: 5000, address: "addr1", scriptPubKey: "", status: .init(confirmed: true, blockHeight: 1, blockTime: nil)),
-            UTXO(txid: "bb", vout: 0, value: 3000, address: "addr2", scriptPubKey: "", status: .init(confirmed: true, blockHeight: 1, blockTime: nil)),
+            UTXO(txid: "aa", vout: 0, value: 5000, address: "addr1", scriptPubKey: "", status: .init(confirmed: true, blockHeight: 1, blockHash: nil)),
+            UTXO(txid: "bb", vout: 0, value: 3000, address: "addr2", scriptPubKey: "", status: .init(confirmed: true, blockHeight: 1, blockHash: nil)),
         ]
         let result = CoinSelection.select(from: utxos, target: 2000, feeRate: 1.0, frozenOutpoints: Set(["aa:0"]))
         XCTAssertNotNil(result)

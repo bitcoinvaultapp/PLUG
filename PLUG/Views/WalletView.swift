@@ -59,7 +59,7 @@ struct WalletView: View {
             .navigationTitle("")
             .toolbar(.hidden, for: .navigationBar)
             .refreshable {
-                await vm.refreshMetadata()
+                await vm.quickRefresh()
             }
             .task { await vm.loadWallet() }
             .navigationDestination(isPresented: $showSend) { sendPage }

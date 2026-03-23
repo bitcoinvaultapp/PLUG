@@ -585,16 +585,17 @@ final class WalletVM: ObservableObject {
         isLoading = false
     }
 
-    // MARK: - Lightweight refresh (pull-to-refresh: price + block height only)
+    // MARK: - Quick refresh (pull-to-refresh: metadata + UTXOs if already scanned)
 
-    func refreshMetadata() async {
-        do {
-            currentBlockHeight = try await MempoolAPI.shared.getBlockHeight()
-            btcPrice = try await MempoolAPI.shared.getBTCPrice()
-        } catch {
-            #if DEBUG
-            print("[WalletVM] refreshMetadata error: \(error.localizedDescription)")
-            #endif
+    func quickRefresh() async {
+        // 1. Metadata (price, block height)
+        do { currentBlockHeight = try await MempoolAPI.shared.getBlockHeight() } catch {}
+        do { btcPrice = try await MempoolAPI.shared.getBTCPrice() } catch {}
+        do { feeEstimate = try await MempoolAPI.shared.getRecommendedFees() } catch {}
+
+        // 2. UTXOs (only if initial scan is done — don't trigger a full gap scan)
+        if hasLoadedOnce && !addresses.isEmpty {
+            await refreshUTXOs()
         }
     }
 

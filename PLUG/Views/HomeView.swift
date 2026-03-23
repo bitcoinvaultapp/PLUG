@@ -134,6 +134,7 @@ struct HomeView: View {
             .toolbar(.hidden, for: .navigationBar)
             .refreshable {
                 await vm.refresh()
+                await walletVM.quickRefresh()
             }
             // Initialization handled by MainTabView.bootstrap()
         }

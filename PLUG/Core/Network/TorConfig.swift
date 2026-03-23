@@ -40,7 +40,8 @@ final class TorConfig: ObservableObject {
     /// Personal node: direct Electrs REST. Otherwise: mempool.space .onion.
     func resolve(endpoint: String) -> (host: String, path: String) {
         if usePersonalNode, !personalNodeOnion.isEmpty {
-            return (personalNodeOnion, "/api\(endpoint)")
+            // Electrs REST API has no /api prefix
+            return (personalNodeOnion, endpoint)
         }
         return (onionAddress, "/api\(endpoint)")
     }

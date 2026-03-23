@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-PLUG (**Programmable Locking UTXO Gateway**) is a Bitcoin programmability tool — not a wallet. It lets users create complex smart contract transactions on the Bitcoin network ("code money"). The **Ledger hardware wallet is always the signer** — users keep custody of their funds.
+PLUG (**Programmable Locking UTXO Gateway**) is a Bitcoin programmability tool. It lets users create complex smart contract transactions on the Bitcoin network ("code money"). The **Ledger hardware wallet is always the signer** — users keep custody of their funds. Manage your UTXOs with best practices in using them.
 
 It supports standard P2WPKH transactions, advanced Bitcoin smart contracts (P2WSH): time-locked vaults (Vault), inheritance (Inheritance), multisig pools (Pool), HTLCs, payment channels, **CoinJoin** (serverless PSBT-based collaborative transactions), and **Taproot (P2TR)** for multi-key contracts.
 

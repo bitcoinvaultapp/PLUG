@@ -437,13 +437,62 @@ struct PoolView: View {
 
             if vm.parsedPSBT != nil {
                 Section("Imported PSBT") {
-                    Text("Valid PSBT")
-                        .foregroundStyle(.green)
-                    Text("Share this PSBT with co-signers or sign with your Ledger.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    HStack {
+                        Image(systemName: "checkmark.circle.fill").foregroundStyle(.green)
+                        Text("Valid PSBT").foregroundStyle(.green)
+                    }
 
-                    Button("Copy PSBT") {
+                    // Select which pool contract to sign for
+                    if vm.contracts.isEmpty {
+                        Text("No pool contracts found. Create one first.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    } else {
+                        ForEach(vm.contracts) { contract in
+                            Button {
+                                Task { await vm.signImportedPSBT(contract: contract) }
+                            } label: {
+                                HStack {
+                                    if vm.isSigning {
+                                        ProgressView().controlSize(.small)
+                                    } else {
+                                        Image(systemName: "signature")
+                                    }
+                                    Text("Sign as \(contract.name)")
+                                        .font(.subheadline.bold())
+                                }
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 10)
+                                .background(Color.blue.opacity(0.15), in: RoundedRectangle(cornerRadius: 10))
+                                .foregroundStyle(.blue)
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(vm.isSigning)
+                        }
+                    }
+                }
+
+                // Signed result
+                if let signedPSBT = vm.signedPSBTBase64 {
+                    Section("Signed PSBT") {
+                        HStack {
+                            Image(systemName: "checkmark.seal.fill").foregroundStyle(.green)
+                            Text("Signature added").foregroundStyle(.green)
+                        }
+                        Text("Share this with the next co-signer, or broadcast if enough signatures collected.")
+                            .font(.caption).foregroundStyle(.secondary)
+                        Text(signedPSBT.prefix(60) + "...")
+                            .font(.system(size: 9, design: .monospaced))
+                            .foregroundStyle(.tertiary)
+
+                        Button("Copy Signed PSBT") {
+                            UIPasteboard.general.string = signedPSBT
+                        }
+                        .font(.caption.bold())
+                    }
+                }
+
+                Section {
+                    Button("Copy Original PSBT") {
                         UIPasteboard.general.string = vm.importedPSBTBase64
                     }
                     .font(.caption)

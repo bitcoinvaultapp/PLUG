@@ -143,6 +143,57 @@ final class PoolVM: ObservableObject, ContractVM {
         }
     }
 
+    // MARK: - Co-sign imported PSBT
+
+    @Published var isSigning = false
+    @Published var signedPSBTBase64: String?
+
+    /// Sign an imported PSBT with our Ledger key and export the updated PSBT
+    func signImportedPSBT(contract: Contract) async {
+        guard let psbtData = Data(base64Encoded: importedPSBTBase64) else {
+            error = "No PSBT to sign"
+            return
+        }
+
+        isSigning = true
+        defer { isSigning = false }
+        error = nil
+        signedPSBTBase64 = nil
+
+        do {
+            let witnessScriptData = Data(hex: contract.script) ?? Data()
+            let (signatures, updatedContract) = try await ContractSigner.signContractSpend(
+                psbtData: psbtData,
+                contract: contract,
+                spendPath: .poolSpend,
+                witnessScript: witnessScriptData,
+                isTestnet: isTestnet
+            )
+
+            // Update contract with new HMAC if registered
+            if updatedContract.walletPolicyHmac != contract.walletPolicyHmac {
+                ContractStore.shared.update(updatedContract)
+            }
+
+            // Build the partially signed PSBT with our signatures
+            // For multisig, we don't finalize — we export for the next signer
+            let witnessStacks: [[Data]] = signatures.map { sig in
+                // Partial sig: just our signature (other signers add theirs)
+                [sig, witnessScriptData]
+            }
+
+            if let finalTx = SpendManager.finalizePSBT(psbtData: psbtData, witnessStacks: witnessStacks) {
+                signedPSBTBase64 = finalTx.base64EncodedString()
+            } else {
+                // If finalization fails, export the raw signed data
+                signedPSBTBase64 = psbtData.base64EncodedString()
+                error = "Signed but could not finalize. Share PSBT with remaining signers."
+            }
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
     func delete(id: String) {
         ContractStore.shared.delete(id: id)
         contracts = filteredContracts

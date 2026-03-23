@@ -124,6 +124,7 @@ struct Contract: Identifiable, Codable, Hashable {
     // V2 wallet policy registration (for Ledger signing via SIGN_PSBT)
     var walletPolicyHmac: String?     // 32-byte HMAC hex from REGISTER_WALLET
     var walletPolicyDescriptor: String? // descriptor template, e.g. "wsh(and_v(v:pk(@0/**),after(850000)))"
+    var masterFingerprint: String?    // master fingerprint used when HMAC was registered
 
     // External party xpubs (needed for V2 multi-key policies)
     var heirXpub: String?             // Inheritance: heir's xpub/tpub

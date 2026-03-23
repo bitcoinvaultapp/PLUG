@@ -218,13 +218,16 @@ struct ContractSigner {
         // Auto-build inputAddressInfos if not provided
         var resolvedInputInfos = inputAddressInfos
         if resolvedInputInfos.isEmpty {
-            // Derive pubkey from xpub
+            // Use contract's keyIndex for derivation (NOT hardcoded index 0)
+            let addrIndex = contract.keyIndex ?? 0
             if let xpubParsed = ExtendedPublicKey.fromBase58(xpub),
-               let derived = xpubParsed.derivePath([0, 0]) {
-                // Get scriptPubKey from contract address
+               let derived = xpubParsed.derivePath([0, UInt32(addrIndex)]) {
                 let spk = PSBTBuilder.scriptPubKeyFromAddress(contract.address, isTestnet: isTestnet) ?? Data()
 
-                // Get UTXOs to know input count and values
+                #if DEBUG
+                print("[ContractSigner] Using keyIndex \(addrIndex) for contract \(contract.name)")
+                #endif
+
                 let utxos: [UTXO]
                 do {
                     utxos = try await MempoolAPI.shared.getAddressUTXOs(address: contract.address)
@@ -235,7 +238,6 @@ struct ContractSigner {
                     throw SigningError.signingFailed("Cannot fetch UTXOs: \(error.localizedDescription)")
                 }
 
-                // Fetch previous transactions for BIP174 NON_WITNESS_UTXO
                 var inputInfos: [LedgerSigningV2.InputAddressInfo] = []
                 for utxo in utxos {
                     var prevTx: Data?
@@ -244,7 +246,7 @@ struct ContractSigner {
                         prevTx = raw
                     }
                     inputInfos.append(LedgerSigningV2.InputAddressInfo(
-                        change: 0, index: 0,
+                        change: 0, index: UInt32(addrIndex),
                         publicKey: derived.key,
                         value: utxo.value,
                         scriptPubKey: spk,
@@ -252,13 +254,13 @@ struct ContractSigner {
                     ))
                 }
                 resolvedInputInfos = inputInfos
-                // Fallback if no UTXOs found but PSBT has inputs
+
                 if resolvedInputInfos.isEmpty, let parsed = PSBTBuilder.parsePSBT(psbtData),
                    let tx = parsed.unsignedTx {
                     let inputCount = LedgerSigningV2.parseTxDetails(tx).inputs.count
                     resolvedInputInfos = (0..<inputCount).map { _ in
                         LedgerSigningV2.InputAddressInfo(
-                            change: 0, index: 0,
+                            change: 0, index: UInt32(addrIndex),
                             publicKey: derived.key,
                             value: 0,
                             scriptPubKey: spk,
@@ -276,11 +278,17 @@ struct ContractSigner {
         var updatedContract = contract
         var walletHmac: Data
 
+        // Check if stored HMAC is still valid for current Ledger device
+        // HMAC is bound to the master fingerprint — if device changed, re-register
+        let storedFP = contract.masterFingerprint
+        let currentFP = masterFP
+        let fpMatch = storedFP == nil || storedFP == currentFP
+
         if let existingHmac = contract.walletPolicyHmac,
            let hmacData = Data(hex: existingHmac),
            hmacData.count == 32,
-           contract.walletPolicyDescriptor == policy.descriptorTemplate {
-            // Already registered with matching descriptor
+           contract.walletPolicyDescriptor == policy.descriptorTemplate,
+           fpMatch {
             walletHmac = hmacData
         } else {
             // Need to register
@@ -291,6 +299,7 @@ struct ContractSigner {
             walletHmac = hmac
             updatedContract.walletPolicyHmac = hmac.hex
             updatedContract.walletPolicyDescriptor = policy.descriptorTemplate
+            updatedContract.masterFingerprint = masterFP
             ContractStore.shared.update(updatedContract)
         }
 

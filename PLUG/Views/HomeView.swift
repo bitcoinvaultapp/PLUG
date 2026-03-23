@@ -260,30 +260,54 @@ private struct HomeSetupNodeCard: View {
     @ObservedObject private var torManager = TorManager.shared
     @State private var onionInput = ""
     @State private var checkStatus: NodeCheckStatus = .idle
+    @State private var showScanner = false
 
     enum NodeCheckStatus: Equatable {
         case idle, checking, reachable(Int), unreachable
     }
 
     var body: some View {
-        VStack(spacing: 24) {
+        VStack(spacing: 20) {
             Spacer()
 
             Image(systemName: "server.rack")
                 .font(.system(size: 40, weight: .light))
                 .foregroundStyle(.secondary)
 
-            Text("Set up your node")
+            Text("Connect your node")
                 .font(.system(size: 22, weight: .semibold))
 
-            Text("PLUG requires your own Bitcoin node.\nDeploy Bitcoin Core + Electrs on a VPS\nand paste your .onion address below.")
-                .font(.system(size: 14))
-                .foregroundStyle(.tertiary)
-                .multilineTextAlignment(.center)
+            // Steps
+            VStack(alignment: .leading, spacing: 12) {
+                stepRow(number: "1", text: "Deploy Bitcoin Core + Electrs on a VPS or Raspberry Pi")
+                stepRow(number: "2", text: "The setup creates a Tor address (.onion) for your node")
+                stepRow(number: "3", text: "Scan the QR code or paste the address below")
+            }
+            .padding(.horizontal, 8)
 
-            VStack(alignment: .leading, spacing: 8) {
+            // QR Scanner or Paste
+            VStack(spacing: 12) {
+                Button {
+                    showScanner = true
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "qrcode.viewfinder")
+                            .font(.system(size: 16))
+                        Text("Scan QR code")
+                            .font(.system(size: 15, weight: .semibold))
+                    }
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 12)
+                    .background(Color.btcOrange, in: RoundedRectangle(cornerRadius: 12))
+                }
+
+                Text("or paste manually")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.tertiary)
+
                 TextField("abc...xyz.onion", text: $onionInput)
-                    .font(.system(size: 14, design: .monospaced))
+                    .font(.system(size: 13, design: .monospaced))
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .padding(12)
@@ -292,67 +316,91 @@ private struct HomeSetupNodeCard: View {
                         torConfig.personalNodeOnion = onionInput.trimmingCharacters(in: .whitespacesAndNewlines)
                         checkStatus = .idle
                     }
+            }
 
-                HStack {
-                    Button {
-                        testConnection()
-                    } label: {
-                        HStack(spacing: 6) {
-                            if case .checking = checkStatus {
-                                ProgressView().controlSize(.small)
-                            } else {
-                                Image(systemName: "antenna.radiowaves.left.and.right")
-                                    .font(.system(size: 12))
-                            }
-                            Text("Test connection")
-                                .font(.system(size: 13, weight: .semibold))
+            // Test connection
+            HStack {
+                Button {
+                    testConnection()
+                } label: {
+                    HStack(spacing: 6) {
+                        if case .checking = checkStatus {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Image(systemName: "antenna.radiowaves.left.and.right")
+                                .font(.system(size: 12))
                         }
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 10)
-                        .background(Color.btcOrange, in: Capsule())
+                        Text("Test connection")
+                            .font(.system(size: 13, weight: .medium))
                     }
-                    .disabled(onionInput.isEmpty || !torManager.isRunning || checkStatus == .checking)
+                    .foregroundStyle(Color.btcOrange)
+                }
+                .disabled(onionInput.isEmpty || !torManager.isRunning || checkStatus == .checking)
 
-                    Spacer()
+                Spacer()
 
-                    switch checkStatus {
-                    case .reachable(let height):
-                        HStack(spacing: 4) {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundStyle(.green)
-                            Text("Block \(height)")
-                                .foregroundStyle(.green)
-                        }
-                        .font(.system(size: 12, weight: .medium))
-                    case .unreachable:
-                        HStack(spacing: 4) {
-                            Image(systemName: "xmark.circle.fill")
-                                .foregroundStyle(.red)
-                            Text("Unreachable")
-                                .foregroundStyle(.red)
-                        }
-                        .font(.system(size: 12, weight: .medium))
-                    default:
-                        EmptyView()
+                switch checkStatus {
+                case .reachable(let height):
+                    HStack(spacing: 4) {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundStyle(.green)
+                        Text("Block \(height)")
+                            .foregroundStyle(.green)
                     }
+                    .font(.system(size: 12, weight: .medium))
+                case .unreachable:
+                    HStack(spacing: 4) {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.red)
+                        Text("Unreachable")
+                            .foregroundStyle(.red)
+                    }
+                    .font(.system(size: 12, weight: .medium))
+                default:
+                    EmptyView()
                 }
             }
 
+            // Help link
             Button {
                 if let url = URL(string: "https://github.com/bitcoinvaultapp/PLUG#2-deploy-your-bitcoin-node") {
                     UIApplication.shared.open(url)
                 }
             } label: {
-                Text("How to deploy a node")
-                    .font(.system(size: 13))
-                    .foregroundStyle(.secondary)
+                HStack(spacing: 4) {
+                    Image(systemName: "book.fill")
+                        .font(.system(size: 11))
+                    Text("Deployment guide")
+                }
+                .font(.system(size: 13))
+                .foregroundStyle(.secondary)
             }
 
             Spacer()
         }
-        .frame(maxWidth: .infinity, minHeight: 400)
+        .frame(maxWidth: .infinity, minHeight: 450)
         .onAppear { onionInput = torConfig.personalNodeOnion }
+        .sheet(isPresented: $showScanner) {
+            QRScannerView { code in
+                onionInput = code.trimmingCharacters(in: .whitespacesAndNewlines)
+                torConfig.personalNodeOnion = onionInput
+                showScanner = false
+                testConnection()
+            }
+        }
+    }
+
+    private func stepRow(number: String, text: String) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Text(number)
+                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                .foregroundStyle(.white)
+                .frame(width: 20, height: 20)
+                .background(Color.btcOrange.opacity(0.6), in: Circle())
+            Text(text)
+                .font(.system(size: 13))
+                .foregroundStyle(.secondary)
+        }
     }
 
     private func testConnection() {

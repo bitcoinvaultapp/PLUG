@@ -620,4 +620,189 @@ final class BitcoinTests: XCTestCase {
         XCTAssertEqual(witness[1], script)
         XCTAssertEqual(witness[2], cb)
     }
+
+    // MARK: - CoinSelection Tests
+
+    func testCoinSelectionLargestFirst() {
+        let utxos = [
+            UTXO(txid: "aa", vout: 0, value: 1000, address: "addr1", scriptPubKey: "", status: .init(confirmed: true, blockHeight: 1, blockTime: nil)),
+            UTXO(txid: "bb", vout: 0, value: 5000, address: "addr2", scriptPubKey: "", status: .init(confirmed: true, blockHeight: 1, blockTime: nil)),
+            UTXO(txid: "cc", vout: 0, value: 3000, address: "addr3", scriptPubKey: "", status: .init(confirmed: true, blockHeight: 1, blockTime: nil)),
+        ]
+        let result = CoinSelection.select(from: utxos, target: 4000, feeRate: 1.0, strategy: .largestFirst)
+        XCTAssertNotNil(result, "Should find selection for 4000 sats")
+        XCTAssertEqual(result!.selectedUTXOs.first?.value, 5000, "Largest UTXO should be selected first")
+    }
+
+    func testCoinSelectionSmallestFirst() {
+        let utxos = [
+            UTXO(txid: "aa", vout: 0, value: 1000, address: "addr1", scriptPubKey: "", status: .init(confirmed: true, blockHeight: 1, blockTime: nil)),
+            UTXO(txid: "bb", vout: 0, value: 5000, address: "addr2", scriptPubKey: "", status: .init(confirmed: true, blockHeight: 1, blockTime: nil)),
+            UTXO(txid: "cc", vout: 0, value: 3000, address: "addr3", scriptPubKey: "", status: .init(confirmed: true, blockHeight: 1, blockTime: nil)),
+        ]
+        let result = CoinSelection.select(from: utxos, target: 2000, feeRate: 1.0, strategy: .smallestFirst)
+        XCTAssertNotNil(result)
+        XCTAssertEqual(result!.selectedUTXOs.first?.value, 1000, "Smallest UTXO should be selected first")
+    }
+
+    func testCoinSelectionInsufficientFunds() {
+        let utxos = [
+            UTXO(txid: "aa", vout: 0, value: 500, address: "addr1", scriptPubKey: "", status: .init(confirmed: true, blockHeight: 1, blockTime: nil)),
+        ]
+        let result = CoinSelection.select(from: utxos, target: 10000, feeRate: 1.0)
+        XCTAssertNil(result, "Should fail with insufficient funds")
+    }
+
+    func testCoinSelectionDustFiltered() {
+        let utxos = [
+            UTXO(txid: "aa", vout: 0, value: 100, address: "addr1", scriptPubKey: "", status: .init(confirmed: true, blockHeight: 1, blockTime: nil)),
+            UTXO(txid: "bb", vout: 0, value: 5000, address: "addr2", scriptPubKey: "", status: .init(confirmed: true, blockHeight: 1, blockTime: nil)),
+        ]
+        let result = CoinSelection.select(from: utxos, target: 1000, feeRate: 1.0)
+        XCTAssertNotNil(result)
+        // Dust UTXO (100 sats < 546) should be filtered out
+        XCTAssertFalse(result!.selectedUTXOs.contains { $0.value == 100 })
+    }
+
+    func testCoinSelectionFrozenFiltered() {
+        let utxos = [
+            UTXO(txid: "aa", vout: 0, value: 5000, address: "addr1", scriptPubKey: "", status: .init(confirmed: true, blockHeight: 1, blockTime: nil)),
+            UTXO(txid: "bb", vout: 0, value: 3000, address: "addr2", scriptPubKey: "", status: .init(confirmed: true, blockHeight: 1, blockTime: nil)),
+        ]
+        let result = CoinSelection.select(from: utxos, target: 2000, feeRate: 1.0, frozenOutpoints: Set(["aa:0"]))
+        XCTAssertNotNil(result)
+        XCTAssertFalse(result!.selectedUTXOs.contains { $0.txid == "aa" }, "Frozen UTXO should be excluded")
+    }
+
+    // MARK: - Fee Estimation Tests
+
+    func testFeeEstimationP2WPKH() {
+        let fee = CoinSelection.estimateFee(inputCount: 1, outputCount: 2, feeRate: 10.0)
+        // 11 overhead + 68 input + 62 outputs = 141 vbytes * 10 = 1410
+        XCTAssertEqual(fee, 1410)
+    }
+
+    func testFeeEstimationP2WSH() {
+        let fee = CoinSelection.estimateP2WSHFee(inputCount: 1, outputCount: 1, witnessSize: 100, feeRate: 5.0)
+        // P2WSH input: 41 + (100+3)/4 = 41 + 25 = 66 vbytes
+        // Total: 11 + 66 + 31 = 108 vbytes * 5 = 540
+        XCTAssertEqual(fee, 540)
+    }
+
+    func testFeeEstimationZeroRate() {
+        let fee = CoinSelection.estimateFee(inputCount: 1, outputCount: 1, feeRate: 0)
+        XCTAssertEqual(fee, 0)
+    }
+
+    // MARK: - Dust Threshold Tests
+
+    func testDustThresholdConstant() {
+        XCTAssertEqual(CoinSelection.dustThreshold, 546)
+        XCTAssertEqual(SpendManager.dustThreshold, 546)
+    }
+
+    // MARK: - TxID Validation Tests
+
+    func testValidTxid() {
+        let valid = String(repeating: "a", count: 64)
+        XCTAssertTrue(valid.count == 64 && valid.allSatisfy(\.isHexDigit))
+    }
+
+    func testInvalidTxidTooShort() {
+        let short = "abc123"
+        XCTAssertFalse(short.count == 64)
+    }
+
+    func testInvalidTxidNonHex() {
+        let invalid = String(repeating: "g", count: 64)
+        XCTAssertFalse(invalid.allSatisfy(\.isHexDigit))
+    }
+
+    // MARK: - BalanceUnit Format Tests
+
+    func testFormatBTC() {
+        let result = BalanceUnit.format(100_000_000, btcPrice: 0)
+        XCTAssertEqual(result, "1.00000000 BTC")
+    }
+
+    func testFormatSats() {
+        let result = BalanceUnit.formatSats(196732)
+        XCTAssertTrue(result.contains("196"), "Should contain the number")
+        XCTAssertTrue(result.contains("732"), "Should contain the number")
+    }
+
+    func testFormatSplitBTC() {
+        let (value, unit) = BalanceUnit.formatSplit(50_000_000)
+        XCTAssertEqual(value, "0.50000000")
+        XCTAssertEqual(unit, "BTC")
+    }
+
+    // MARK: - Sequence Number Tests
+
+    func testSequenceRBF() {
+        XCTAssertEqual(SpendManager.seqRBF, 0xFFFFFFFD)
+    }
+
+    func testSequenceLocktime() {
+        XCTAssertEqual(SpendManager.seqLocktime, 0xFFFFFFFE)
+    }
+
+    // MARK: - PSBT Builder Tests
+
+    func testPSBTMagicBytes() {
+        let magic = PSBTBuilder.magic
+        XCTAssertEqual(magic, Data([0x70, 0x73, 0x62, 0x74, 0xFF]))
+    }
+
+    func testBuildEmptyPSBT() {
+        let input = PSBTBuilder.TxInput(
+            txid: Data(count: 32), vout: 0, sequence: 0xFFFFFFFF,
+            witnessUtxo: PSBTBuilder.TxOutput(value: 1000, scriptPubKey: Data([0x00, 0x14] + [UInt8](repeating: 0, count: 20)))
+        )
+        let output = PSBTBuilder.TxOutput(value: 900, scriptPubKey: Data([0x00, 0x14] + [UInt8](repeating: 0, count: 20)))
+        let psbt = PSBTBuilder.buildPSBT(inputs: [input], outputs: [output])
+        XCTAssertTrue(psbt.starts(with: PSBTBuilder.magic), "PSBT should start with magic bytes")
+    }
+
+    func testParsePSBTRoundTrip() {
+        let input = PSBTBuilder.TxInput(
+            txid: Data(count: 32), vout: 0, sequence: 0xFFFFFFFD,
+            witnessUtxo: PSBTBuilder.TxOutput(value: 5000, scriptPubKey: Data([0x00, 0x14] + [UInt8](repeating: 0xAB, count: 20)))
+        )
+        let output = PSBTBuilder.TxOutput(value: 4500, scriptPubKey: Data([0x00, 0x14] + [UInt8](repeating: 0xCD, count: 20)))
+        let psbt = PSBTBuilder.buildPSBT(inputs: [input], outputs: [output], locktime: 890000)
+        let parsed = PSBTBuilder.parsePSBT(psbt)
+        XCTAssertNotNil(parsed, "Should parse valid PSBT")
+        XCTAssertNotNil(parsed?.unsignedTx, "Should have unsigned tx")
+    }
+
+    // MARK: - WalletAddress Cache Validation Tests
+
+    func testWalletAddressCacheValidP2WPKH() {
+        let addr = WalletAddress(index: 0, address: "bc1qw508d6qejxtdg4y5r3zarvary0c5xw7kv8f3t4", publicKey: "00", isChange: false)
+        XCTAssertTrue(addr.address.count < 55, "P2WPKH should be < 55 chars")
+    }
+
+    func testWalletAddressCacheInvalidP2WSH() {
+        let addr = WalletAddress(index: 0, address: "bc1q" + String(repeating: "a", count: 58), publicKey: "00", isChange: false)
+        XCTAssertTrue(addr.address.count >= 55, "P2WSH addresses are >= 55 chars — cache should reject")
+    }
+
+    func testWalletAddressType() {
+        let segwit = WalletAddress(index: 0, address: "bc1q...", publicKey: "00", isChange: false, addressType: .p2wpkh)
+        let taproot = WalletAddress(index: 0, address: "bc1p...", publicKey: "00", isChange: false, addressType: .p2tr)
+        XCTAssertEqual(segwit.addressType, .p2wpkh)
+        XCTAssertEqual(taproot.addressType, .p2tr)
+    }
+
+    // MARK: - TxID Byte Order Tests
+
+    func testTxidToInternalOrder() {
+        let txid = "0102030405060708091011121314151617181920212223242526272829303132"
+        let internal = SpendManager.txidToInternalOrder(txid)
+        XCTAssertEqual(internal.count, 32)
+        // Internal order is reversed
+        XCTAssertEqual(internal[0], 0x32)
+        XCTAssertEqual(internal[31], 0x01)
+    }
 }

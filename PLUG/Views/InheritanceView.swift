@@ -235,6 +235,38 @@ struct InheritanceView: View {
                         }
                     }
 
+                    // Share with heir
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Share with heir")
+                            .font(.caption.bold())
+                            .foregroundStyle(.secondary)
+                        Text("Your heir needs this information to claim the inheritance after the CSV delay expires.")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.tertiary)
+
+                        Button {
+                            var shareText = "Inheritance Contract"
+                            shareText += "\nAddress: \(contract.address)"
+                            shareText += "\nWitness Script: \(contract.script)"
+                            if let csv = contract.csvBlocks { shareText += "\nCSV Delay: \(csv) blocks" }
+                            UIPasteboard.general.string = shareText
+                        } label: {
+                            HStack {
+                                Image(systemName: "square.and.arrow.up")
+                                Text("Copy heir recovery info")
+                            }
+                            .font(.caption.bold())
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 10)
+                            .background(Color.purple.opacity(0.15), in: RoundedRectangle(cornerRadius: 10))
+                            .foregroundStyle(.purple)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
+
                     // Actions
                     VStack(spacing: 10) {
                         Button {

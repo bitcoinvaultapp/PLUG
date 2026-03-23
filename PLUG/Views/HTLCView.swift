@@ -258,6 +258,54 @@ struct HTLCView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
 
+                    // Share with receiver
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Share with receiver")
+                            .font(.caption.bold())
+                            .foregroundStyle(.secondary)
+                        Text("The receiver needs the address and hash lock to verify the HTLC. Send the preimage when you want to authorize payment.")
+                            .font(.system(size: 10))
+                            .foregroundStyle(.tertiary)
+
+                        Button {
+                            var shareText = "HTLC Contract\nAddress: \(contract.address)"
+                            if let hl = contract.hashLock { shareText += "\nHash Lock: \(hl)" }
+                            shareText += "\nScript: \(contract.script)"
+                            UIPasteboard.general.string = shareText
+                        } label: {
+                            HStack {
+                                Image(systemName: "square.and.arrow.up")
+                                Text("Copy contract details")
+                            }
+                            .font(.caption.bold())
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 10)
+                            .background(Color.teal.opacity(0.15), in: RoundedRectangle(cornerRadius: 10))
+                            .foregroundStyle(.teal)
+                        }
+                        .buttonStyle(.plain)
+
+                        if let preimage = vm.loadPreimage(for: contract) {
+                            Button {
+                                UIPasteboard.general.string = preimage
+                            } label: {
+                                HStack {
+                                    Image(systemName: "key.fill")
+                                    Text("Copy preimage (reveals secret)")
+                                }
+                                .font(.caption.bold())
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 10)
+                                .background(Color.orange.opacity(0.15), in: RoundedRectangle(cornerRadius: 10))
+                                .foregroundStyle(.orange)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding()
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 14))
+
                     // Actions
                     VStack(spacing: 10) {
                         HStack(spacing: 10) {

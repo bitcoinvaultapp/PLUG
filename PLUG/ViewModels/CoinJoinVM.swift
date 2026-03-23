@@ -166,12 +166,16 @@ final class CoinJoinVM: ObservableObject {
                        let xpubParsed = ExtendedPublicKey.fromBase58(xpub),
                        let derived = xpubParsed.derivePath([walletAddr.isChange ? 1 : 0, walletAddr.index]) {
                         let spk = PSBTBuilder.scriptPubKeyFromAddress(myUtxo.address, isTestnet: isTestnet) ?? Data()
+                        var prevTx: Data?
+                        if let rawHex = try? await MempoolAPI.shared.getRawTransaction(txid: myUtxo.txid),
+                           let raw = Data(hex: rawHex) { prevTx = raw }
                         inputInfos.append(LedgerSigningV2.InputAddressInfo(
                             change: walletAddr.isChange ? 1 : 0,
                             index: walletAddr.index,
                             publicKey: derived.key,
                             value: myUtxo.value,
-                            scriptPubKey: spk
+                            scriptPubKey: spk,
+                            previousTx: prevTx
                         ))
                     } else {
                         // Not our input — add empty info (Ledger will skip it)
@@ -179,7 +183,8 @@ final class CoinJoinVM: ObservableObject {
                             change: 0, index: 0,
                             publicKey: Data(),
                             value: 0,
-                            scriptPubKey: Data()
+                            scriptPubKey: Data(),
+                            previousTx: nil
                         ))
                     }
                     _ = i // suppress warning

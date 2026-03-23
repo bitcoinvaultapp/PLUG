@@ -132,10 +132,7 @@ struct HomeView: View {
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(.hidden, for: .navigationBar)
-            .refreshable {
-                await vm.refresh()
-                await walletVM.quickRefresh()
-            }
+            // Refresh via header button (arrow.triangle.2.circlepath)
             // Initialization handled by MainTabView.bootstrap()
         }
     }

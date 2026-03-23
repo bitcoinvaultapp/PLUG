@@ -7,8 +7,10 @@ struct PlugHeader: View {
 
     @ObservedObject private var ledger = LedgerManager.shared
     @ObservedObject private var tor = TorManager.shared
+    @EnvironmentObject var walletVM: WalletVM
     @State private var showLedger = false
     @State private var showSettings = false
+    @State private var isRefreshing = false
 
     private var isHome: Bool { pageName == "Home" }
 
@@ -24,7 +26,6 @@ struct PlugHeader: View {
                 Text(" \(pageName)")
                     .font(.system(size: 20, weight: .black))
                     .foregroundStyle(.secondary)
-
             }
             .lineLimit(1)
             .padding(.leading, 8)
@@ -32,10 +33,27 @@ struct PlugHeader: View {
             Spacer()
 
             HStack(spacing: 8) {
-                // Tor pill — always visible
+                // Refresh button
+                Button {
+                    guard !isRefreshing else { return }
+                    isRefreshing = true
+                    Task {
+                        await walletVM.quickRefresh()
+                        await HomeVM.shared.refresh()
+                        isRefreshing = false
+                    }
+                } label: {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(isRefreshing ? Color.btcOrange : .secondary)
+                        .rotationEffect(.degrees(isRefreshing ? 360 : 0))
+                        .animation(isRefreshing ? .linear(duration: 1).repeatForever(autoreverses: false) : .default, value: isRefreshing)
+                }
+
+                // Tor pill
                 torPill
 
-                // Ledger connection pill — visible on ALL tabs
+                // Ledger pill
                 Button {
                     showLedger = true
                 } label: {
@@ -117,10 +135,8 @@ struct PlugHeader: View {
         switch ledger.state {
         case .connected:
             return ledger.deviceModel ?? ledger.connectedDevice?.name ?? "Ledger"
-        case .scanning:
-            return "Scanning"
-        case .connecting:
-            return "Connecting"
+        case .scanning: return "Scanning"
+        case .connecting: return "Connecting"
         case .error: return "Error"
         case .disconnected: return "Offline"
         }
@@ -143,9 +159,9 @@ struct PlugHeader: View {
                 ProgressView()
                     .controlSize(.mini)
             } else {
-                Circle()
-                    .fill(color)
-                    .frame(width: 6, height: 6)
+                Image(systemName: "globe")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(color)
             }
             Text("Tor")
                 .font(.system(size: 10, weight: .medium))

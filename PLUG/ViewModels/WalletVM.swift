@@ -153,6 +153,11 @@ final class WalletVM: ObservableObject {
         return ExtendedPublicKey.fromBase58(xpubStr)
     }
 
+    var taprootXpub: ExtendedPublicKey? {
+        guard let xpubStr = KeychainStore.shared.loadString(forKey: KeychainStore.KeychainKey.ledgerTaprootXpub.rawValue) else { return nil }
+        return ExtendedPublicKey.fromBase58(xpubStr)
+    }
+
     var hasWallet: Bool { xpub != nil }
 
     // MARK: - Balance breakdown
@@ -345,41 +350,64 @@ final class WalletVM: ObservableObject {
         }
         cachedXpubString = currentXpubStr
 
-        // Smart scan: start with a small probe (5 addresses).
-        // If all empty → new wallet, stop immediately.
-        // If any have activity → expand to full gap limit scan.
+        // Smart scan: probe P2WPKH + P2TR addresses.
         let isTest = isTestnet
         let xpubCopy = xpub
+        let trXpubCopy = taprootXpub
 
-        // Phase 1: Quick probe — 5 receiving addresses
         let probeCount: UInt32 = 5
-        let probeBatch = await Task.detached(priority: .userInitiated) {
+
+        // Phase 1: Quick probe — 5 P2WPKH + 5 P2TR receiving
+        let segwitProbe = await Task.detached(priority: .userInitiated) {
             AddressDerivation.deriveAddresses(
                 xpub: xpubCopy, change: 0, startIndex: 0, count: probeCount, isTestnet: isTest
             )
         }.value
 
-        let probeAddrs = probeBatch.map { $0.address }
-        let probeResult = await UTXOFetchService.fetchUTXOsAndTransactions(for: probeAddrs)
+        var taprootProbe: [(index: UInt32, address: String, publicKey: Data)] = []
+        if let trXpub = trXpubCopy {
+            taprootProbe = await Task.detached(priority: .userInitiated) {
+                AddressDerivation.deriveAddresses(
+                    xpub: trXpub, change: 0, startIndex: 0, count: probeCount, isTestnet: isTest, taproot: true
+                )
+            }.value
+        }
+
+        let allProbeAddrs = segwitProbe.map { $0.address } + taprootProbe.map { $0.address }
+        let probeResult = await UTXOFetchService.fetchUTXOsAndTransactions(for: allProbeAddrs)
         let hasActivity = !probeResult.utxos.isEmpty || !probeResult.transactions.isEmpty
 
         if !hasActivity {
-            // New wallet — no history. Save the probe addresses + a few change.
             #if DEBUG
-            print("[WalletVM] Smart scan: new wallet detected (0 activity in first \(probeCount) addresses)")
+            print("[WalletVM] Smart scan: new wallet detected")
             #endif
-            let changeProbe = await Task.detached(priority: .userInitiated) {
+            let segwitChange = await Task.detached(priority: .userInitiated) {
                 AddressDerivation.deriveAddresses(
                     xpub: xpubCopy, change: 1, startIndex: 0, count: probeCount, isTestnet: isTest
                 )
             }.value
 
-            addresses = probeBatch.map { WalletAddress(index: $0.index, address: $0.address, publicKey: $0.publicKey.hex, isChange: false) }
-                + changeProbe.map { WalletAddress(index: $0.index, address: $0.address, publicKey: $0.publicKey.hex, isChange: true) }
+            var taprootChange: [(index: UInt32, address: String, publicKey: Data)] = []
+            if let trXpub = trXpubCopy {
+                taprootChange = await Task.detached(priority: .userInitiated) {
+                    AddressDerivation.deriveAddresses(
+                        xpub: trXpub, change: 1, startIndex: 0, count: probeCount, isTestnet: isTest, taproot: true
+                    )
+                }.value
+            }
 
-            if let firstAddr = addresses.first(where: { !$0.isChange }) {
-                currentReceiveAddress = firstAddr.address
-                currentReceiveIndex = firstAddr.index
+            addresses = segwitProbe.map { WalletAddress(index: $0.index, address: $0.address, publicKey: $0.publicKey.hex, isChange: false, addressType: .p2wpkh) }
+                + taprootProbe.map { WalletAddress(index: $0.index, address: $0.address, publicKey: $0.publicKey.hex, isChange: false, addressType: .p2tr) }
+                + segwitChange.map { WalletAddress(index: $0.index, address: $0.address, publicKey: $0.publicKey.hex, isChange: true, addressType: .p2wpkh) }
+                + taprootChange.map { WalletAddress(index: $0.index, address: $0.address, publicKey: $0.publicKey.hex, isChange: true, addressType: .p2tr) }
+
+            // Default receive = Taproot (if available), fallback to SegWit
+            if let firstTR = addresses.first(where: { !$0.isChange && $0.addressType == .p2tr }) {
+                currentReceiveAddress = firstTR.address
+                currentReceiveIndex = firstTR.index
+            } else if let firstSW = addresses.first(where: { !$0.isChange }) {
+                currentReceiveAddress = firstSW.address
+                currentReceiveIndex = firstSW.index
             }
 
             KeychainStore.shared.saveCodable(addresses, forKey: KeychainStore.KeychainKey.walletAddresses.rawValue)

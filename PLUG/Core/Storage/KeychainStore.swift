@@ -21,6 +21,7 @@ final class KeychainStore {
         case cachedBalance = "cached_balance_sats"
         case ledgerMasterFingerprint = "ledger_master_fingerprint"
         case ledgerOriginalXpub = "ledger_original_xpub"
+        case ledgerTaprootXpub = "ledger_taproot_xpub"
         case ledgerCoinType = "ledger_coin_type"
         case addressBook = "address_book"
     }

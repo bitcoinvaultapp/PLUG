@@ -239,17 +239,23 @@ struct AddressDerivation {
         change: UInt32 = 0,
         startIndex: UInt32 = 0,
         count: UInt32 = 20,
-        isTestnet: Bool
+        isTestnet: Bool,
+        taproot: Bool = false
     ) -> [(index: UInt32, address: String, publicKey: Data)] {
         var addresses: [(UInt32, String, Data)] = []
 
-        // First derive the change level
         guard let changeLevelKey = xpub.deriveChild(index: change) else { return [] }
 
         for i in startIndex..<(startIndex + count) {
-            guard let childKey = changeLevelKey.deriveChild(index: i),
-                  let address = childKey.segwitAddress(isTestnet: isTestnet) else { continue }
-            addresses.append((i, address, childKey.key))
+            guard let childKey = changeLevelKey.deriveChild(index: i) else { continue }
+            let address: String?
+            if taproot {
+                address = childKey.taprootAddress(isTestnet: isTestnet)
+            } else {
+                address = childKey.segwitAddress(isTestnet: isTestnet)
+            }
+            guard let addr = address else { continue }
+            addresses.append((i, addr, childKey.key))
         }
 
         return addresses

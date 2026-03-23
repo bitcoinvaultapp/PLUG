@@ -285,6 +285,15 @@ final class LedgerManager: NSObject, ObservableObject {
             KeychainStore.shared.saveString("\(coinType)", forKey: KeychainStore.KeychainKey.ledgerCoinType.rawValue)
             KeychainStore.shared.saveXpub(xpubString, isTestnet: isTestnet)
 
+            // Fetch Taproot xpub (m/86'/coin'/0') for P2TR addresses
+            let taprootPath: [UInt32] = [86 | 0x80000000, UInt32(coinType) | 0x80000000, 0 | 0x80000000]
+            if let trXpub = try? await getXpubV2(path: taprootPath, display: false) {
+                KeychainStore.shared.saveString(trXpub, forKey: KeychainStore.KeychainKey.ledgerTaprootXpub.rawValue)
+                #if DEBUG
+                print("[Ledger] Taproot xpub saved: \(trXpub.prefix(20))...")
+                #endif
+            }
+
             return (xpubString, epk.key)
         } catch {
             #if DEBUG

@@ -394,8 +394,23 @@ struct WalletAddress: Identifiable, Codable, Hashable {
     let address: String
     let publicKey: String // hex
     let isChange: Bool
+    var addressType: AddressType
 
     var id: String { address }
+
+    enum AddressType: String, Codable {
+        case p2wpkh  // bc1q... (BIP84, m/84'/0'/0')
+        case p2tr    // bc1p... (BIP86, m/86'/0'/0')
+    }
+
+    /// Convenience init with default type (backward compatibility)
+    init(index: UInt32, address: String, publicKey: String, isChange: Bool, addressType: AddressType = .p2wpkh) {
+        self.index = index
+        self.address = address
+        self.publicKey = publicKey
+        self.isChange = isChange
+        self.addressType = addressType
+    }
 
     /// Address lifecycle for privacy hygiene.
     /// Fresh → Funded (received sats) → Used (spent from, pubkey exposed on-chain).

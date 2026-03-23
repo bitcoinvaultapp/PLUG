@@ -826,6 +826,7 @@ struct WalletView: View {
     // MARK: - Receive Page
 
     @State private var copied = false
+    @State private var receiveType: WalletAddress.AddressType = .p2tr
 
     private var receivePage: some View {
         ScrollView {
@@ -842,6 +843,35 @@ struct WalletView: View {
                         .multilineTextAlignment(.center)
                 }
                 .padding(.vertical, 8)
+
+                // Address type toggle
+                HStack(spacing: 0) {
+                    Button {
+                        receiveType = .p2tr
+                        updateReceiveAddress()
+                    } label: {
+                        Text("Taproot")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(receiveType == .p2tr ? .white : .secondary)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                            .background(receiveType == .p2tr ? Color.btcOrange : Color.clear, in: RoundedRectangle(cornerRadius: 8))
+                    }
+                    Button {
+                        receiveType = .p2wpkh
+                        updateReceiveAddress()
+                    } label: {
+                        Text("SegWit")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(receiveType == .p2wpkh ? .white : .secondary)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 8)
+                            .background(receiveType == .p2wpkh ? Color.btcOrange : Color.clear, in: RoundedRectangle(cornerRadius: 8))
+                    }
+                }
+                .buttonStyle(.plain)
+                .padding(3)
+                .background(Color(.systemGray5).opacity(0.3), in: RoundedRectangle(cornerRadius: 10))
 
                 // QR code — dark background, no box
                 if let qrImage = generateQRCode(from: vm.currentReceiveAddress) {
@@ -1008,6 +1038,13 @@ struct WalletView: View {
     }
 
     // MARK: - QR Code
+
+    private func updateReceiveAddress() {
+        if let addr = vm.addresses.first(where: { !$0.isChange && $0.addressType == receiveType }) {
+            vm.currentReceiveAddress = addr.address
+            vm.currentReceiveIndex = addr.index
+        }
+    }
 
     private func generateQRCode(from string: String) -> UIImage? {
         let context = CIContext()

@@ -2,7 +2,7 @@ import Foundation
 
 // MARK: - Contract ViewModel Protocol
 // Shared state and logic for all contract type ViewModels.
-// Eliminates duplication across Vault, Inheritance, HTLC, Channel, Pool VMs.
+// All conforming types must be @MainActor.
 
 protocol ContractVM: ObservableObject {
     var contracts: [Contract] { get set }
@@ -21,12 +21,11 @@ extension ContractVM {
     var isTestnet: Bool { NetworkConfig.shared.isTestnet }
 
     /// Refresh contracts: show list immediately, fetch balances in background.
+    @MainActor
     func refreshContracts() async {
-        // Show contracts instantly from cache
         contracts = filteredContracts
         isLoading = true
 
-        // Fetch block height
         do {
             currentBlockHeight = try await MempoolAPI.shared.getBlockHeight()
         } catch {
@@ -35,7 +34,6 @@ extension ContractVM {
             #endif
         }
 
-        // Fetch balances in background (doesn't block UI)
         if !contracts.isEmpty {
             let result = await ContractSpendCoordinator.refreshBalances(
                 contracts: contracts, blockHeight: currentBlockHeight
@@ -47,18 +45,15 @@ extension ContractVM {
         isLoading = false
     }
 
-    /// Get funded amount for a contract (0 if not yet fetched)
     func fundedAmount(for contract: Contract) -> UInt64 {
         fundedAmounts[contract.address] ?? 0
     }
 
-    /// Progress toward target (0.0 to 1.0)
     func progress(for contract: Contract) -> Double {
         guard contract.amount > 0 else { return 0 }
         return min(1.0, Double(fundedAmount(for: contract)) / Double(contract.amount))
     }
 
-    /// Check if a contract address already exists (duplicate prevention)
     func isDuplicateAddress(_ address: String) -> Bool {
         ContractStore.shared.contractsForNetwork(isTestnet: isTestnet)
             .contains { $0.address == address }

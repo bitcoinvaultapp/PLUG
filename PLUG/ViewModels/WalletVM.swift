@@ -1120,9 +1120,9 @@ final class WalletVM: ObservableObject {
         isSigning = false
     }
 
-    /// Poll a transaction until confirmed, then refresh UTXOs
+    /// Poll a transaction until confirmed, then refresh UTXOs once
     private func watchForConfirmation(txid: String) {
-        Task {
+        Task { @MainActor in
             for _ in 0..<60 { // Max 30 minutes (60 × 30s)
                 try? await Task.sleep(nanoseconds: 30_000_000_000) // 30s
                 do {
